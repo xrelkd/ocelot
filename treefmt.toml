@@ -1,0 +1,45 @@
+[formatter.rust]
+command  = "cargo"
+options  = ["fmt", "--all", "--verbose", "--"]
+includes = ["*.rs"]
+
+[formatter.prettier]
+command = "prettier"
+options = ["--write"]
+includes = [
+  "*.css",
+  "*.html",
+  "*.js",
+  "*.json",
+  "*.jsx",
+  "*.md",
+  "*.mdx",
+  "*.scss",
+  "*.ts",
+  "*.yaml",
+]
+
+[formatter.toml]
+command  = "taplo"
+options  = ["format", "$@"]
+includes = ["*.toml"]
+
+[formatter.nix]
+command  = "nixfmt"
+includes = ["*.nix"]
+
+[formatter.shell]
+command = "sh"
+options = ["-eucx", """
+# Perform static analysis tool
+shellcheck --external-sources --source-path=SCRIPTDIR "$@"
+
+# Run formatter
+shfmt --write --simplify --case-indent --indent 4 "$@"
+    """, "--"]
+includes = ["*.sh", ".envrc"]
+
+[formatter.hcl]
+command  = "hclfmt"
+options  = ["-w"]
+includes = ["*.hcl"]
