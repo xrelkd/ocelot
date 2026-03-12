@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1.4
+
+# This is the build stage for ocelot. Here we create the binary in a temporary image.
+FROM rust AS builder
+
+RUN <<EOF
+#!/usr/bin/env ash
+
+set -eu
+
+apk add --no-cache \
+    musl-dev
+EOF
+
+WORKDIR /build
+COPY . /build
+
+RUN cargo build --locked --release
+
+# This is the 2nd stage: a very small image where we copy the binaries."
+FROM alpine AS ocelot
+
+COPY --from=builder /build/target/release/ocelot /usr/bin
+
+RUN <<EOF
+#!/usr/bin/env ash
+
+set -eu
+
+# check if executable works in this container
+/usr/bin/ocelot version
+EOF
+
+ENTRYPOINT ["ocelot", "noop"]
