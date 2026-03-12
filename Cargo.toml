@@ -44,7 +44,7 @@ tokio = { version = "1", features = [
 clap          = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 exitcode      = "1"
-nix           = { version = "0.27", features = ["signal", "process"] }
+nix           = { version = "0.31", features = ["signal", "process"] }
 shadow-rs     = "1.7"
 signal-hook   = "0.4"
 snafu         = "0.9"
