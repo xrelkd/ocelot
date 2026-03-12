@@ -1,0 +1,82 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - ci/*
+      - feat/*
+      - feature/*
+      - hotfix/*
+      - release/*
+
+  pull_request:
+
+jobs:
+  format:
+    name: Lint format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v21
+
+      - name: Install treefmt
+        run: nix profile add 'nixpkgs#treefmt'
+
+      - name: Install prettier
+        run: nix profile add 'nixpkgs#nodePackages.prettier'
+
+      - name: Install nixfmt
+        run: nix profile add 'nixpkgs#nixpkgs-fmt'
+
+      - name: Install hclfmt
+        run: nix profile add 'nixpkgs#hclfmt'
+
+      - name: Install taplo
+        run: nix profile add 'nixpkgs#taplo'
+
+      - name: Run shfmt, shellcheck, checkbashisms
+        uses: luizm/action-sh-checker@v0.10.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          sh_checker_shfmt_disable: true
+          sh_checker_comment: true
+          sh_checker_checkbashisms_enable: true
+
+      - name: Run treefmt
+        run: |
+          treefmt \
+            --allow-missing-formatter \
+            --fail-on-change \
+            --no-cache \
+            --formatters prettier \
+            --formatters nix \
+            --formatters shell \
+            --formatters hcl \
+            --formatters toml
+
+  commit:
+    name: Lint commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run commitlint
+        uses: wagoid/commitlint-github-action@v6.2.1
+
+  codespell:
+    name: Codespell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: codespell-project/codespell-problem-matcher@v1
+
+      - name: Codespell
+        uses: codespell-project/actions-codespell@v2
