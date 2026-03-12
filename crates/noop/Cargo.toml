@@ -1,0 +1,23 @@
+[package]
+name                   = "ocelot-noop"
+description            = "Minimalist PID 1 process (reaper) designed for container environments to handle signals and reap zombie processes"
+version.workspace      = true
+authors.workspace      = true
+homepage.workspace     = true
+readme.workspace       = true
+repository.workspace   = true
+license.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+categories.workspace   = true
+keywords.workspace     = true
+
+[dependencies]
+tracing = { workspace = true }
+
+nix         = { workspace = true }
+signal-hook = { workspace = true }
+snafu       = { workspace = true }
+
+[lints]
+workspace = true
