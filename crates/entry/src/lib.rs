@@ -76,7 +76,8 @@ where
     loop {
         // Check if the child process has exited before waiting for signals, to avoid
         // missing the exit status if it happens between signal checks.
-        if !child_exited && let Some((_pid, status)) = check_child_status(child_pid)? {
+        if !child_exited && let Some((pid, status)) = check_child_status(child_pid)? {
+            tracing::info!("Reaped child process {pid} exited with status {status}");
             child_exited = true;
             child_status = status;
         }
@@ -111,11 +112,11 @@ where
         match signal_rx.recv_timeout(wait_timeout) {
             Ok(SIGCHLD) => {
                 // Attempt to reap any child processes.
-                while let Some((pid, code)) = check_child_status(None)? {
+                while let Some((pid, status)) = check_child_status(None)? {
+                    tracing::info!("Reaped child process {pid} exited with status {status}");
                     if pid == child_pid {
                         child_exited = true;
-                        child_status = code;
-                        break;
+                        child_status = status;
                     }
                 }
             }
@@ -169,6 +170,22 @@ fn wait_child_blocking(pid: unistd::Pid) -> Result<Option<(unistd::Pid, i32)>, E
     }
 }
 
+fn reap_zombies() {
+    tracing::info!("Reaping any remaining zombie child processes...");
+    while let Ok(status) = wait::waitpid(None, Some(WaitPidFlag::WNOHANG)) {
+        match status {
+            WaitStatus::Exited(pid, code) => {
+                tracing::info!("Reaped child process {pid} with exit code {code}");
+            }
+            WaitStatus::Signaled(pid, sig, _) => {
+                tracing::info!("Reaped child process {pid} terminated by signal {sig}");
+            }
+            _ => break,
+        }
+    }
+    tracing::info!("Finished reaping child processes");
+}
+
 fn fork_and_spawn_child<Args>(command: &str, args: Args) -> Result<unistd::Pid, Error>
 where
     Args: IntoIterator<Item = String>,
@@ -199,22 +216,6 @@ where
             }
         },
     }
-}
-
-fn reap_zombies() {
-    tracing::info!("Reaping any remaining zombie child processes...");
-    while let Ok(status) = wait::waitpid(None, Some(WaitPidFlag::WNOHANG)) {
-        match status {
-            WaitStatus::Exited(pid, code) => {
-                tracing::info!("Reaped child process {pid} with exit code {code}");
-            }
-            WaitStatus::Signaled(pid, sig, _) => {
-                tracing::info!("Reaped child process {pid} terminated by signal {sig}");
-            }
-            _ => break,
-        }
-    }
-    tracing::info!("Finished reaping child processes");
 }
 
 struct CalculateWaitTimeout {
