@@ -24,23 +24,33 @@ Process supervisor and init system written in Rust Programming Language
 Usage: ocelot [COMMAND]
 
 Commands:
-version      Print the version information
-completions  Output shell completion code for the specified shell (bash, zsh, fish)
-idle         Run as a minimalist PID 1 to reap zombies and hold namespaces
-help         Print this message or the help of the given subcommand(s)
+  version      Print the version information
+  completions  Output shell completion code for the specified shell (bash, zsh, fish)
+  idle         Run as a minimalist PID 1 to reap zombies and hold namespaces [aliases: noop, pause]
+  entry        Spawns and supervises a child process as a minimalist PID 1 with signal forwarding and zombie reaping [aliases: wrap]
+  help         Print this message or the help of the given subcommand(s)
 
 Options:
--h, --help     Print help
--V, --version  Print version
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### The `idle` Command (Kubernetes Pause Equivalent)
 
 The `idle` command is the core functionality for container init responsibilities. It is designed to be a direct replacement for the Kubernetes pause process, serving as the "infra" container or parent process that:
 
-1. Holds Namespaces: Keeps the network/IPC namespaces alive by waiting indefinitely.
-2. Reaps Zombies: Acts as `PID 1` to listen for `SIGCHLD` and reap orphaned processes.
-3. Graceful Shutdown: Properly handles `SIGINT` or `SIGTERM` to allow the pod to terminate cleanly.
+- Holds Namespaces: Keeps the network/IPC namespaces alive by waiting indefinitely.
+- Reaps Zombies: Acts as `PID 1` to listen for `SIGCHLD` and reap orphaned processes.
+- Graceful Shutdown: Properly handles `SIGINT` or `SIGTERM` to allow the pod to terminate cleanly.
+
+### The `entry` Command (Minimal Init & Supervisor)
+
+The `entry` command provides a robust entry point for containerized workloads, serving as a minimal init system (PID 1). It is designed to manage the full lifecycle of a primary application while ensuring the container remains stable and responsive. Its key responsibilities include:
+
+- Process Supervision: Spawns a child process via fork/exec and tracks its execution state, returning the correct Unix exit codes (including signal offsets).
+- Signal Forwarding & Proxying: Intercepts SIGINT and SIGTERM from the container runtime and propagates them to the child process to facilitate graceful shutdowns.
+- Zombie Reaping: Monitors SIGCHLD to proactively reap orphaned or "zombie" processes, preventing process table exhaustion within the PID namespace.
+- Graceful Timeout Enforcement: Implements a configurable "kill-timer" that allows the child process a window to exit cleanly before forcibly terminating it with SIGKILL.
 
 ---
 
