@@ -22,7 +22,7 @@ name = "ocelot"
 
 [workspace]
 resolver = "2"
-members  = ["ocelot", "crates/idle"]
+members  = ["ocelot", "crates/entry", "crates/idle"]
 
 [workspace.dependencies]
 tracing            = "0.1"
@@ -49,7 +49,8 @@ shadow-rs     = "1.7"
 signal-hook   = "0.4"
 snafu         = "0.9"
 
-ocelot-idle = { path = "./crates/idle" }
+ocelot-entry = { path = "./crates/entry" }
+ocelot-idle  = { path = "./crates/idle" }
 
 [workspace.lints.rust]
 async_fn_in_trait = "allow"

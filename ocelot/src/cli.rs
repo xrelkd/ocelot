@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{io::Write, time::Duration};
 
 use clap::{CommandFactory, Parser, Subcommand};
 
@@ -44,6 +44,31 @@ pub enum Commands {
         )]
         log_level: tracing::Level,
     },
+
+    #[clap(
+        visible_aliases = ["wrap"],
+        about = "Spawns and supervises a child process as a minimalist PID 1 with signal forwarding and zombie reaping",
+        long_about = "Acts as a process supervisor and init system for containerized workloads. It forks and executes a child process, then assumes responsibility for the PID 1 lifecycle. It ensures system stability by proactively reaping zombie processes via SIGCHLD and proxies termination signals (SIGINT/SIGTERM) to the child. If the child fails to exit within a grace period, it enforces a SIGKILL to ensure the container terminates. This is essential for preventing process leaks and ensuring clean shutdowns in orchestrated environments."
+    )]
+    Entry {
+        #[clap(
+            long = "log-level",
+            env = "OCELOT_LOG_LEVEL",
+            default_value = "info",
+            help = "Specify a log level"
+        )]
+        log_level: tracing::Level,
+
+        #[arg(
+            long,
+            help = "Specify a timeout in milliseconds for the command to execute. If the command \
+                    does not finish within the specified timeout, it will be forcefully killed."
+        )]
+        timeout_ms: Option<u64>,
+
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        commands: Vec<String>,
+    },
 }
 
 impl Default for Cli {
@@ -72,6 +97,27 @@ impl Cli {
                     )
                     .init();
                 ocelot_idle::execute()?;
+            }
+            Some(Commands::Entry { log_level, commands, timeout_ms }) => {
+                tracing_subscriber::fmt()
+                    .with_env_filter(
+                        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(
+                            |_| tracing_subscriber::EnvFilter::new(log_level.as_str()),
+                        ),
+                    )
+                    .init();
+                let (command, args) = if commands.is_empty() {
+                    tracing::warn!("No command provided, nothing to execute.");
+                    return Ok(0);
+                } else {
+                    let (command, args) =
+                        commands.split_first().expect("Just checked it's not empty");
+                    let command = command.clone();
+                    let args = args.to_vec();
+                    (command, args)
+                };
+                let timeout = timeout_ms.map(Duration::from_millis);
+                return ocelot_entry::execute(command, args, timeout).map_err(Error::from);
             }
             None => {
                 tracing_subscriber::fmt()
