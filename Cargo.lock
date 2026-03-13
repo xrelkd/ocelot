@@ -571,6 +571,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "clap_complete",
+ "ocelot-entry",
  "ocelot-idle",
  "serde",
  "serde_yaml",
@@ -579,6 +580,16 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "ocelot-entry"
+version = "0.1.0"
+dependencies = [
+ "nix",
+ "signal-hook",
+ "snafu",
+ "tracing",
 ]
 
 [[package]]
