@@ -28,17 +28,18 @@ pub enum Commands {
     Completions { shell: clap_complete::Shell },
 
     #[clap(
+        visible_aliases = ["noop", "pause"],
         about = "Run as a minimalist PID 1 to reap zombies and hold namespaces",
         long_about = "Acts as a 'pause' container equivalent. It enters an infinite loop waiting \
                       for signals. When SIGCHLD is received, it reaps exited child processes to \
                       prevent zombies. This is essential when running in environments where this \
                       process is the sub-grid anchor (PID 1)."
     )]
-    Noop {
+    Idle {
         #[clap(
             long = "log-level",
-            default_value = "info",
             env = "OCELOT_LOG_LEVEL",
+            default_value = "info",
             help = "Specify a log level"
         )]
         log_level: tracing::Level,
@@ -62,7 +63,7 @@ impl Cli {
                 let bin_name = app.get_name().to_string();
                 clap_complete::generate(shell, &mut app, bin_name, &mut std::io::stdout());
             }
-            Some(Commands::Noop { log_level }) => {
+            Some(Commands::Idle { log_level }) => {
                 tracing_subscriber::fmt()
                     .with_env_filter(
                         tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(
@@ -70,7 +71,7 @@ impl Cli {
                         ),
                     )
                     .init();
-                ocelot_noop::execute()?;
+                ocelot_idle::execute()?;
             }
             None => {
                 tracing_subscriber::fmt()
@@ -80,7 +81,7 @@ impl Cli {
                         ),
                     )
                     .init();
-                ocelot_noop::execute()?;
+                ocelot_idle::execute()?;
             }
         }
         Ok(0)

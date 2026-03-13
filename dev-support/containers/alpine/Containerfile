@@ -31,4 +31,4 @@ set -eu
 /usr/bin/ocelot version
 EOF
 
-ENTRYPOINT ["ocelot", "noop"]
+ENTRYPOINT ["ocelot", "idle"]

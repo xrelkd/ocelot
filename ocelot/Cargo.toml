@@ -26,7 +26,7 @@ clap_complete = { workspace = true }
 shadow-rs     = { workspace = true }
 snafu         = { workspace = true }
 
-ocelot-noop = { workspace = true }
+ocelot-idle = { path = "../crates/idle" }
 
 [build-dependencies]
 shadow-rs = { workspace = true }
