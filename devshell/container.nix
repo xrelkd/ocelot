@@ -20,7 +20,7 @@ dockerTools.buildImage {
   config = {
     Entrypoint = [
       "${ocelot}/bin/ocelot"
-      "noop"
+      "idle"
     ];
   };
 }
