@@ -92,14 +92,16 @@
               inherit (cargoToml.workspace.package) version;
               inherit rustPlatform;
             };
-
             container = pkgs.callPackage ./devshell/container.nix {
               inherit (cargoToml.workspace.metadata.crane) name;
               inherit (cargoToml.workspace.package) version;
               inherit ocelot;
             };
-
             default = ocelot;
+          };
+
+          checks.integration-test = pkgs.callPackage ./devshell/integration-test.nix {
+            inherit self system pkgs;
           };
         };
     };

@@ -1,0 +1,23 @@
+[package]
+name                   = "ocelot-zombie"
+description            = "A deliberate zombie process generator for Unix-like systems"
+version.workspace      = true
+authors.workspace      = true
+homepage.workspace     = true
+readme.workspace       = true
+repository.workspace   = true
+license.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+categories.workspace   = true
+keywords.workspace     = true
+
+[dependencies]
+tracing = { workspace = true }
+
+nix         = { workspace = true }
+signal-hook = { workspace = true }
+snafu       = { workspace = true }
+
+[lints]
+workspace = true

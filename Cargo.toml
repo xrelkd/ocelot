@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 authors = ["xrelkd <46590321+xrelkd@users.noreply.github.com>"]
 homepage = "https://github.com/xrelkd/ocelot"
 repository = "https://github.com/xrelkd/ocelot"
@@ -22,7 +22,7 @@ name = "ocelot"
 
 [workspace]
 resolver = "2"
-members  = ["ocelot", "crates/noop"]
+members  = ["ocelot", "crates/entry", "crates/idle", "crates/zombie"]
 
 [workspace.dependencies]
 tracing            = "0.1"
@@ -44,12 +44,14 @@ tokio = { version = "1", features = [
 clap          = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 exitcode      = "1"
-nix           = { version = "0.27", features = ["signal", "process"] }
+nix           = { version = "0.31", features = ["signal", "process"] }
 shadow-rs     = "1.7"
 signal-hook   = "0.4"
 snafu         = "0.9"
 
-ocelot-noop = { path = "./crates/noop" }
+ocelot-entry  = { path = "./crates/entry" }
+ocelot-idle   = { path = "./crates/idle" }
+ocelot-zombie = { path = "./crates/zombie" }
 
 [workspace.lints.rust]
 async_fn_in_trait = "allow"
