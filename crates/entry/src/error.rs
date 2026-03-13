@@ -18,16 +18,6 @@ pub enum Error {
         source: nix::Error,
     },
 
-    #[snafu(display("Failed to kill child process, error: {source}"))]
-    KillChild {
-        source: std::io::Error,
-    },
-
-    #[snafu(display("Failed to wait for child process, error: {source}"))]
-    WaitChild {
-        source: std::io::Error,
-    },
-
     #[snafu(display("Failed to wait for child process (nix), error: {source}"))]
     WaitPid {
         source: nix::Error,
