@@ -15,7 +15,7 @@ use crate::{error::Error, shadow};
 )]
 pub struct Cli {
     #[clap(subcommand)]
-    commands: Option<Commands>,
+    pub commands: Option<Commands>,
 }
 
 #[allow(variant_size_differences)]
