@@ -573,6 +573,7 @@ dependencies = [
  "clap_complete",
  "ocelot-entry",
  "ocelot-idle",
+ "ocelot-zombie",
  "serde",
  "serde_yaml",
  "shadow-rs",
@@ -594,6 +595,16 @@ dependencies = [
 
 [[package]]
 name = "ocelot-idle"
+version = "0.1.0"
+dependencies = [
+ "nix",
+ "signal-hook",
+ "snafu",
+ "tracing",
+]
+
+[[package]]
+name = "ocelot-zombie"
 version = "0.1.0"
 dependencies = [
  "nix",
