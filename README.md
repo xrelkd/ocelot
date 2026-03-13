@@ -26,7 +26,7 @@ Usage: ocelot [COMMAND]
 Commands:
 version      Print the version information
 completions  Output shell completion code for the specified shell (bash, zsh, fish)
-noop         Run as a minimalist PID 1 to reap zombies and hold namespaces
+idle         Run as a minimalist PID 1 to reap zombies and hold namespaces
 help         Print this message or the help of the given subcommand(s)
 
 Options:
@@ -34,9 +34,9 @@ Options:
 -V, --version  Print version
 ```
 
-### The `noop` Command (Kubernetes Pause Equivalent)
+### The `idle` Command (Kubernetes Pause Equivalent)
 
-The `noop` command is the core functionality for container init responsibilities. It is designed to be a direct replacement for the Kubernetes pause process, serving as the "infra" container or parent process that:
+The `idle` command is the core functionality for container init responsibilities. It is designed to be a direct replacement for the Kubernetes pause process, serving as the "infra" container or parent process that:
 
 1. Holds Namespaces: Keeps the network/IPC namespaces alive by waiting indefinitely.
 2. Reaps Zombies: Acts as `PID 1` to listen for `SIGCHLD` and reap orphaned processes.
@@ -83,9 +83,9 @@ Using Ocelot as your `ENTRYPOINT` ensures that your container correctly manages 
 
 COPY --from=ocelot /usr/bin/ocelot /usr/bin/ocelot
 
-# Run with 'noop' to handle PID 1 duties
+# Run with 'idle' to handle PID 1 duties
 
-ENTRYPOINT ["ocelot", "noop"]
+ENTRYPOINT ["ocelot", "idle"]
 ```
 
 ---
