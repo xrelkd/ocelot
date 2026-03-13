@@ -26,8 +26,9 @@ clap_complete = { workspace = true }
 shadow-rs     = { workspace = true }
 snafu         = { workspace = true }
 
-ocelot-entry = { workspace = true }
-ocelot-idle  = { workspace = true }
+ocelot-entry  = { workspace = true }
+ocelot-idle   = { workspace = true }
+ocelot-zombie = { workspace = true }
 
 [build-dependencies]
 shadow-rs = { workspace = true }

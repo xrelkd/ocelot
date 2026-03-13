@@ -573,6 +573,7 @@ dependencies = [
  "clap_complete",
  "ocelot-entry",
  "ocelot-idle",
+ "ocelot-zombie",
  "serde",
  "serde_yaml",
  "shadow-rs",
