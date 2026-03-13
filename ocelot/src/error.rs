@@ -4,9 +4,9 @@ use snafu::Snafu;
 #[snafu(visibility(pub))]
 pub enum Error {
     #[snafu(display("{source}"))]
-    RunNoop { source: ocelot_noop::Error },
+    RunIdle { source: ocelot_idle::Error },
 }
 
-impl From<ocelot_noop::Error> for Error {
-    fn from(source: ocelot_noop::Error) -> Self { Self::RunNoop { source } }
+impl From<ocelot_idle::Error> for Error {
+    fn from(source: ocelot_idle::Error) -> Self { Self::RunIdle { source } }
 }

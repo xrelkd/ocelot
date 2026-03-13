@@ -571,7 +571,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "clap_complete",
- "ocelot-noop",
+ "ocelot-idle",
  "serde",
  "serde_yaml",
  "shadow-rs",
@@ -582,7 +582,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ocelot-noop"
+name = "ocelot-idle"
 version = "0.1.0"
 dependencies = [
  "nix",

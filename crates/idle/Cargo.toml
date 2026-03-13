@@ -1,5 +1,5 @@
 [package]
-name                   = "ocelot-noop"
+name                   = "ocelot-idle"
 description            = "Minimalist PID 1 process (reaper) designed for container environments to handle signals and reap zombie processes"
 version.workspace      = true
 authors.workspace      = true
