@@ -76,10 +76,12 @@ where
     loop {
         // Check if the child process has exited before waiting for signals, to avoid
         // missing the exit status if it happens between signal checks.
-        if !child_exited && let Some((pid, status)) = check_child_status(child_pid)? {
-            tracing::info!("Reaped child process {pid} exited with status {status}");
+        if !child_exited
+            && let Some(ReapedProcess { pid, exit_code }) = check_child_status(child_pid)?
+        {
+            tracing::info!("Reaped child process {pid} exited with status {exit_code}");
             child_exited = true;
-            child_status = status;
+            child_status = exit_code;
         }
 
         if child_exited {
@@ -112,11 +114,11 @@ where
         match signal_rx.recv_timeout(wait_timeout) {
             Ok(SIGCHLD) => {
                 // Attempt to reap any child processes.
-                while let Some((pid, status)) = check_child_status(None)? {
-                    tracing::info!("Reaped child process {pid} exited with status {status}");
+                while let Some(ReapedProcess { pid, exit_code }) = check_child_status(None)? {
+                    tracing::info!("Reaped child process {pid} exited with status {exit_code}");
                     if pid == child_pid {
                         child_exited = true;
-                        child_status = status;
+                        child_status = exit_code;
                     }
                 }
             }
@@ -136,8 +138,10 @@ where
     spawned_signal_thread.close();
 
     // Ensure the child process has exited, waiting if necessary
-    if !child_exited && let Ok(Some((_, code))) = wait_child_blocking(child_pid) {
-        child_status = code;
+    if !child_exited
+        && let Ok(Some(ReapedProcess { exit_code, .. })) = wait_child_blocking(child_pid)
+    {
+        child_status = exit_code;
     }
     tracing::info!("Child process {child_pid} exited with status {child_status}");
 
@@ -145,27 +149,36 @@ where
     Ok(child_status)
 }
 
+struct ReapedProcess {
+    pid: unistd::Pid,
+    exit_code: i32,
+}
+
 /// Check the status of a child process without blocking. Returns `Some((pid,
 /// exit_code))` if the child has exited or was signaled, or `None` if the child
 /// is still running or there are no child processes.
 fn check_child_status<P: Into<Option<unistd::Pid>>>(
     pid: P,
-) -> Result<Option<(unistd::Pid, i32)>, Error> {
+) -> Result<Option<ReapedProcess>, Error> {
     match wait::waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
-        Ok(WaitStatus::Exited(pid, code)) => Ok(Some((pid, code))),
-        Ok(WaitStatus::Signaled(pid, sig, _)) => Ok(Some((pid, 128 + sig as i32))),
+        Ok(WaitStatus::Exited(pid, exit_code)) => Ok(Some(ReapedProcess { pid, exit_code })),
+        Ok(WaitStatus::Signaled(pid, sig, _)) => {
+            Ok(Some(ReapedProcess { pid, exit_code: 128 + sig as i32 }))
+        }
         Ok(_) | Err(nix::Error::ECHILD) => Ok(None),
         Err(source) => Err(Error::WaitPid { source }),
     }
 }
 
-fn wait_child_blocking(pid: unistd::Pid) -> Result<Option<(unistd::Pid, i32)>, Error> {
+fn wait_child_blocking(pid: unistd::Pid) -> Result<Option<ReapedProcess>, Error> {
     tracing::info!("Waiting for child process {pid} to exit...");
     let wait_status =
         wait::waitpid(pid, Some(WaitPidFlag::empty())).context(error::WaitPidSnafu)?;
     match wait_status {
-        WaitStatus::Exited(pid, code) => Ok(Some((pid, code))),
-        WaitStatus::Signaled(pid, sig, _) => Ok(Some((pid, 128 + sig as i32))),
+        WaitStatus::Exited(pid, exit_code) => Ok(Some(ReapedProcess { pid, exit_code })),
+        WaitStatus::Signaled(pid, sig, _) => {
+            Ok(Some(ReapedProcess { pid, exit_code: 128 + sig as i32 }))
+        }
         _ => Ok(None),
     }
 }
