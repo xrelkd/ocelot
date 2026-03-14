@@ -19,6 +19,7 @@ pub use self::error::Error;
 /// # Panics
 /// This function never panics.
 pub fn execute(interval: Duration, zombie_limit: Option<u64>) -> Result<(), Error> {
+    let zombie_limit = if Some(0) == zombie_limit { Some(5) } else { zombie_limit };
     let mut signals = Signals::new([SIGINT, SIGTERM]).context(error::CreateSignalHandlerSnafu)?;
     let (signal_tx, signal_rx) = mpsc::channel();
     let handle = signals.handle();
@@ -35,7 +36,9 @@ pub fn execute(interval: Duration, zombie_limit: Option<u64>) -> Result<(), Erro
 
     let mut zombie_count = 0;
     loop {
-        if Some(zombie_count) >= zombie_limit {
+        if let Some(zombie_limit) = zombie_limit
+            && zombie_count >= zombie_limit
+        {
             tracing::info!("[Parent] Zombie limit reached, exiting parent process {pid}");
             break;
         }
