@@ -109,12 +109,24 @@ ocelot completions bash > /etc/bash_completion.d/ocelot
 
 Using Ocelot as your `ENTRYPOINT` ensures that your container correctly manages the process lifecycle.
 
+- Play as the "idle" command for a simple init system that holds namespaces and reaps zombies
+
 ```dockerfile
 # Use ocelot as the init system in your Dockerfile
 COPY --from=ocelot /usr/bin/ocelot /usr/bin/ocelot
 
 # Run with 'idle' to handle PID 1 duties
 ENTRYPOINT ["ocelot", "idle"]
+```
+
+- Play as the "entry" command to supervise a child process with signal forwarding and zombie reaping
+
+```dockerfile
+# Use ocelot as the init system in your Dockerfile
+COPY --from=ocelot /usr/bin/ocelot /usr/bin/ocelot
+
+# Run with 'entry' to handle PID 1 duties
+ENTRYPOINT ["ocelot", "entry", "--", "ocelot", "zombie", "--count=20"]
 ```
 
 ---
