@@ -14,12 +14,41 @@ A minimalist process supervisor and init system written in the <a href="https://
 
 ---
 
+```mermaid
+graph TD
+    subgraph Host_OS ["Host OS / Container Runtime (Docker/K8s)"]
+        Signal["Send Signal<br/>(e.g., SIGTERM)"]
+    end
+
+    subgraph Container ["Container (PID Namespace)"]
+        Ocelot["<b>Ocelot (PID 1)</b><br/>(Init System / Daemon)"]
+
+        subgraph Managed_Processes ["Managed Processes"]
+            App["<b>Main Application</b><br/>(Child Process)"]
+            Orphan["Orphan Processes"]
+        end
+    end
+
+    %% Signal Flow
+    Signal -->|1. Intercept Signal| Ocelot
+    Ocelot -->|2. Signal Forwarding| App
+
+    %% Process Management Flow
+    App -.->|3. Terminate| Ocelot
+    Orphan -.->|4. Re-parenting| Ocelot
+    Ocelot -->|5. Reaping| Orphan
+
+    %% Styles
+    style Ocelot stroke:#333,stroke-width:2px
+    style App stroke:#333
+    style Orphan stroke:#999,stroke-dasharray: 5 5
+```
+
 ## 🛠 Usage
 
 ### Command Line Interface
 
 ```text
-
 Process supervisor and init system written in Rust Programming Language
 
 Usage: ocelot [COMMAND]
@@ -35,7 +64,6 @@ Commands:
 Options:
   -h, --help     Print help
   -V, --version  Print version
-
 ```
 
 ### The `idle` Command (Kubernetes Pause Equivalent)
