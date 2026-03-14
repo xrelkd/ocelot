@@ -49,9 +49,12 @@ pub fn execute(interval: Duration, zombie_limit: Option<u64>) -> Result<(), Erro
                 tracing::info!("[Parent] Spawned child PID: {child}, zombie: {zombie_count}");
             }
             ForkResult::Child => {
-                // Child process immediately exits, creating a zombie in the parent process
                 let self_pid = unistd::getpid();
                 tracing::info!("[Child {self_pid}] Exited");
+
+                // Child process immediately exits, creating a zombie in the parent process.
+                // Return immediately, we do not need to join the thread, because it was already
+                // terminated by the kernel when forking.
                 return Ok(());
             }
         }
