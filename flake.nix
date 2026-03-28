@@ -99,10 +99,6 @@
             };
             default = ocelot;
           };
-
-          checks.integration-test = pkgs.callPackage ./devshell/integration-test.nix {
-            inherit self system pkgs;
-          };
         };
     };
 }

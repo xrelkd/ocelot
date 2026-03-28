@@ -28,7 +28,7 @@ rustPlatform.buildRustPackage {
   checkFlags = [ "--skip-ignored" ];
   checkPhase = ''
     runHook preCheck
-    cargo nextest run $checkFlags
+    cargo nextest run
     runHook postCheck
   '';
 
