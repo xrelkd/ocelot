@@ -1,5 +1,7 @@
 use snafu::Snafu;
 
+// RATIONALE: Variant names are intentionally verbose to match error types from
+// different sub-crates, making the error source clear.
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -12,6 +14,18 @@ pub enum Error {
 
     #[snafu(display("{source}"))]
     RunZombie { source: ocelot_zombie::Error },
+
+    #[snafu(display("{source}"))]
+    RunSupervise { source: ocelot_supervise::Error },
+
+    #[snafu(display("{source}"))]
+    LoadConfig { source: crate::config::Error },
+
+    #[snafu(display("Failed to read processes, error: {source}"))]
+    ReadProcesses { source: procfs::ProcError },
+
+    #[snafu(display("{message}"))]
+    InvalidArgument { message: String },
 }
 
 impl From<ocelot_idle::Error> for Error {
@@ -24,4 +38,12 @@ impl From<ocelot_entry::Error> for Error {
 
 impl From<ocelot_zombie::Error> for Error {
     fn from(source: ocelot_zombie::Error) -> Self { Self::RunZombie { source } }
+}
+
+impl From<ocelot_supervise::Error> for Error {
+    fn from(source: ocelot_supervise::Error) -> Self { Self::RunSupervise { source } }
+}
+
+impl From<crate::config::Error> for Error {
+    fn from(source: crate::config::Error) -> Self { Self::LoadConfig { source } }
 }

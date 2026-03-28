@@ -50,6 +50,10 @@ in
     cargo test ${UNIT_TEST_ARGUMENTS} --no-fail-fast "$@" -- \
       --nocapture \
       --test
+    cargo test ${UNIT_TEST_ARGUMENTS} --no-fail-fast "$@" -- \
+      --nocapture \
+      --test \
+      --ignored
   '';
 
   cargo-nextest-all = writeShellScriptBin "cargo-nextest-all" ''
@@ -61,6 +65,6 @@ in
     cargo --version
     rustc --version
     cargo nextest --version
-    cargo nextest run --workspace --no-fail-fast --no-capture "$@"
+    cargo nextest run --workspace --no-fail-fast --no-capture "$@" -- --include-ignored
   '';
 }

@@ -1,0 +1,89 @@
+version: "1.0"
+
+processes:
+  nginx:
+    program: /usr/sbin/nginx
+    arguments:
+      - -g
+      - daemon off;
+    terminationGracePeriodSecs: 60
+    readinessProbe:
+      handler:
+        type: httpGet
+        path: /health
+        port: 80
+      initialDelaySecs: 5
+      periodSecs: 10
+      timeoutSecs: 1
+      failureThreshold: 3
+      successThreshold: 1
+    livenessProbe:
+      handler:
+        type: tcpSocket
+        host: localhost
+        port: 80
+      periodSecs: 30
+      timeoutSecs: 5
+      failureThreshold: 3
+    restartPolicy:
+      type: Never
+    shutdownSignal:
+      type: sigterm
+
+  myapp:
+    program: /usr/bin/myapp
+    arguments:
+      - --config
+      - /etc/myapp/config.yaml
+    environmentVariables:
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://localhost:5432/mydb
+    workingDirectory: /opt/myapp
+    terminationGracePeriodSecs: 30
+    shutdownSignal:
+      type: name
+      value: SIGTERM
+    restartPolicy:
+      type: OnFailure
+      maxRetries: 3
+      backoffSecs: 5
+
+  redis:
+    program: /usr/bin/redis-server
+    arguments:
+      - --port
+      - 6379
+    terminationGracePeriodSecs: 10
+    shutdownSignal:
+      type: number
+      value: 9
+    restartPolicy:
+      type: Always
+      backoffSecs: 1
+
+  postgres:
+    program: /usr/bin/postgres
+    arguments:
+      - -D
+      - /var/lib/postgresql/data
+    environmentVariables:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+    workingDirectory: /var/lib/postgresql
+    terminationGracePeriodSecs: 30
+    readinessProbe:
+      handler:
+        type: tcpSocket
+        port: 5432
+      initialDelaySecs: 10
+      periodSecs: 5
+    livenessProbe:
+      handler:
+        type: tcpSocket
+        port: 5432
+      initialDelaySecs: 15
+      periodSecs: 20
+      timeoutSecs: 3
+      failureThreshold: 3
+    restartPolicy:
+      type: Always
