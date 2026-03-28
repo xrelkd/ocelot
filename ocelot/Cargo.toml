@@ -25,6 +25,7 @@ clap          = { workspace = true }
 clap_complete = { workspace = true }
 nix           = { workspace = true }
 petgraph      = { workspace = true }
+procfs        = { workspace = true }
 resolve-path  = { workspace = true }
 shadow-rs     = { workspace = true }
 snafu         = { workspace = true }

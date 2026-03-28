@@ -21,6 +21,9 @@ pub enum Error {
     #[snafu(display("{source}"))]
     LoadConfig { source: crate::config::Error },
 
+    #[snafu(display("Failed to read processes, error: {source}"))]
+    ReadProcesses { source: procfs::ProcError },
+
     #[snafu(display("{message}"))]
     InvalidArgument { message: String },
 }

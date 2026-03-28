@@ -799,6 +799,7 @@ dependencies = [
  "ocelot-supervise",
  "ocelot-zombie",
  "petgraph",
+ "procfs",
  "resolve-path",
  "serde",
  "serde_yaml",

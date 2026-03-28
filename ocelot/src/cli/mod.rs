@@ -1,10 +1,11 @@
+mod supervise;
+mod zombie_finder;
+
 use std::{io::Write, path::PathBuf, time::Duration};
 
 use clap::{CommandFactory, Parser, Subcommand};
 
 use crate::{error::Error, shadow};
-
-pub mod supervise;
 
 #[derive(Parser)]
 #[command(
@@ -59,6 +60,22 @@ pub enum Commands {
     },
 
     #[clap(
+        about = "Run supervisor with configuration file",
+        long_about = "Run supervisor with configuration file. If no subcommand is provided, runs \
+                      the supervisor. Use 'config-template' to output the default configuration."
+    )]
+    Supervise {
+        #[clap(subcommand)]
+        command: Option<supervise::Commands>,
+
+        #[clap(short, long)]
+        file: Option<PathBuf>,
+
+        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
+        log_level: tracing::Level,
+    },
+
+    #[clap(
         about = "Creates zombie processes by forking child processes that immediately exit, while \
                  the parent process sleeps. This is useful for testing how systems handle zombie \
                  processes.",
@@ -81,20 +98,14 @@ pub enum Commands {
     },
 
     #[clap(
-        about = "Run supervisor with configuration file",
-        long_about = "Run supervisor with configuration file. If no subcommand is provided, runs \
-                      the supervisor. Use 'config-template' to output the default configuration."
+        alias = "zls",
+        about = "Scan system for zombie processes",
+        long_about = "Scans the system for existing zombie processes using procfs. It lists the \
+                      PID and command name of each zombie process found. This is useful for \
+                      monitoring system health and identifying processes that have exited but \
+                      have not been reaped by their parent processes."
     )]
-    Supervise {
-        #[clap(subcommand)]
-        command: Option<supervise::Commands>,
-
-        #[clap(short, long)]
-        file: Option<PathBuf>,
-
-        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
-        log_level: tracing::Level,
-    },
+    ZombieFinder,
 }
 
 impl Default for Cli {
@@ -133,14 +144,15 @@ impl Cli {
                 let timeout = timeout_ms.map(Duration::from_millis);
                 return ocelot_entry::execute(command, args, timeout).map_err(Error::from);
             }
+            Some(Commands::Supervise { command, file, log_level }) => {
+                return supervise::run(command, file, log_level);
+            }
             Some(Commands::Zombie { log_level, interval_ms, count }) => {
                 init_tracing_subscriber(log_level);
                 let interval = Duration::from_millis(interval_ms);
                 ocelot_zombie::execute(interval, count)?;
             }
-            Some(Commands::Supervise { command, file, log_level }) => {
-                return supervise::run(command, file, log_level);
-            }
+            Some(Commands::ZombieFinder) => return zombie_finder::run(),
             None => {
                 init_tracing_subscriber(tracing::Level::INFO);
                 ocelot_idle::execute()?;
