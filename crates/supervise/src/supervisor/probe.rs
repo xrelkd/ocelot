@@ -77,10 +77,7 @@ where
 async fn probe_http(socket_address: &SocketAddr, timeout: Duration, path: &str) -> bool {
     let result = tokio::time::timeout(timeout, async {
         let mut stream = TcpStream::connect(socket_address).await.ok()?;
-        let request = format!(
-            "GET {path} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-            socket_address.ip()
-        );
+        let request = format!("GET {path} HTTP/1.1\r\nConnection: close\r\n\r\n");
         stream.write_all(request.as_bytes()).await.ok()?;
         let mut response = String::new();
         let _ = stream.read_to_string(&mut response).await.ok()?;
