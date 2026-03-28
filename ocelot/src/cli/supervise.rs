@@ -15,8 +15,8 @@ pub enum Commands {
         #[clap(short, long)]
         file: PathBuf,
 
-        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
-        log_level: tracing::Level,
+        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL")]
+        log_level: Option<tracing::Level>,
     },
 
     #[clap(about = "Output the configuration template in YAML format")]
@@ -28,7 +28,7 @@ impl Commands {}
 pub fn run(
     command: Option<Commands>,
     file: Option<PathBuf>,
-    log_level: tracing::Level,
+    log_level: Option<tracing::Level>,
 ) -> Result<i32, Error> {
     match command {
         Some(Commands::ConfigTemplate) => {
@@ -47,9 +47,10 @@ pub fn run(
     }
 }
 
-fn run_supervisor(file: impl AsRef<Path>, log_level: tracing::Level) -> Result<i32, Error> {
-    init_tracing_subscriber(log_level);
+fn run_supervisor(file: impl AsRef<Path>, log_level: Option<tracing::Level>) -> Result<i32, Error> {
     let config = config::SupervisorConfig::load(file)?;
+    let log_level = log_level.unwrap_or(config.log_level);
+    init_tracing_subscriber(log_level);
     config.validate()?;
     let shutdown_timeout = config.shutdown_timeout_secs;
     let supervisors = config.to_supervisors();

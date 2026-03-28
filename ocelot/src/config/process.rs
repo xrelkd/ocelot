@@ -1,13 +1,13 @@
 use std::{collections::HashMap, str::FromStr};
 
 use nix::sys::signal::Signal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::{
     dependency::DependencyConfig, probe::ProbeConfig, restart::RestartPolicyConfig,
 };
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase", deny_unknown_fields)]
 pub enum ShutdownSignalConfig {
     #[default]
@@ -29,7 +29,7 @@ impl ShutdownSignalConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProcessConfig {
     pub program: String,

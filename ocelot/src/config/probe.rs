@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProbeConfig {
     #[serde(default)]
@@ -31,7 +31,7 @@ impl Default for ProbeHandlerConfig {
     fn default() -> Self { Self::HttpGet { host: None, path: "/".to_string(), port: 80 } }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ProbeHandlerConfig {
     HttpGet { host: Option<String>, path: String, port: u16 },
