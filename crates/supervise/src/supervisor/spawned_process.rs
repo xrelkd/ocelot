@@ -20,9 +20,6 @@ impl AsRef<Pid> for SpawnedProcess {
 }
 
 pub trait CommandExt {
-    // RATIONALE: We use the trait only in our own code, or do not care about auto
-    // traits like `Send` on the `Future`
-    #[allow(async_fn_in_trait)]
     async fn spawn(&self) -> Result<SpawnedProcess, Error>;
 }
 
@@ -33,8 +30,7 @@ impl CommandExt for Command {
         let (reader_raw, writer_raw) =
             unistd::pipe2(OFlag::O_CLOEXEC | OFlag::O_NONBLOCK).context(error::CreatePipeSnafu)?;
 
-        // SAFETY: We are calling `fork` in a way that is safe.
-        #[allow(unsafe_code)]
+        #[expect(unsafe_code, reason = "We are calling `fork` in a way that is safe.")]
         let fork_result = unsafe { unistd::fork().context(error::SpawnChildSnafu)? };
 
         match fork_result {

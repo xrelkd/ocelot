@@ -22,9 +22,10 @@ impl Orchestrator {
     }
 
     // TODO: Use this function.
-    // RATIONALE: These control functions are currently unused in the current
-    // implementation but are kept for future dynamic control capabilities.
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "Kept for future dynamic control capabilities as indicated by TODO comment"
+    )]
     #[tracing::instrument(name = "Orchestrator::stop_supervisor", skip_all)]
     pub async fn stop_supervisor(&self, name: impl Into<String>) -> bool {
         let (sender, receiver) = oneshot::channel();
@@ -36,7 +37,10 @@ impl Orchestrator {
     }
 
     // TODO: Use this function.
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "Kept for future dynamic control capabilities as indicated by TODO comment"
+    )]
     #[tracing::instrument(name = "Orchestrator::restart_supervisor", skip_all)]
     pub async fn restart_supervisor(&self, name: impl Into<String>) -> bool {
         let (sender, receiver) = oneshot::channel();
@@ -48,7 +52,10 @@ impl Orchestrator {
     }
 
     // TODO: Use this function.
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "Kept for future dynamic control capabilities as indicated by TODO comment"
+    )]
     #[tracing::instrument(name = "Orchestrator::get_all_statuses", skip_all)]
     pub async fn get_all_statuses(&self) -> HashMap<String, ProcessStatus> {
         let (sender, receiver) = oneshot::channel();

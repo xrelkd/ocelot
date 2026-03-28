@@ -44,10 +44,12 @@ impl Executor {
     ///
     /// Returns an error if signal handlers cannot be created or if there are
     /// issues with task spawning.
-    // RATIONALE: This is the main event loop containing the core state machine.
-    // Refactoring would require extracting the match arms into separate functions
-    // which would reduce readability and increase complexity.
-    #[allow(clippy::too_many_lines)]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "This is the main event loop containing the core state machine; refactoring \
+                  would require extracting the match arms into separate functions which would \
+                  reduce readability and increase complexity"
+    )]
     pub async fn run(self, cancel_token: CancellationToken) -> Result<(), Error> {
         let Self { config, reaper, event_sender, mut event_receiver, dependency_registry } = self;
         let dependency_waiter = dependency_registry.create_waiter(config.depends_on.clone());
