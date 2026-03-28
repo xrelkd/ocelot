@@ -3,6 +3,7 @@ mod error;
 use std::{ffi::CString, sync::mpsc, thread::JoinHandle, time::Duration};
 
 use nix::{
+    fcntl::OFlag,
     sys::{
         signal,
         signal::Signal,
@@ -285,19 +286,54 @@ where
 
     tracing::info!("Spawning child process with {c_args:?}");
 
+    // Create a pipe with `O_CLOEXEC`.
+    // The pipe will automatically close on successful `exec()`.
+    let (reader_raw, writer_raw) =
+        unistd::pipe2(OFlag::O_CLOEXEC).context(error::CreatePipeSnafu)?;
+
     #[expect(unsafe_code, reason = "We are calling `fork` in a way that is safe.")]
     let fork_result = unsafe { unistd::fork().context(error::SpawnChildSnafu)? };
+
     match fork_result {
-        ForkResult::Parent { child } => Ok(child),
-        ForkResult::Child => match unistd::execvp(&c_cmd, &c_args) {
-            Ok(_) => unreachable!(
-                "The child process has created successfully and should not return from `execvp`"
-            ),
-            Err(error) => {
-                eprintln!("Failed to execute child process: {error}, with command: {command}");
-                std::process::exit(1);
+        ForkResult::Parent { child } => {
+            // Close the writer in parent immediately
+            drop(writer_raw);
+
+            let mut buf = [0u8; 4];
+            match unistd::read(reader_raw, &mut buf).context(error::ReadPipeSnafu)? {
+                // Read 0 bytes (EOF).
+                // This means the child successfully called exec() and the pipe closed.
+                0 => Ok(child),
+                // Read 4 bytes.
+                // This means exec() failed and the child wrote the errno.
+                4 => {
+                    let _errno = i32::from_ne_bytes(buf);
+                    Err(Error::ChildExecute)
+                }
+                _ => Err(Error::ChildExecute),
             }
-        },
+        }
+        ForkResult::Child => {
+            // Close the reader in child
+            drop(reader_raw);
+
+            match unistd::execvp(&c_cmd, &c_args) {
+                Ok(_) => unreachable!(
+                    "The child process has created successfully and should not return from \
+                     `execvp`"
+                ),
+                Err(error) => {
+                    // If we are here, exec failed.
+                    eprintln!("Failed to execute child process: {error}, with command: {command}");
+
+                    // Write the errno to the pipe.
+                    let errno = std::io::Error::from(error).raw_os_error().unwrap_or(1);
+                    let _ = unistd::write(&writer_raw, &errno.to_ne_bytes());
+
+                    std::process::exit(errno);
+                }
+            }
+        }
     }
 }
 
