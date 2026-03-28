@@ -1,6 +1,13 @@
 mod error;
 
-use std::{ffi::CString, sync::mpsc, thread::JoinHandle, time::Duration};
+use std::{
+    ffi::CString,
+    io::PipeReader,
+    os::fd::{FromRawFd, IntoRawFd},
+    sync::mpsc,
+    thread::JoinHandle,
+    time::Duration,
+};
 
 use nix::{
     fcntl::OFlag,
@@ -70,10 +77,25 @@ where
         tracing::warn!("Entry should be the first process (PID 1), current PID: {pid}");
     }
 
-    let child_pid = fork_and_spawn_child(&command.into(), args.into_iter())?;
+    let Process { pid, stdout: mut child_stdout, stderr: mut child_stderr } =
+        Process::spawn(&command.into(), args.into_iter())?;
+
+    let stdout_thread = std::thread::spawn(move || {
+        let mut stdout_sink = std::io::stdout();
+        if let Err(err) = std::io::copy(&mut child_stdout, &mut stdout_sink) {
+            tracing::error!("Error forwarding logs: {err}");
+        }
+    });
+    let stderr_thread = std::thread::spawn(move || {
+        let mut stderr_sink = std::io::stderr();
+        if let Err(err) = std::io::copy(&mut child_stderr, &mut stderr_sink) {
+            tracing::error!("Error forwarding logs: {err}");
+        }
+    });
+
     let (spawned_signal_thread, signal_rx) = SpawnedSignalThread::new()?;
 
-    let mut state = ExecutionState::new(child_pid, timeout);
+    let mut state = ExecutionState::new(pid, timeout);
 
     loop {
         // Check if the child process has exited before waiting for signals,
@@ -122,15 +144,18 @@ where
     }
 
     spawned_signal_thread.close();
+    let _unused = stdout_thread.join();
+    let _unused = stderr_thread.join();
 
     // Ensure the child process has exited, waiting if necessary
     if !state.process_exited
-        && let Ok(Some(ReapedProcess { exit_code, .. })) = wait_child_blocking(child_pid)
+        && let Ok(Some(ReapedProcess { exit_code, .. })) = wait_child_blocking(state.pid)
     {
         state.set_exited(exit_code);
     }
     tracing::info!(
-        "Child process {child_pid} exited with status {status}",
+        "Child process {pid} exited with status {status}",
+        pid = state.pid,
         status = state.status_code
     );
 
@@ -271,66 +296,112 @@ fn reap_zombies() {
     tracing::info!("Finished reaping child processes");
 }
 
-fn fork_and_spawn_child<Args>(command: &str, args: Args) -> Result<Pid, Error>
-where
-    Args: IntoIterator<Item = String>,
-{
-    let c_cmd = CString::new(command)
-        .with_context(|_| error::InvalidInputSnafu { input: command.to_string() })?;
+struct Process {
+    pid: Pid,
+    stdout: PipeReader,
+    stderr: PipeReader,
+}
 
-    let c_args = std::iter::once(Ok(c_cmd.clone()))
-        .chain(args.into_iter().map(|arg| {
-            CString::new(arg.clone()).with_context(|_| error::InvalidInputSnafu { input: arg })
-        }))
-        .collect::<Result<Vec<_>, Error>>()?;
+impl Process {
+    fn spawn<Args>(command: &str, args: Args) -> Result<Self, Error>
+    where
+        Args: IntoIterator<Item = String>,
+    {
+        let c_cmd = CString::new(command)
+            .with_context(|_| error::InvalidInputSnafu { input: command.to_string() })?;
 
-    tracing::info!("Spawning child process with {c_args:?}");
+        let c_args = std::iter::once(Ok(c_cmd.clone()))
+            .chain(args.into_iter().map(|arg| {
+                CString::new(arg.clone()).with_context(|_| error::InvalidInputSnafu { input: arg })
+            }))
+            .collect::<Result<Vec<_>, Error>>()?;
 
-    // Create a pipe with `O_CLOEXEC`.
-    // The pipe will automatically close on successful `exec()`.
-    let (reader_raw, writer_raw) =
-        unistd::pipe2(OFlag::O_CLOEXEC).context(error::CreatePipeSnafu)?;
+        tracing::info!("Spawning child process with {c_args:?}");
 
-    #[expect(unsafe_code, reason = "We are calling `fork` in a way that is safe.")]
-    let fork_result = unsafe { unistd::fork().context(error::SpawnChildSnafu)? };
+        // Create pipes for handling stdout/stderr.
+        let (stdout_reader, stdout_writer) = unistd::pipe().context(error::CreatePipeSnafu)?;
+        let (stderr_reader, stderr_writer) = unistd::pipe().context(error::CreatePipeSnafu)?;
 
-    match fork_result {
-        ForkResult::Parent { child } => {
-            // Close the writer in parent immediately
-            drop(writer_raw);
+        // Create a pipe with `O_CLOEXEC`.
+        // The pipe will automatically close on successful `exec()`.
+        let (err_reader, err_writer) =
+            unistd::pipe2(OFlag::O_CLOEXEC).context(error::CreatePipeSnafu)?;
 
-            let mut buf = [0u8; 4];
-            match unistd::read(reader_raw, &mut buf).context(error::ReadPipeSnafu)? {
-                // Read 0 bytes (EOF).
-                // This means the child successfully called exec() and the pipe closed.
-                0 => Ok(child),
-                // Read 4 bytes.
-                // This means exec() failed and the child wrote the errno.
-                4 => {
-                    let _errno = i32::from_ne_bytes(buf);
-                    Err(Error::ChildExecute)
+        #[expect(unsafe_code, reason = "We are calling `fork` in a way that is safe.")]
+        let fork_result = unsafe { unistd::fork().context(error::SpawnChildSnafu)? };
+
+        match fork_result {
+            ForkResult::Parent { child } => {
+                // Close the writer in parent immediately
+                drop(err_writer);
+                drop(stdout_writer);
+                drop(stderr_writer);
+
+                let mut buf = [0u8; 4];
+                match unistd::read(err_reader, &mut buf).context(error::ReadPipeSnafu)? {
+                    // Read 0 bytes (EOF).
+                    // This means the child successfully called exec() and the pipe closed.
+                    0 => {
+                        #[expect(
+                            unsafe_code,
+                            reason = "We need to encapsulate the Pipe reader from a raw fd"
+                        )]
+                        let stdout_reader =
+                            unsafe { PipeReader::from_raw_fd(stdout_reader.into_raw_fd()) };
+                        #[expect(
+                            unsafe_code,
+                            reason = "We need to encapsulate the Pipe reader from a raw fd"
+                        )]
+                        let stderr_reader =
+                            unsafe { PipeReader::from_raw_fd(stderr_reader.into_raw_fd()) };
+                        Ok(Self { pid: child, stdout: stdout_reader, stderr: stderr_reader })
+                    }
+                    // Read 4 bytes.
+                    // This means exec() failed and the child wrote the errno.
+                    4 => {
+                        let _errno = i32::from_ne_bytes(buf);
+                        Err(Error::ChildExecute)
+                    }
+                    _ => Err(Error::ChildExecute),
                 }
-                _ => Err(Error::ChildExecute),
             }
-        }
-        ForkResult::Child => {
-            // Close the reader in child
-            drop(reader_raw);
+            ForkResult::Child => {
+                // Close the reader in child
+                drop(err_reader);
+                drop(stdout_reader);
+                drop(stderr_reader);
 
-            match unistd::execvp(&c_cmd, &c_args) {
-                Ok(_) => unreachable!(
-                    "The child process has created successfully and should not return from \
-                     `execvp`"
-                ),
-                Err(error) => {
-                    // If we are here, exec failed.
-                    eprintln!("Failed to execute child process: {error}, with command: {command}");
-
-                    // Write the errno to the pipe.
-                    let errno = std::io::Error::from(error).raw_os_error().unwrap_or(1);
-                    let _ = unistd::write(&writer_raw, &errno.to_ne_bytes());
-
+                if let Err(err) = unistd::dup2_stdout(&stdout_writer) {
+                    let errno = std::io::Error::from(err).raw_os_error().unwrap_or(1);
+                    let _ = unistd::write(&err_writer, &errno.to_ne_bytes());
                     std::process::exit(errno);
+                }
+                let _ = unistd::close(stdout_writer).ok();
+
+                if let Err(err) = unistd::dup2_stderr(&stderr_writer) {
+                    let errno = std::io::Error::from(err).raw_os_error().unwrap_or(1);
+                    let _ = unistd::write(&err_writer, &errno.to_ne_bytes());
+                    std::process::exit(errno);
+                }
+                let _ = unistd::close(stderr_writer).ok();
+
+                match unistd::execvp(&c_cmd, &c_args) {
+                    Ok(_) => unreachable!(
+                        "The child process has created successfully and should not return from \
+                         `execvp`"
+                    ),
+                    Err(error) => {
+                        // If we are here, exec failed.
+                        eprintln!(
+                            "Failed to execute child process: {error}, with command: {command}"
+                        );
+
+                        // Write the errno to the pipe.
+                        let errno = std::io::Error::from(error).raw_os_error().unwrap_or(1);
+                        let _ = unistd::write(&err_writer, &errno.to_ne_bytes());
+
+                        std::process::exit(errno);
+                    }
                 }
             }
         }
