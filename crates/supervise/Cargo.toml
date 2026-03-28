@@ -1,6 +1,6 @@
 [package]
-name                   = "ocelot-entry"
-description            = "Spawns a child process and manages its lifecycle as a minimal init system."
+name                   = "ocelot-supervise"
+description            = "Process supervisor library for ocelot"
 version.workspace      = true
 authors.workspace      = true
 homepage.workspace     = true
@@ -14,6 +14,10 @@ keywords.workspace     = true
 
 [dependencies]
 tracing = { workspace = true }
+
+futures    = { workspace = true }
+tokio      = { workspace = true }
+tokio-util = { workspace = true }
 
 nix         = { workspace = true }
 signal-hook = { workspace = true }

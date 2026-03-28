@@ -1,8 +1,10 @@
-use std::{io::Write, time::Duration};
+use std::{io::Write, path::PathBuf, time::Duration};
 
 use clap::{CommandFactory, Parser, Subcommand};
 
 use crate::{error::Error, shadow};
+
+pub mod supervise;
 
 #[derive(Parser)]
 #[command(
@@ -36,12 +38,7 @@ pub enum Commands {
                       process is the sub-grid anchor (PID 1)."
     )]
     Idle {
-        #[clap(
-            long = "log-level",
-            env = "OCELOT_LOG_LEVEL",
-            default_value = "info",
-            help = "Specify a log level"
-        )]
+        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
         log_level: tracing::Level,
     },
 
@@ -51,19 +48,10 @@ pub enum Commands {
         long_about = "Acts as a process supervisor and init system for containerized workloads. It forks and executes a child process, then assumes responsibility for the PID 1 lifecycle. It ensures system stability by proactively reaping zombie processes via SIGCHLD and proxies termination signals (SIGINT/SIGTERM) to the child. If the child fails to exit within a grace period, it enforces a SIGKILL to ensure the container terminates. This is essential for preventing process leaks and ensuring clean shutdowns in orchestrated environments."
     )]
     Entry {
-        #[clap(
-            long = "log-level",
-            env = "OCELOT_LOG_LEVEL",
-            default_value = "info",
-            help = "Specify a log level"
-        )]
+        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
         log_level: tracing::Level,
 
-        #[arg(
-            long,
-            help = "Specify a timeout in milliseconds for the command to execute. If the command \
-                    does not finish within the specified timeout, it will be forcefully killed."
-        )]
+        #[arg(long, help = "Specify a timeout in milliseconds for the command to execute.")]
         timeout_ms: Option<u64>,
 
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -82,32 +70,30 @@ pub enum Commands {
                       they are properly reaped."
     )]
     Zombie {
-        #[clap(
-            long = "log-level",
-            env = "OCELOT_LOG_LEVEL",
-            default_value = "info",
-            help = "Specify a log level"
-        )]
+        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
         log_level: tracing::Level,
 
-        #[arg(
-            short = 'i',
-            long,
-            default_value = "200",
-            help = "Specify a timeout in milliseconds for the zombie process to be created. The \
-                    parent process will sleep for this duration after spawning each child process."
-        )]
+        #[arg(short = 'i', long, default_value = "200")]
         interval_ms: u64,
 
-        #[arg(
-            short = 'c',
-            long,
-            help = "Specify a limit for the number of zombie processes to create. If this limit \
-                    is reached, the parent process will stop spawning new child processes and \
-                    exit. If not specified, it will continue to spawn zombie processes \
-                    indefinitely."
-        )]
+        #[arg(short = 'c', long)]
         count: Option<u64>,
+    },
+
+    #[clap(
+        about = "Run supervisor with configuration file",
+        long_about = "Run supervisor with configuration file. If no subcommand is provided, runs \
+                      the supervisor. Use 'config-template' to output the default configuration."
+    )]
+    Supervise {
+        #[clap(subcommand)]
+        command: Option<supervise::Commands>,
+
+        #[clap(short, long)]
+        file: Option<PathBuf>,
+
+        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
+        log_level: tracing::Level,
     },
 }
 
@@ -152,6 +138,9 @@ impl Cli {
                 let interval = Duration::from_millis(interval_ms);
                 ocelot_zombie::execute(interval, count)?;
             }
+            Some(Commands::Supervise { command, file, log_level }) => {
+                return supervise::run(command, file, log_level);
+            }
             None => {
                 init_tracing_subscriber(tracing::Level::INFO);
                 ocelot_idle::execute()?;
@@ -180,7 +169,6 @@ mod tests {
     fn test_command_simple() {
         if matches!(Cli::parse_from(["program_name", "version"]).commands, Some(Commands::Version))
         {
-            // everything is good.
         } else {
             panic!();
         }

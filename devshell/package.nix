@@ -4,6 +4,7 @@
   lib,
   rustPlatform,
   installShellFiles,
+  cargo-nextest,
 }:
 
 rustPlatform.buildRustPackage {
@@ -19,6 +20,17 @@ rustPlatform.buildRustPackage {
   nativeBuildInputs = [
     installShellFiles
   ];
+
+  nativeCheckInputs = [
+    cargo-nextest
+  ];
+
+  checkFlags = [ "--skip-ignored" ];
+  checkPhase = ''
+    runHook preCheck
+    cargo nextest run
+    runHook postCheck
+  '';
 
   postInstall = ''
     installShellCompletion --cmd ocelot \

@@ -1,6 +1,6 @@
 [package]
-name                   = "ocelot-entry"
-description            = "Spawns a child process and manages its lifecycle as a minimal init system."
+name                   = "ocelot-test-utils"
+description            = "Shared test utilities for ocelot workspace"
 version.workspace      = true
 authors.workspace      = true
 homepage.workspace     = true
@@ -13,14 +13,8 @@ categories.workspace   = true
 keywords.workspace     = true
 
 [dependencies]
-tracing = { workspace = true }
-
-nix         = { workspace = true }
-signal-hook = { workspace = true }
-snafu       = { workspace = true }
-
-[dev-dependencies]
-ocelot-test-utils = { workspace = true }
+nix    = { workspace = true }
+procfs = { workspace = true }
 
 [lints]
 workspace = true

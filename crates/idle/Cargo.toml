@@ -19,5 +19,8 @@ nix         = { workspace = true }
 signal-hook = { workspace = true }
 snafu       = { workspace = true }
 
+[dev-dependencies]
+ocelot-test-utils = { workspace = true }
+
 [lints]
 workspace = true

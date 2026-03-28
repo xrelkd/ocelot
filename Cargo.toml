@@ -22,7 +22,14 @@ name = "ocelot"
 
 [workspace]
 resolver = "2"
-members  = ["ocelot", "crates/entry", "crates/idle", "crates/zombie"]
+members = [
+  "ocelot",
+  "crates/entry",
+  "crates/idle",
+  "crates/supervise",
+  "crates/test-utils",
+  "crates/zombie",
+]
 
 [workspace.dependencies]
 tracing            = "0.1"
@@ -35,23 +42,40 @@ futures = "0.3"
 tokio = { version = "1", features = [
   "fs",
   "io-std",
+  "io-util",
   "macros",
+  "net",
   "rt-multi-thread",
+  "signal",
   "sync",
-  "process",
+  "time",
 ] }
+tokio-util = { version = "0.7" }
 
-clap          = { version = "4", features = ["derive", "env"] }
+clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
-exitcode      = "1"
-nix           = { version = "0.31", features = ["signal", "process"] }
-shadow-rs     = "1.7"
-signal-hook   = "0.4"
-snafu         = "0.9"
+exitcode = "1"
+nix = { version = "0.31", features = [
+  "event",
+  "fs",
+  "mount",
+  "process",
+  "sched",
+  "signal",
+  "user",
+] }
+petgraph = "0.8"
+procfs = "0.18"
+resolve-path = "0.1"
+shadow-rs = "1.7"
+signal-hook = "0.4"
+snafu = "0.9"
 
-ocelot-entry  = { path = "./crates/entry" }
-ocelot-idle   = { path = "./crates/idle" }
-ocelot-zombie = { path = "./crates/zombie" }
+ocelot-entry      = { path = "./crates/entry" }
+ocelot-idle       = { path = "./crates/idle" }
+ocelot-supervise  = { path = "./crates/supervise" }
+ocelot-test-utils = { path = "./crates/test-utils" }
+ocelot-zombie     = { path = "./crates/zombie" }
 
 [workspace.lints.rust]
 async_fn_in_trait = "allow"
