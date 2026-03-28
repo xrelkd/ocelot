@@ -4,43 +4,42 @@ This file provides guidance for agentic coding assistants working in the Ocelot 
 
 ## Build, Lint, and Test Commands
 
-### Standard Commands (via Nix)
+### Using Nix (recommended)
 
-The project uses Nix for reproducible development environments.
+The project uses Nix for reproducible development. The Nix devshell provides custom cargo commands as wrappers that invoke cargo with appropriate arguments.
 
 ```bash
-# Build all targets
+# Build targets
 cargo build              # Debug build
 cargo build --release    # Release build
+cargo build -p ocelot    # Build only the main binary
 
-# Build single crate
-cargo build -p ocelot-entry
-cargo build -p ocelot-supervise
-
-# Linting and formatting
-cargo fmt --all --check       # Check formatting (rust)
-cargo fmt --all               # Format Rust code
-cargo clippy-all              # Run clippy on all targets
-treefmt                       # Format all file types
+# Formatting and linting
+cargo fmt --all --check       # Check Rust code formatting
+treefmt                       # Format all file types (Rust, JS, JSON, TOML, Nix, Shell, HCL)
+cargo clippy-all              # Run clippy on all targets (wrapper: cargo clippy --workspace --all-targets)
+cargo doc-all                 # Generate documentation (wrapper: cargo doc --workspace --no-deps --bins --all-features)
+cargo test-all                # Run all tests (including ignored) with cargo test (wrapper)
 
 # Testing
-cargo nextest-all             # Run all unit tests with retries
-cargo nextest run             # Same as above
-cargo test-all                # Run tests with cargo test
+cargo nextest-all             # Run all tests with retries using nextest (preferred)
+cargo test                    # Run tests with cargo test
 cargo test <test_name>        # Run single test by name
 cargo test --test <file_name> # Run single integration test file
-
-# Integration test script
-cargo build --release && ./tests/test-entry.sh
 ```
 
 ### Running Without Nix
 
+If not using Nix, install the Rust toolchain (as specified in `rust-toolchain.toml`) and any required cargo plugins (e.g., cargo-nextest).
+
 ```bash
-# Requires Rust toolchain (rust-toolchain.toml specifies stable with clippy, rustfmt)
 cargo build
-cargo clippy --all-targets --all-features
-cargo nextest run  # Requires cargo-nextest installed
+cargo clippy --workspace --all-targets
+cargo test
+cargo nextest run --workspace  # Requires cargo-nextest
+cargo fmt --all --check
+treefmt  # Install separately if needed
+cargo doc --workspace --no-deps --bins --all-features
 ```
 
 ## Code Style Guidelines
@@ -90,7 +89,7 @@ cargo nextest run  # Requires cargo-nextest installed
 - **Prefer** generic parameters with trait bounds: `where` clauses for complex bounds
 - **Avoid** `unwrap()` and `expect()` in production code; use proper error propagation
 - **Async**: Uses tokio with `rt-multi-thread` runtime; signal handling uses `signal-hook`
-- **FFI**: When using `fork()` or other unsafe, add `#[allow(unsafe_code)]` and SAFETY comment
+- **FFI**: When using `fork()` or other unsafe, add `#[expect(unsafe_code, reason = "...")]` and SAFETY comment
 
 ### Linting
 
@@ -99,16 +98,36 @@ cargo nextest run  # Requires cargo-nextest installed
 - **Allowed**: `module_name_repetitions`, `multiple_crate_versions` (priority 1)
 - **Async functions in traits**: `allow` (workspace-level)
 
+#### Lint Attribute Suppression
+
+- Use `#[expect(lint_name, reason = "explanation")]` instead of `#[allow(lint_name)]` for all intentional lint suppressions
+- The `reason` must explain **why** the suppression is valid for that specific location
+- Redundant RATIONALE/SAFETY comment blocks should be removed after conversion
+- Workspace-level allowances in `Cargo.toml` are separate and may still use `allow`
+
+Example:
+
+```rust
+// Before
+#[allow(unsafe_code)]
+// SAFETY: fork is safe in single-threaded context.
+unsafe { unistd::fork()? }
+
+// After
+#[expect(unsafe_code, reason = "Fork is safe in single-threaded context")]
+unsafe { unistd::fork()? }
+```
+
 ### Testing
 
-- **Unit tests**: Inline with `#[cfg(test)]` modules or separate `tests/` directory
-- **Integration tests**: In `tests/` directory as standalone executables
-- **Nextest**: Preferred test runner; configured with `NEXTEST_RETRIES=5`
-- **Integration test script**: `tests/test-entry.sh` requires `sudo` for `unshare`
+- **Unit tests**: Inline with `#[cfg(test)]` modules or separate `tests/` directory (within each crate)
+- **Integration tests**: In `crates/*/tests/` as standalone test executables
+- **Nextest**: Preferred test runner; configured with `NEXTEST_RETRIES=5` (wrapper sets this automatically)
+- **Test utilities**: Provided in the `ocelot-test-utils` crate
 
 ### Documentation
 
-- **Rustdoc**: Use `///` for public items; generate with `cargo doc-all`
+- **Rustdoc**: Use `///` for public items; generate with `cargo doc-all` (wrapper) or `cargo doc --workspace --no-deps --bins --all-features`
 - **Examples**: Include code examples in doc comments where helpful
 - **CLI**: Uses clap derive with rich doc comments for help text
 
@@ -116,7 +135,7 @@ cargo nextest run  # Requires cargo-nextest installed
 
 - **Unsafe**: Minimize usage; only when absolutely necessary (e.g., `fork`)
 - **Pattern**: All `unsafe` blocks must have a SAFETY comment explaining why it's sound
-- **Zu**: The project includes `#![deny(unsafe_code)]` at workspace level; exceptions require explicit `#[allow(unsafe_code)]`
+- **Note**: The project includes `#![deny(unsafe_code)]` at workspace level; exceptions require explicit `#[expect(unsafe_code, reason = "...")]`
 
 ### Project Structure
 
@@ -127,18 +146,20 @@ cargo nextest run  # Requires cargo-nextest installed
   - `crates/idle` - minimalist PID 1 for holding namespaces
   - `crates/supervise` - advanced supervisor with reaper/supervisor workers
   - `crates/zombie` - zombie process generator for testing
+  - `crates/test-utils` - shared test utilities
 - **Versioning**: Workspace-managed; uses `shadow-rs` for build-time version info
 
 ### Commit Messages
 
-- Uses `commitlint` for validation
+- Uses commitlint for validation
 - Follows Conventional Commits format
-- See `.github/commitlint.config.mjs` (if modifying rules)
+- See `.github/workflows/lints.yaml` for configuration
 
 ### Additional Tools
 
-- **Formatting**: Also uses `treefmt` to format non-Rust files: prettier (JSON/MD/JS/TS), taplo (TOML), nixfmt (Nix), shfmt + shellcheck (Shell), hclfmt (HCL)
+- **Formatting**: Also uses `treefmt` to format all files: prettier (JSON/MD/JS/TS), taplo (TOML), nixfmt (Nix), shfmt + shellcheck (Shell), hclfmt (HCL)
 - **Static analysis**: Codespell for typo detection
+- **Shell completions**: Generate with `cargo run -- completions <shell>` (e.g., zsh, bash, fish)
 
 ## Not Found
 
@@ -159,8 +180,8 @@ cargo clippy-all
 # Run a specific unit test
 cargo test test_name
 
-# Build release binary for integration testing
-cargo build --release && ./tests/test-entry.sh
+# Build release binary
+cargo build --release
 
 # Generate shell completions
 cargo run -- completions zsh > /etc/zsh/completions/_ocelot
