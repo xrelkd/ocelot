@@ -41,8 +41,7 @@ fn test_execute_timeout_kill() -> Result<(), Box<dyn std::error::Error>> {
         let parent_pid = unistd::getpid();
         eprintln!("[test] Parent PID: {parent_pid}");
 
-        // SAFETY: We are invoking syscall in a correct way.
-        #[allow(unsafe_code)]
+        #[expect(unsafe_code, reason = "We are invoking syscall in a correct way")]
         match unsafe { unistd::fork() } {
             Ok(ForkResult::Child) => {
                 std::thread::sleep(Duration::from_millis(100));
@@ -85,7 +84,10 @@ fn test_execute_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
 
     let exit_code = run_in_namespace(|| {
         // Create a temporary zombie before calling execute
-        #[allow(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "Fork is required to create a zombie for testing child reaping"
+        )]
         match unsafe { unistd::fork() } {
             Ok(ForkResult::Parent { child: _ }) => {
                 std::thread::sleep(Duration::from_millis(100));

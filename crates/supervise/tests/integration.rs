@@ -120,7 +120,11 @@ fn test_execute_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
     let exit_code = run_in_namespace(|| {
-        #[allow(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "Testing namespace isolation requires forking, which is inherently unsafe \
+                      but necessary for the test"
+        )]
         match unsafe { nix::unistd::fork() } {
             Ok(nix::unistd::ForkResult::Parent { child: _ }) => {
                 std::thread::sleep(Duration::from_millis(100));
@@ -237,12 +241,13 @@ fn test_supervisor_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Test restart policies: Never, Always, `OnFailure`
-// RATIONALE: This function tests three restart policy scenarios (Never, Always, OnFailure)
-// in a single test to share namespace setup/teardown code and avoid duplication.
-// The 111 lines are justified due to the three independent test cases.
 #[test]
 #[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "Tests three restart policy scenarios in a single function to share namespace \
+              setup/teardown code and avoid duplication"
+)]
 fn test_restart_policies() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 

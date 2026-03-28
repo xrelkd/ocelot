@@ -44,8 +44,7 @@ pub fn execute(interval: Duration, zombie_limit: Option<u64>) -> Result<(), Erro
         }
         zombie_count += 1;
 
-        // SAFETY: We are calling `fork` in a way that is safe.
-        #[allow(unsafe_code)]
+        #[expect(unsafe_code, reason = "We are calling `fork` in a way that is safe.")]
         let fork_result = unsafe { unistd::fork().context(error::SpawnChildSnafu)? };
         match fork_result {
             ForkResult::Parent { child } => {

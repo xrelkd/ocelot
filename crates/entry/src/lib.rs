@@ -214,8 +214,7 @@ where
 
     tracing::info!("Spawning child process with {c_args:?}");
 
-    // SAFETY: We are calling `fork` in a way that is safe.
-    #[allow(unsafe_code)]
+    #[expect(unsafe_code, reason = "We are calling `fork` in a way that is safe.")]
     let fork_result = unsafe { unistd::fork().context(error::SpawnChildSnafu)? };
     match fork_result {
         ForkResult::Parent { child } => Ok(child),

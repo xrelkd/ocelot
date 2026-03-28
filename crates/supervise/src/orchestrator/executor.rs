@@ -37,9 +37,10 @@ impl Executor {
         )
     }
 
-    // RATIONALE: Too many lines due to explicit error handling and task spawning
-    // patterns.
-    #[allow(clippy::too_many_lines)]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Too many lines due to explicit error handling and task spawning patterns"
+    )]
     pub async fn serve(self) -> Result<(), Error> {
         let Self {
             event_sender,

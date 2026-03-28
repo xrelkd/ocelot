@@ -77,7 +77,7 @@ fn test_idle_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
         });
 
         // Fork a child that will exit after a short delay, creating a zombie
-        #[allow(unsafe_code)]
+        #[expect(unsafe_code, reason = "Fork is required to create a zombie for testing reaping")]
         match unsafe { nix::unistd::fork() } {
             Ok(nix::unistd::ForkResult::Parent { child: _ }) => {
                 // Parent (test process) continues

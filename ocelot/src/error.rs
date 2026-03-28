@@ -1,8 +1,5 @@
 use snafu::Snafu;
 
-// RATIONALE: Variant names are intentionally verbose to match error types from
-// different sub-crates, making the error source clear.
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
