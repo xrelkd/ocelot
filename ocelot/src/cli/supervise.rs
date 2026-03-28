@@ -23,8 +23,6 @@ pub enum Commands {
     ConfigTemplate,
 }
 
-impl Commands {}
-
 pub fn run(
     command: Option<Commands>,
     file: Option<PathBuf>,
