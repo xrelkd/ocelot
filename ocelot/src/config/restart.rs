@@ -20,7 +20,7 @@ pub enum RestartPolicyConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::RestartPolicyConfig;
+    use crate::config::restart::RestartPolicyConfig;
 
     #[test]
     fn test_restart_policy_never_serde() {

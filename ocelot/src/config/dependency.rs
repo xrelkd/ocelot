@@ -20,7 +20,7 @@ pub enum DependencyCondition {
 
 #[cfg(test)]
 mod tests {
-    use super::{DependencyCondition, DependencyConfig};
+    use crate::config::dependency::{DependencyCondition, DependencyConfig};
 
     #[test]
     fn test_dependency_condition_started() {

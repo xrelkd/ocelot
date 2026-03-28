@@ -267,8 +267,8 @@ mod tests {
     use nix::sys::signal::Signal;
     use ocelot_supervise::supervisor_config::DependencyCondition;
 
-    use super::{ProcessConfig, RestartPolicyConfig, SupervisorConfig};
     use crate::config::{
+        ProcessConfig, RestartPolicyConfig, SupervisorConfig,
         dependency::DependencyConfig,
         probe::{ProbeConfig, ProbeHandlerConfig},
         process::ShutdownSignalConfig,

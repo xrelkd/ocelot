@@ -64,7 +64,7 @@ const fn default_termination_grace_period_secs() -> u64 { 60 }
 mod tests {
     use nix::sys::signal::Signal;
 
-    use super::{ProcessConfig, ShutdownSignalConfig};
+    use crate::config::process::{ProcessConfig, ShutdownSignalConfig};
 
     #[test]
     fn test_shutdown_signal_sigterm_explicit() {
