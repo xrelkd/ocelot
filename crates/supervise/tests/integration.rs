@@ -40,7 +40,7 @@ fn test_execute_normal_exit() -> Result<(), Box<dyn std::error::Error>> {
 
         let orchestrator_config = OrchestratorConfig {
             supervisors: vec![supervisor_config],
-            shutdown_timeout: Duration::from_secs(30),
+            shutdown_timeout: Duration::from_secs(3),
         };
 
         let code = ocelot_supervise::execute(orchestrator_config)?;
@@ -151,12 +151,12 @@ fn test_execute_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
             liveness_probe: None,
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
-            termination_grace_period: Duration::from_secs(30),
+            termination_grace_period: Duration::from_secs(3),
         };
 
         let orchestrator_config = OrchestratorConfig {
             supervisors: vec![supervisor_config],
-            shutdown_timeout: Duration::from_secs(30),
+            shutdown_timeout: Duration::from_secs(3),
         };
 
         let code = ocelot_supervise::execute(orchestrator_config)?;
@@ -421,7 +421,7 @@ fn test_multiple_supervisors() -> Result<(), Box<dyn std::error::Error>> {
             liveness_probe: None,
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
-            termination_grace_period: Duration::from_secs(30),
+            termination_grace_period: Duration::from_secs(3),
         };
 
         let config2 = SupervisorConfig {
@@ -435,12 +435,12 @@ fn test_multiple_supervisors() -> Result<(), Box<dyn std::error::Error>> {
             liveness_probe: None,
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
-            termination_grace_period: Duration::from_secs(30),
+            termination_grace_period: Duration::from_secs(3),
         };
 
         let orchestrator_config = OrchestratorConfig {
             supervisors: vec![config1, config2],
-            shutdown_timeout: Duration::from_secs(30),
+            shutdown_timeout: Duration::from_secs(3),
         };
 
         let code = ocelot_supervise::execute(orchestrator_config)?;
@@ -482,7 +482,7 @@ fn test_process_dependencies() -> Result<(), Box<dyn std::error::Error>> {
             liveness_probe: None,
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
-            termination_grace_period: Duration::from_secs(30),
+            termination_grace_period: Duration::from_secs(3),
         };
 
         // Second process depends on parent
@@ -501,12 +501,12 @@ fn test_process_dependencies() -> Result<(), Box<dyn std::error::Error>> {
             liveness_probe: None,
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
-            termination_grace_period: Duration::from_secs(30),
+            termination_grace_period: Duration::from_secs(3),
         };
 
         let orchestrator_config = OrchestratorConfig {
             supervisors: vec![parent_config, child_config],
-            shutdown_timeout: Duration::from_secs(30),
+            shutdown_timeout: Duration::from_secs(3),
         };
 
         let code = ocelot_supervise::execute(orchestrator_config)?;
@@ -547,12 +547,12 @@ fn test_signal_forwarding() -> Result<(), Box<dyn std::error::Error>> {
             liveness_probe: None,
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
-            termination_grace_period: Duration::from_secs(30),
+            termination_grace_period: Duration::from_secs(2),
         };
 
         let orchestrator_config = OrchestratorConfig {
             supervisors: vec![supervisor_config],
-            shutdown_timeout: Duration::from_secs(30),
+            shutdown_timeout: Duration::from_secs(3),
         };
 
         let code = ocelot_supervise::execute(orchestrator_config)?;
@@ -618,12 +618,12 @@ fn test_probes() -> Result<(), Box<dyn std::error::Error>> {
             liveness_probe: Some(liveness_probe),
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
-            termination_grace_period: Duration::from_secs(30),
+            termination_grace_period: Duration::from_secs(3),
         };
 
         let orchestrator_config = OrchestratorConfig {
             supervisors: vec![supervisor_config],
-            shutdown_timeout: Duration::from_secs(30),
+            shutdown_timeout: Duration::from_secs(3),
         };
 
         let code = ocelot_supervise::execute(orchestrator_config)?;
@@ -669,12 +669,12 @@ fn test_exit_code_propagation() -> Result<(), Box<dyn std::error::Error>> {
                 liveness_probe: None,
                 restart_policy: RestartPolicy::Never,
                 shutdown_signal: None,
-                termination_grace_period: Duration::from_secs(30),
+                termination_grace_period: Duration::from_secs(3),
             };
 
             let orchestrator_config = OrchestratorConfig {
                 supervisors: vec![supervisor_config],
-                shutdown_timeout: Duration::from_secs(30),
+                shutdown_timeout: Duration::from_secs(3),
             };
 
             let code = ocelot_supervise::execute(orchestrator_config)?;
