@@ -95,7 +95,7 @@ impl Executor {
                     state.set_starting();
                     match config.command().spawn().await {
                         Ok(spawned @ SpawnedProcess { pid }) => {
-                            tracing::info!("Started process with PID {pid}");
+                            tracing::info!("Started process ({}) with PID {pid}", config.name());
                             state.set_running(spawned);
                             tasks.wait_for_reap(cancel_token.clone(), &event_sender, &reaper, pid);
                             if config.liveness_probe.is_some() {
