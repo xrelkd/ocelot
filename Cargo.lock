@@ -789,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -812,7 +812,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-entry"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "nix",
  "ocelot-test-utils",
@@ -823,7 +823,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-idle"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "nix",
  "ocelot-test-utils",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-supervise"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures",
  "nix",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-test-utils"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "nix",
  "procfs",
@@ -856,7 +856,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-zombie"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "nix",
  "signal-hook",
