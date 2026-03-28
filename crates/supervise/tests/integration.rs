@@ -90,12 +90,12 @@ fn test_execute_timeout_kill() -> Result<(), Box<dyn std::error::Error>> {
             liveness_probe: None,
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
-            termination_grace_period: Duration::from_secs(30),
+            termination_grace_period: Duration::from_secs(1),
         };
 
         let orchestrator_config = OrchestratorConfig {
             supervisors: vec![supervisor_config],
-            shutdown_timeout: Duration::from_secs(30),
+            shutdown_timeout: Duration::from_secs(3),
         };
 
         let code = ocelot_supervise::execute(orchestrator_config)?;

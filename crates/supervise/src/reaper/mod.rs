@@ -1,13 +1,15 @@
 mod event;
 mod executor;
 
+use std::time::Duration;
+
 use tokio::sync::{mpsc, oneshot};
 
 pub use self::executor::Executor as ReaperExecutor;
 
 #[derive(Clone)]
 pub struct Reaper {
-    register_sender: mpsc::UnboundedSender<(nix::unistd::Pid, oneshot::Sender<ReapedProcess>)>,
+    register_sender: mpsc::UnboundedSender<RegisteredProcess>,
 }
 
 impl Reaper {
@@ -18,9 +20,15 @@ impl Reaper {
     }
 
     #[tracing::instrument(name = "Reaper::register", skip_all)]
-    pub fn register(&self, pid: nix::unistd::Pid) -> oneshot::Receiver<ReapedProcess> {
+    pub fn register(
+        &self,
+        pid: nix::unistd::Pid,
+        termination_grace_period: Duration,
+    ) -> oneshot::Receiver<ReapedProcess> {
         let (sender, receiver) = oneshot::channel();
-        let _unused = self.register_sender.send((pid, sender));
+
+        let _unused =
+            self.register_sender.send(RegisteredProcess { pid, termination_grace_period, sender });
         receiver
     }
 }
@@ -31,11 +39,19 @@ pub struct ReapedProcess {
     pub exit_code: i32,
 }
 
+pub struct RegisteredProcess {
+    pub pid: nix::unistd::Pid,
+    pub termination_grace_period: Duration,
+    pub sender: oneshot::Sender<ReapedProcess>,
+}
+
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use nix::unistd::Pid;
 
-    use super::{ReapedProcess, Reaper};
+    use super::{ReapedProcess, Reaper, RegisteredProcess};
 
     #[test]
     fn test_reaped_process() {
@@ -57,7 +73,12 @@ mod tests {
     #[test]
     fn test_reaper_new() {
         let (reaper, _executor) = Reaper::new();
-        let (tx, _rx) = tokio::sync::oneshot::channel();
-        assert!(reaper.register_sender.send((Pid::from_raw(1), tx)).is_ok());
+        let (sender, _rx) = tokio::sync::oneshot::channel();
+        let process = RegisteredProcess {
+            pid: Pid::from_raw(1),
+            sender,
+            termination_grace_period: Duration::from_secs(5),
+        };
+        assert!(reaper.register_sender.send(process).is_ok());
     }
 }

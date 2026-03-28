@@ -15,6 +15,7 @@ pub trait TaskRunner {
         event_sender: &mpsc::UnboundedSender<Event>,
         reaper: &Reaper,
         pid: nix::unistd::Pid,
+        termination_grace_period: Duration,
     );
 
     fn check_readiness(
@@ -47,8 +48,9 @@ impl TaskRunner for JoinSet<()> {
         event_sender: &mpsc::UnboundedSender<Event>,
         reaper: &Reaper,
         pid: nix::unistd::Pid,
+        termination_grace_period: Duration,
     ) {
-        let receiver = reaper.register(pid);
+        let receiver = reaper.register(pid, termination_grace_period);
         let event_sender = event_sender.clone();
         let _unused = self.spawn(async move {
             let maybe_reaped_process = tokio::select! {

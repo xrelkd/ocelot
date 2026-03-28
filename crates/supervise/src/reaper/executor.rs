@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use nix::{
     sys::{
@@ -8,24 +8,24 @@ use nix::{
     unistd::Pid,
 };
 use snafu::ResultExt;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     Error, error,
-    reaper::{ReapedProcess, event::Event},
+    reaper::{ReapedProcess, RegisteredProcess, event::Event},
 };
 
-pub struct Executor {
-    registered_processes: HashMap<Pid, oneshot::Sender<ReapedProcess>>,
+const DEFAULT_TERMINATION_GRACE_PERIOD: Duration = Duration::from_millis(200);
 
-    register_receiver: mpsc::UnboundedReceiver<(Pid, oneshot::Sender<ReapedProcess>)>,
+pub struct Executor {
+    registered_processes: HashMap<Pid, RegisteredProcess>,
+
+    register_receiver: mpsc::UnboundedReceiver<RegisteredProcess>,
 }
 
 impl Executor {
-    pub(crate) fn new(
-        register_receiver: mpsc::UnboundedReceiver<(Pid, oneshot::Sender<ReapedProcess>)>,
-    ) -> Self {
+    pub(crate) fn new(register_receiver: mpsc::UnboundedReceiver<RegisteredProcess>) -> Self {
         Self { register_receiver, registered_processes: HashMap::new() }
     }
 
@@ -44,20 +44,23 @@ impl Executor {
         loop {
             let event = tokio::select! {
                 () = cancel_token.cancelled() => Event::Shutdown,
-                Some((pid, sender)) = register_receiver.recv() => Event::RegisterProcess { pid, sender },
+                Some(registered_process) = register_receiver.recv() => Event::RegisterProcess { registered_process },
                 _ = signals.recv() => Event::ReapProcess,
             };
 
             match event {
                 Event::Shutdown => break,
-                Event::RegisterProcess { pid, sender } => {
+                Event::RegisterProcess { registered_process } => {
+                    let pid = registered_process.pid;
                     tracing::info!("Registering child process with PID {pid} for monitoring");
-                    let _unused = registered_processes.insert(pid, sender);
+                    let _unused = registered_processes.insert(pid, registered_process);
                 }
                 Event::ReapProcess => {
                     for process in reap_processes() {
                         let ReapedProcess { pid, .. } = process;
-                        if let Some(sender) = registered_processes.remove(&pid) {
+                        if let Some(RegisteredProcess { sender, .. }) =
+                            registered_processes.remove(&pid)
+                        {
                             let _ = sender.send(process);
                         }
                     }
@@ -65,8 +68,41 @@ impl Executor {
             }
         }
 
+        if !registered_processes.is_empty() {
+            let deadline = {
+                let timeout = registered_processes
+                    .values()
+                    .map(|p| p.termination_grace_period)
+                    .max()
+                    .unwrap_or(DEFAULT_TERMINATION_GRACE_PERIOD);
+                tokio::time::Instant::now() + timeout
+            };
+            loop {
+                tokio::select! {
+                    () = tokio::time::sleep_until(deadline) => break,
+                    _ = signals.recv() => {}
+                }
+
+                for process in reap_processes() {
+                    let ReapedProcess { pid, .. } = process;
+                    if let Some(RegisteredProcess { sender, .. }) =
+                        registered_processes.remove(&pid)
+                    {
+                        let _ = sender.send(process);
+                    }
+                }
+
+                if registered_processes.is_empty() {
+                    break;
+                }
+            }
+        }
+
         let pid_count = reap_processes().len();
-        tracing::info!("Reaped {pid_count} process(es)");
+        if pid_count > 0 {
+            tracing::info!("Reaped {pid_count} process(es)");
+        }
+
         Ok(())
     }
 }
