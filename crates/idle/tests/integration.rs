@@ -5,6 +5,7 @@ use ocelot_test_utils::{find_zombie_processes, run_in_namespace, supports_user_n
 
 /// Test that idle runs and can be terminated with SIGTERM
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_idle_shutdown_on_sigterm() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -34,6 +35,7 @@ fn test_idle_shutdown_on_sigterm() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Test that idle shuts down on SIGINT
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_idle_shutdown_on_sigint() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -61,6 +63,7 @@ fn test_idle_shutdown_on_sigint() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Test that idle properly reaps child processes (zombies)
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_idle_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 

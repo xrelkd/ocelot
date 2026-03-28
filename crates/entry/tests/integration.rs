@@ -13,6 +13,7 @@ use ocelot_test_utils::{find_zombie_processes, run_in_namespace, supports_user_n
 
 /// Test normal exit with exit code 0
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_execute_normal_exit() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -32,6 +33,7 @@ fn test_execute_normal_exit() -> Result<(), Box<dyn std::error::Error>> {
 /// after timeout. A subprocess is forked to send SIGTERM to the parent process
 /// to trigger the shutdown sequence.
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_execute_timeout_kill() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -77,6 +79,7 @@ fn test_execute_timeout_kill() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Test that execute properly reaps child processes (zombies)
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_execute_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 

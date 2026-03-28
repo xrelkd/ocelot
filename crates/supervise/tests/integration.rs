@@ -10,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 /// Test normal exit with exit code 0
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_execute_normal_exit() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -60,6 +61,7 @@ fn test_execute_normal_exit() -> Result<(), Box<dyn std::error::Error>> {
 /// Test timeout-based termination: send SIGTERM, verify child exits within
 /// timeout
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_execute_timeout_kill() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -113,6 +115,7 @@ fn test_execute_timeout_kill() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Test that execute properly reaps child processes (zombies)
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_execute_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -175,6 +178,7 @@ fn test_execute_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Test Supervisor basic lifecycle: start, monitor status, and shutdown
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_supervisor_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -237,6 +241,7 @@ fn test_supervisor_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
 // in a single test to share namespace setup/teardown code and avoid duplication.
 // The 111 lines are justified due to the three independent test cases.
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 #[allow(clippy::too_many_lines)]
 fn test_restart_policies() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
@@ -391,6 +396,7 @@ fn test_restart_policies() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Test multiple supervisors running under Orchestrator
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_multiple_supervisors() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -450,6 +456,7 @@ fn test_multiple_supervisors() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Test process dependencies - a process depending on another
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_process_dependencies() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -515,6 +522,7 @@ fn test_process_dependencies() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Test signal forwarding from supervisor to child process
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_signal_forwarding() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -560,6 +568,7 @@ fn test_signal_forwarding() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Test readiness and liveness probes
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_probes() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
@@ -630,6 +639,7 @@ fn test_probes() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Test exit code propagation from child process
 #[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
 fn test_exit_code_propagation() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
