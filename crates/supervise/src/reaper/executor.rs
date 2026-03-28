@@ -65,7 +65,8 @@ impl Executor {
             }
         }
 
-        let _pids = reap_processes();
+        let pid_count = reap_processes().len();
+        tracing::info!("Reaped {pid_count} process(es)");
         Ok(())
     }
 }

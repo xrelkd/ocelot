@@ -42,7 +42,10 @@ use crate::orchestrator::Orchestrator;
 /// This function should not panic under normal operation.
 pub fn execute(config: OrchestratorConfig) -> Result<i32, Error> {
     let pid = unistd::getpid();
-    if pid.as_raw() != 1 {
+
+    if pid.as_raw() == 1 {
+        tracing::info!("Start with PID 1");
+    } else {
         tracing::warn!("Entry should be the first process (PID 1), current PID: {pid}");
     }
 
