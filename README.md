@@ -58,6 +58,7 @@ graph TD
   - [entry](#entry)
   - [supervise](#supervise)
   - [zombie](#zombie)
+  - [zombie-finder](#zombie-finder)
 - [Installation](#-installation)
   - [From Source](#from-source)
   - [Shell Completions](#shell-completions)
@@ -151,13 +152,14 @@ Process supervisor and init system written in Rust Programming Language
 Usage: ocelot [COMMAND]
 
 Commands:
-  version      Print the version information
-  completions  Output shell completion code for the specified shell (bash, zsh, fish)
-  idle         Run as a minimalist PID 1 to reap zombies and hold namespaces [aliases: noop, pause]
-  entry        Spawns and supervises a child process as a minimalist PID 1 with signal forwarding and zombie reaping [aliases: wrap]
-  zombie       Creates zombie processes by forking child processes that immediately exit, while the parent process sleeps. This is useful for testing how systems handle zombie processes.
-  supervise    Run supervisor with configuration file
-  help         Print this message or the help of the given subcommand(s)
+  version        Print the version information
+  completions    Output shell completion code for the specified shell (bash, zsh, fish)
+  idle           Run as a minimalist PID 1 to reap zombies and hold namespaces [aliases: noop, pause]
+  entry          Spawns and supervises a child process as a minimalist PID 1 with signal forwarding and zombie reaping [aliases: wrap]
+  supervise      Run supervisor with configuration file
+  zombie         Creates zombie processes by forking child processes that immediately exit, while the parent process sleeps. This is useful for testing how systems handle zombie processes.
+  zombie-finder  Scan system for zombie processes
+  help           Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
@@ -276,6 +278,22 @@ Options:
 
   -c, --count <COUNT>
 
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+---
+
+### zombie-finder
+
+```text
+$ ocelot zombie-finder --help
+Scans the system for existing zombie processes using procfs. It lists the PID and command name of each zombie process found. This is useful for monitoring system health and identifying processes that have exited but have not been reaped by their parent processes.
+
+Usage: ocelot zombie-finder
+
+Options:
   -h, --help
           Print help (see a summary with '-h')
 ```
