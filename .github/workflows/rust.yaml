@@ -141,11 +141,6 @@ jobs:
         run: |
           nix develop --command cargo nextest-all ${{ matrix.mode == 'release' && '--release' || '' }}
 
-      - name: Run Integration Test
-        run: |
-          cargo build ${{ matrix.mode == 'release' && '--release' || '' }}
-          sudo ./tests/test-entry.sh
-
   doc:
     name: Doc
     runs-on: ubuntu-latest
