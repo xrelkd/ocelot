@@ -22,4 +22,17 @@ pub enum Error {
     WaitPid {
         source: nix::Error,
     },
+
+    #[snafu(display("Failed to execute child process"))]
+    ChildExecute,
+
+    #[snafu(display("Failed to read from Pipe, error: {source}"))]
+    ReadPipe {
+        source: nix::Error,
+    },
+
+    #[snafu(display("Failed to construct Pipe, error: {source}"))]
+    CreatePipe {
+        source: nix::Error,
+    },
 }

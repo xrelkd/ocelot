@@ -183,6 +183,7 @@ impl Executor {
             while tasks.try_join_next().is_some() {}
         }
 
+        // Wait for all remaining tasks to complete before exit
         while tasks.join_next().await.is_some() {}
 
         Ok(())
