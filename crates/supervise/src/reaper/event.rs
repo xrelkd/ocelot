@@ -1,9 +1,7 @@
-use tokio::sync::oneshot;
-
-use crate::ReapedProcess;
+use crate::reaper::RegisteredProcess;
 
 pub enum Event {
     Shutdown,
     ReapProcess,
-    RegisterProcess { pid: nix::unistd::Pid, sender: oneshot::Sender<ReapedProcess> },
+    RegisterProcess { registered_process: RegisteredProcess },
 }
