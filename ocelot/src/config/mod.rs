@@ -9,7 +9,8 @@ use std::{collections::HashMap, path::PathBuf, time::Duration};
 use ocelot_supervise::{supervisor_config, supervisor_probe};
 use petgraph::{Direction, graph::DiGraph, stable_graph::StableDiGraph};
 use resolve_path::PathResolveExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_with::{DisplayFromStr, serde_as};
 use snafu::ResultExt;
 
 pub use self::{
@@ -20,10 +21,15 @@ pub use self::{
     restart::RestartPolicyConfig,
 };
 
-#[derive(Clone, Debug, Deserialize)]
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SupervisorConfig {
     pub version: String,
+
+    #[serde(default = "default_log_level")]
+    #[serde_as(as = "DisplayFromStr")]
+    pub log_level: tracing::Level,
 
     #[serde(default)]
     pub processes: HashMap<String, ProcessConfig>,
@@ -253,6 +259,8 @@ impl From<RestartPolicyConfig> for supervisor_config::RestartPolicy {
 }
 
 const fn default_shutdown_timeout_secs() -> u64 { 60 }
+
+const fn default_log_level() -> tracing::Level { tracing::Level::INFO }
 
 #[cfg(test)]
 mod tests {

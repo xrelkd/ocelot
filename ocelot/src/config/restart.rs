@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "PascalCase", deny_unknown_fields)]
 pub enum RestartPolicyConfig {
     #[default]

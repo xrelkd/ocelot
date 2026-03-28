@@ -71,8 +71,8 @@ pub enum Commands {
         #[clap(short, long)]
         file: Option<PathBuf>,
 
-        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
-        log_level: tracing::Level,
+        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL")]
+        log_level: Option<tracing::Level>,
     },
 
     #[clap(
