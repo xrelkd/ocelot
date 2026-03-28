@@ -21,7 +21,6 @@ pub struct Cli {
     pub commands: Option<Commands>,
 }
 
-#[allow(variant_size_differences)]
 #[derive(Clone, Subcommand)]
 pub enum Commands {
     #[clap(about = "Print the version information")]
