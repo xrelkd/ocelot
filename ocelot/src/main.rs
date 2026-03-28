@@ -1,4 +1,5 @@
 mod cli;
+mod config;
 mod error;
 mod shadow {
     #![allow(clippy::needless_raw_string_hashes)]
