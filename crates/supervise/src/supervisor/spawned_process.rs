@@ -79,8 +79,7 @@ impl CommandExt for Command {
 
 #[cfg(test)]
 mod tests {
-    use super::CommandExt;
-    use crate::command::Command;
+    use crate::{command::Command, supervisor::spawned_process::CommandExt};
 
     #[tokio::test]
     async fn test_spawn_success() {

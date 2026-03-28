@@ -51,7 +51,7 @@ mod tests {
 
     use nix::unistd::Pid;
 
-    use super::{ReapedProcess, Reaper, RegisteredProcess};
+    use crate::reaper::{ReapedProcess, Reaper, RegisteredProcess};
 
     #[test]
     fn test_reaped_process() {

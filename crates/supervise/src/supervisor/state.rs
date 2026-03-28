@@ -133,7 +133,7 @@ impl State {
 mod tests {
     use std::time::Duration;
 
-    use super::{Phase, RestartPolicy, State};
+    use crate::supervisor::{Phase, RestartPolicy, state::State};
 
     #[test]
     fn test_default_state() {

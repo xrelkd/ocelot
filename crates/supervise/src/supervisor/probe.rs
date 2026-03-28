@@ -94,7 +94,7 @@ async fn probe_http(socket_address: &SocketAddr, timeout: Duration, path: &str) 
 mod tests {
     use std::time::Duration;
 
-    use super::{Probe, ProbeHandler};
+    use crate::supervisor::probe::{Probe, ProbeHandler};
 
     #[test]
     fn test_probe_default() {
