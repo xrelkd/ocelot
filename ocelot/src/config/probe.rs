@@ -40,7 +40,7 @@ pub enum ProbeHandlerConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProbeConfig, ProbeHandlerConfig};
+    use crate::config::probe::{ProbeConfig, ProbeHandlerConfig};
 
     #[test]
     fn test_probe_handler_http_get_serde() {
