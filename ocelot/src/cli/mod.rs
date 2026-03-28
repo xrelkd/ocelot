@@ -83,7 +83,7 @@ pub enum Commands {
     #[clap(
         about = "Run supervisor with configuration file",
         long_about = "Run supervisor with configuration file. If no subcommand is provided, runs \
-                      the supervisor. Use 'default-config' to output the default configuration."
+                      the supervisor. Use 'config-template' to output the default configuration."
     )]
     Supervise {
         #[clap(subcommand)]
