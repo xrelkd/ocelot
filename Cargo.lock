@@ -900,7 +900,6 @@ version = "0.3.0"
 dependencies = [
  "nix",
  "ocelot-test-utils",
- "signal-hook",
  "snafu",
  "tracing",
 ]

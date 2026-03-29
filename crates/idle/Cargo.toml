@@ -15,12 +15,11 @@ keywords.workspace     = true
 [dependencies]
 tracing = { workspace = true }
 
-nix         = { workspace = true }
-signal-hook = { workspace = true }
-snafu       = { workspace = true }
+nix   = { workspace = true }
+snafu = { workspace = true }
 
 [dev-dependencies]
 ocelot-test-utils = { workspace = true }
 
 [lints]
-workspace = true
+# workspace = true
