@@ -16,7 +16,7 @@ pub enum Error {
     CreatePipe { source: nix::Error },
 
     #[snafu(display("Failed to convert RawFd to AsyncFd, error: {source}"))]
-    ConvertAsyncFd { source: std::io::Error },
+    RegisterFd { source: std::io::Error },
 
     #[snafu(display("Failed to execute child process"))]
     ChildExecute,

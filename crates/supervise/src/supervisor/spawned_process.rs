@@ -27,7 +27,7 @@ impl CommandExt for Command {
     async fn spawn(&self) -> Result<SpawnedProcess, Error> {
         // Create a pipe with O_CLOEXEC
         // The pipe will automatically close on successful exec()
-        let (reader_raw, writer_raw) =
+        let (err_reader, err_writer) =
             unistd::pipe2(OFlag::O_CLOEXEC | OFlag::O_NONBLOCK).context(error::CreatePipeSnafu)?;
 
         #[expect(unsafe_code, reason = "We are calling `fork` in a way that is safe.")]
@@ -36,13 +36,13 @@ impl CommandExt for Command {
         match fork_result {
             ForkResult::Parent { child } => {
                 // Close the writer in parent immediately
-                drop(writer_raw);
+                drop(err_writer);
 
-                let reader = AsyncFd::new(reader_raw).context(error::ConvertAsyncFdSnafu)?;
-                let _guard = reader.readable().await.expect("Pipe error");
+                let err_reader = AsyncFd::new(err_reader).context(error::RegisterFdSnafu)?;
+                let _guard = err_reader.readable().await.expect("Pipe error");
 
                 let mut buf = [0u8; 4];
-                match unistd::read(reader.as_fd(), &mut buf).context(error::ReadPipeSnafu)? {
+                match unistd::read(err_reader.as_fd(), &mut buf).context(error::ReadPipeSnafu)? {
                     // Case A: Read 0 bytes (EOF).
                     // This means the child successfully called exec() and the pipe closed.
                     0 => Ok(SpawnedProcess { pid: child }),
@@ -58,14 +58,14 @@ impl CommandExt for Command {
             }
             ForkResult::Child => {
                 // Close the reader in child
-                drop(reader_raw);
+                drop(err_reader);
 
                 let err = self.exec();
 
                 // If we are here, exec failed.
                 // Write the errno to the pipe.
                 let errno = err.raw_os_error().unwrap_or(1);
-                let _ = unistd::write(&writer_raw, &errno.to_ne_bytes());
+                let _ = unistd::write(&err_writer, &errno.to_ne_bytes());
 
                 std::process::exit(errno);
             }
