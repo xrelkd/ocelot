@@ -61,7 +61,7 @@ impl DependencyWaiter {
         while !self.pending.is_empty() {
             let event = tokio::select! {
                 () = cancel_token.cancelled() => return Ok(()),
-                res = self.rx.recv() => res.context(error::DependencyBroadcastSnafu)?,
+                res = self.rx.recv() => res.context(error::ReceiveDependencySnafu)?,
             };
 
             if self.handle_event(event) {
