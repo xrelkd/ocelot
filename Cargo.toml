@@ -64,6 +64,7 @@ nix = { version = "0.31", features = [
   "sched",
   "signal",
   "user",
+  "zerocopy",
 ] }
 petgraph = "0.8"
 procfs = "0.18"
