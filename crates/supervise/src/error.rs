@@ -16,7 +16,7 @@ pub enum Error {
     CreatePipe { source: nix::Error },
 
     #[snafu(display("Failed to convert RawFd to AsyncFd, error: {source}"))]
-    ConvertAsyncFd { source: std::io::Error },
+    RegisterFd { source: std::io::Error },
 
     #[snafu(display("Failed to execute child process"))]
     ChildExecute,
@@ -24,6 +24,6 @@ pub enum Error {
     #[snafu(display("Failed to read from Pipe, error: {source}"))]
     ReadPipe { source: nix::Error },
 
-    #[snafu(display("Dependency broadcast channel error: {source}"))]
-    DependencyBroadcast { source: tokio::sync::broadcast::error::RecvError },
+    #[snafu(display("Failed to receive dependency: {source}"))]
+    ReceiveDependency { source: tokio::sync::broadcast::error::RecvError },
 }
