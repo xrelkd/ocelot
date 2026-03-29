@@ -1,3 +1,14 @@
+//! Minimalist PID 1 process for container environments.
+//!
+//! This crate provides a simple process supervisor designed to run as PID 1 in
+//! containers. It handles signals (SIGINT, SIGTERM) for graceful shutdown and
+//! automatically reaps zombie child processes via SIGCHLD handling.
+//!
+//! ## Organization
+//!
+//! - [`Error`]: Error type for signal handling failures
+//! - [`execute`]: Main entry point that runs the idle loop
+
 mod error;
 
 use nix::{
@@ -15,14 +26,37 @@ use snafu::ResultExt;
 
 pub use self::error::Error;
 
-/// A simple process that waits indefinitely, handling signals to reap child
-/// processes and shut down gracefully.
+/// Runs the idle process loop, handling signals and reaping zombies.
+///
+/// This function blocks indefinitely, listening for three signals:
+///
+/// - **SIGCHLD**: Reaps any zombie child processes
+/// - **SIGINT/SIGTERM**: Initiates graceful shutdown
+///
+/// Returns `Ok(())` on successful shutdown, or an error if signal handler
+/// creation fails.
 ///
 /// # Errors
-/// This function returns an error if it fails to create the signal handler.
+///
+/// * `Error::CreateSignalHandler` - Failed to create the signal handler,
+///   typically due to insufficient permissions or resource limits
 ///
 /// # Panics
-/// This function never panics.
+///
+/// This function never panics under normal operation.
+///
+/// # Signal Handling
+///
+/// When running as PID 1 in a container, the process receives termination
+/// signals from the container runtime. Upon receiving SIGINT or SIGTERM,
+/// the loop breaks and `execute()` returns, allowing the process to exit
+/// cleanly.
+///
+/// ## Zombie Reaping
+///
+/// Child processes that exit become zombies until reaped by the parent.
+/// This function continuously calls `waitpid(WNOHANG)` upon SIGCHLD to
+/// reap all terminated children, preventing zombie accumulation.
 pub fn execute() -> Result<(), Error> {
     // Get the PID and warn if not running as PID 1
     let pid = getpid();
