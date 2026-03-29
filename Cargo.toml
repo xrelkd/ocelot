@@ -70,7 +70,6 @@ petgraph = "0.8"
 procfs = "0.18"
 resolve-path = "0.1"
 shadow-rs = "1.7"
-signal-hook = "0.4"
 snafu = "0.9"
 
 ocelot-entry      = { path = "./crates/entry" }
