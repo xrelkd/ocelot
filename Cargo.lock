@@ -911,7 +911,6 @@ dependencies = [
  "futures",
  "nix",
  "ocelot-test-utils",
- "signal-hook",
  "snafu",
  "tokio",
  "tokio-util",
