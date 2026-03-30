@@ -1,18 +1,10 @@
-use std::{
-    collections::HashMap,
-    os::unix::io::OwnedFd,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        mpsc,
-    },
-};
+use std::{collections::HashMap, os::unix::io::OwnedFd, sync::mpsc};
 
 use nix::{
     fcntl,
     fcntl::SpliceFFlags,
     poll::PollTimeout,
     sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags},
-    unistd,
 };
 use snafu::ResultExt;
 use tokio::sync::oneshot;
@@ -46,13 +38,11 @@ impl Executor {
     pub async fn serve(self, cancel_token: CancellationToken) -> Result<(), Error> {
         let Self { config, event_sender, event_receiver, waker } = self;
 
+        tracing::debug!("Spawn ThreadWorker");
         let join_handle = std::thread::spawn({
-            let waker = waker.clone();
-            move || match ThreadWorker::new(config, event_receiver, waker) {
-                Ok(mut worker) => worker.run(),
-                Err(e) => {
-                    tracing::error!("Failed to create worker: {:?}", e);
-                }
+            let mut worker = ThreadWorker::new(config, event_receiver, waker.clone())?;
+            move || {
+                worker.run();
             }
         });
 
@@ -60,7 +50,7 @@ impl Executor {
         drop(event_sender.send(Event::Shutdown));
         waker.wake();
         let _unused = join_handle.join();
-        tracing::debug!("Worker thread shut down cleanly");
+        tracing::debug!("ThreadWorker shut down cleanly");
         Ok(())
     }
 }
@@ -71,7 +61,7 @@ struct ThreadWorker {
     waker: Waker,
     relays: HashMap<u64, RelayEntry>,
     epoll: Epoll,
-    next_id: AtomicU64,
+    next_id: u64,
     status: Status,
 }
 
@@ -93,7 +83,7 @@ impl ThreadWorker {
             waker,
             relays: HashMap::new(),
             epoll,
-            next_id: AtomicU64::new(1),
+            next_id: 1,
             status: Status::default(),
         })
     }
@@ -131,13 +121,12 @@ impl ThreadWorker {
     }
 
     fn handle_control_events(&mut self) -> bool {
-        let mut buf = [0u8; 8];
-        let _ = unistd::read(self.waker.as_ref(), &mut buf);
+        self.waker.consume();
 
         while let Ok(event) = self.event_sender.try_recv() {
             match event {
-                Event::Register { source: src, destination, sender, start_notification } => {
-                    let result = self.register(src, destination, start_notification);
+                Event::Register { source, destination, sender, start_notification } => {
+                    let result = self.register(source, destination, start_notification);
                     let _unused = sender.send(result.ok());
                 }
                 Event::RemoveRelay { id } => {
@@ -196,7 +185,8 @@ impl ThreadWorker {
         destination: Destination,
         start_notification: Option<oneshot::Sender<()>>,
     ) -> Result<u64, Error> {
-        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let id = self.next_id;
+        self.next_id += 1;
 
         let epoll_ev = EpollEvent::new(EpollFlags::EPOLLIN, id);
         self.epoll.add(&source, epoll_ev).context(error::AddEpollFdSnafu)?;

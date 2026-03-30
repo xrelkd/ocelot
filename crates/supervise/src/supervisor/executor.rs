@@ -1,4 +1,4 @@
-use nix::sys::signal::Signal;
+use nix::{sys::signal::Signal, unistd::Pid};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -7,7 +7,7 @@ use crate::{
     reaper::Reaper,
     splice_relay::Destination,
     supervisor::{
-        Phase, ProcessStatus,
+        Phase,
         config::Config,
         dependency_registry::DependencyRegistry,
         event::Event,
@@ -103,48 +103,24 @@ impl Executor {
                         tasks.schedule(cancel_token.clone(), &event_sender, interval, Event::Start);
                     }
                 }
-                (Event::LogReady, _) => {
+                (Event::LogReady, Phase::Running) => {
                     state.notify_log_ready();
                 }
                 (Event::Start, Phase::Pending | Phase::CrashLoopBackOff | Phase::Failed { .. }) => {
                     state.set_starting();
                     match config.command().spawn().await {
-                        Ok(SpawnedProcess { pid, stdout_fd, stderr_fd }) => {
-                            tracing::info!("Started process `{}` with PID `{pid}`", config.name());
-                            state.set_running(pid);
-
-                            if let Some(stdout_fd) = stdout_fd {
-                                tasks.register_splice_relay(
-                                    cancel_token.clone(),
-                                    &event_sender,
-                                    splice_relay.clone(),
-                                    stdout_fd,
-                                    Destination::Stdout,
-                                );
+                        Ok(spawned_process) => {
+                            ProcessSpawnContext {
+                                config: &config,
+                                state: &mut state,
+                                cancel_token: cancel_token.clone(),
+                                event_sender: &event_sender,
+                                splice_relay: splice_relay.clone(),
+                                reaper: &reaper,
+                                tasks: &mut tasks,
+                                spawned_process,
                             }
-                            if let Some(stderr_fd) = stderr_fd {
-                                tasks.register_splice_relay(
-                                    cancel_token.clone(),
-                                    &event_sender,
-                                    splice_relay.clone(),
-                                    stderr_fd,
-                                    Destination::Stderr,
-                                );
-                            }
-
-                            tasks.wait_for_reap(
-                                cancel_token.clone(),
-                                &event_sender,
-                                &reaper,
-                                pid,
-                                config.termination_grace_period,
-                            );
-                            if config.liveness_probe.is_some() {
-                                drop(event_sender.send(Event::CheckLiveness));
-                            }
-                            if config.readiness_probe.is_some() {
-                                drop(event_sender.send(Event::CheckReadiness));
-                            }
+                            .spawn();
                         }
                         Err(err) => {
                             tracing::error!("Failed to start process: {err}");
@@ -194,13 +170,7 @@ impl Executor {
                     }
                 }
                 (Event::GetStatus { resp }, _) => {
-                    let status = ProcessStatus {
-                        phase: state.phase(),
-                        restart_count: state.restart_count(),
-                        last_exit_code: state.last_exit_code(),
-                        ready: state.ready(),
-                    };
-                    let _ = resp.send(status);
+                    let _ = resp.send(state.to_status());
                 }
                 _ => {}
             }
@@ -223,7 +193,69 @@ impl Executor {
     }
 }
 
-fn forward_signal(pid: nix::unistd::Pid, signal: Signal) {
+struct ProcessSpawnContext<'a> {
+    config: &'a Config,
+    state: &'a mut State,
+    cancel_token: CancellationToken,
+    event_sender: &'a mpsc::UnboundedSender<Event>,
+    splice_relay: SpliceRelay,
+    reaper: &'a Reaper,
+    tasks: &'a mut tokio::task::JoinSet<()>,
+    spawned_process: SpawnedProcess,
+}
+
+impl ProcessSpawnContext<'_> {
+    fn spawn(self) {
+        let ProcessSpawnContext {
+            config,
+            state,
+            cancel_token,
+            event_sender,
+            splice_relay,
+            reaper,
+            tasks,
+            spawned_process: SpawnedProcess { pid, stdout_fd, stderr_fd },
+        } = self;
+
+        tracing::info!("Started process `{}` with PID `{pid}`", config.name());
+        state.set_running(pid);
+
+        if let Some(stdout_fd) = stdout_fd {
+            tasks.register_splice_relay(
+                cancel_token.clone(),
+                event_sender,
+                splice_relay.clone(),
+                stdout_fd,
+                Destination::Stdout,
+            );
+        }
+        if let Some(stderr_fd) = stderr_fd {
+            tasks.register_splice_relay(
+                cancel_token.clone(),
+                event_sender,
+                splice_relay,
+                stderr_fd,
+                Destination::Stderr,
+            );
+        }
+
+        tasks.wait_for_reap(
+            cancel_token,
+            event_sender,
+            reaper,
+            pid,
+            config.termination_grace_period,
+        );
+        if config.liveness_probe.is_some() {
+            drop(event_sender.send(Event::CheckLiveness));
+        }
+        if config.readiness_probe.is_some() {
+            drop(event_sender.send(Event::CheckReadiness));
+        }
+    }
+}
+
+fn forward_signal(pid: Pid, signal: Signal) {
     tracing::info!("Sending signal {signal:?} to process {pid}");
     if let Err(e) = nix::sys::signal::kill(pid, signal) {
         tracing::warn!("Failed to send signal to process: {}", e);
