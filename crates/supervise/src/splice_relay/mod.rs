@@ -79,13 +79,13 @@ pub struct RelayRegistration {
 impl SpliceRelay {
     pub async fn register(
         &self,
-        src: OwnedFd,
+        source: OwnedFd,
         destination: Destination,
     ) -> Option<RelayRegistration> {
         let (id_sender, id_receiver) = oneshot::channel();
         let (notify_sender, notify_receiver) = oneshot::channel();
         if let Err(err) = self.event_sender.send(Event::Register {
-            source: src,
+            source,
             destination,
             sender: id_sender,
             start_notification: Some(notify_sender),
