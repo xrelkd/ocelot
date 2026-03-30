@@ -46,13 +46,11 @@ impl Executor {
     pub async fn serve(self, cancel_token: CancellationToken) -> Result<(), Error> {
         let Self { config, event_sender, event_receiver, waker } = self;
 
+        tracing::debug!("Spawn ThreadWorker");
         let join_handle = std::thread::spawn({
-            let waker = waker.clone();
-            move || match ThreadWorker::new(config, event_receiver, waker) {
-                Ok(mut worker) => worker.run(),
-                Err(e) => {
-                    tracing::error!("Failed to create worker: {:?}", e);
-                }
+            let mut worker = ThreadWorker::new(config, event_receiver, waker.clone())?;
+            move || {
+                worker.run();
             }
         });
 
@@ -60,7 +58,7 @@ impl Executor {
         drop(event_sender.send(Event::Shutdown));
         waker.wake();
         let _unused = join_handle.join();
-        tracing::debug!("Worker thread shut down cleanly");
+        tracing::debug!("ThreadWorker shut down cleanly");
         Ok(())
     }
 }
@@ -136,8 +134,8 @@ impl ThreadWorker {
 
         while let Ok(event) = self.event_sender.try_recv() {
             match event {
-                Event::Register { source: src, destination, sender, start_notification } => {
-                    let result = self.register(src, destination, start_notification);
+                Event::Register { source, destination, sender, start_notification } => {
+                    let result = self.register(source, destination, start_notification);
                     let _unused = sender.send(result.ok());
                 }
                 Event::RemoveRelay { id } => {
