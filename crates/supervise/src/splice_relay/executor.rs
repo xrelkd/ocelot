@@ -102,12 +102,10 @@ impl ThreadWorker {
         let mut events = [EpollEvent::empty(); 256];
 
         loop {
-            // TODO: Check the value of timeout. Can we use NONE?
-            let timeout = if self.relays.is_empty() {
-                PollTimeout::NONE
-            } else {
-                PollTimeout::try_from(100).unwrap_or(PollTimeout::NONE)
-            };
+            // Use `NONE` because the waker fd is registered with epoll.
+            // The waker will wake epoll when there's new work (register, remove, shutdown),
+            // so periodic wakeups are unnecessary. This is crucial for lightweight PID 1.
+            let timeout = PollTimeout::NONE;
 
             let num_events = match self.epoll.wait(&mut events, timeout) {
                 Ok(n) => n,
