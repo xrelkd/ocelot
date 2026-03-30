@@ -8,7 +8,7 @@ use tokio::time;
 use tokio_util::sync::CancellationToken;
 
 use super::{Builder, SpliceRelay};
-use crate::splice_relay::{Destination, Error};
+use crate::splice_relay::{Destination, Error, RelayRegistration};
 
 // Helper to create a non-blocking pipe pair
 fn create_pipe() -> (OwnedFd, OwnedFd) {
@@ -59,7 +59,7 @@ async fn test_register_success() {
     let test = TestExecutor::new().await;
 
     let (src, dst) = create_pipe();
-    let (id, _notify_rx) = test
+    let RelayRegistration { id, .. } = test
         .relay()
         .register(src, Destination::OwnedFd { fd: dst })
         .await
@@ -81,7 +81,7 @@ async fn test_register_multiple() {
     let mut ids = Vec::new();
     for _ in 0..3 {
         let (src, dst) = create_pipe();
-        let (id, _notify_rx) = test
+        let RelayRegistration { id, .. } = test
             .relay()
             .register(src, Destination::OwnedFd { fd: dst })
             .await
@@ -104,7 +104,7 @@ async fn test_remove_relay() {
     let test = TestExecutor::new().await;
 
     let (src, dst) = create_pipe();
-    let (id, _notify_rx) = test
+    let RelayRegistration { id, .. } = test
         .relay()
         .register(src, Destination::OwnedFd { fd: dst })
         .await
@@ -151,11 +151,12 @@ async fn test_get_status_after_operations() {
     let (src1, dst1) = create_pipe();
     let (src2, dst2) = create_pipe();
 
-    let (id1, _notify_rx) = test
+    let registration1 = test
         .relay()
         .register(src1, Destination::OwnedFd { fd: dst1 })
         .await
         .expect("register 1 failed");
+    let id1 = registration1.id;
     let _id2 = test
         .relay()
         .register(src2, Destination::OwnedFd { fd: dst2 })
@@ -195,16 +196,18 @@ async fn test_list_relays_with_entries() {
     let (src2, dst2) = create_pipe();
     let (src3, dst3) = create_pipe();
 
-    let (id1, _notify_rx) = test
+    let registration1 = test
         .relay()
         .register(src1, Destination::OwnedFd { fd: dst1 })
         .await
         .expect("register 1 failed");
-    let (id2, _notify_rx) = test
+    let id1 = registration1.id;
+    let registration2 = test
         .relay()
         .register(src2, Destination::OwnedFd { fd: dst2 })
         .await
         .expect("register 2 failed");
+    let id2 = registration2.id;
     let _id3 = test
         .relay()
         .register(src3, Destination::OwnedFd { fd: dst3 })
@@ -277,7 +280,7 @@ async fn test_concurrent_registers() {
         let relay_clone = test.relay().clone();
         let handle = tokio::spawn(async move {
             let (src, dst) = create_pipe();
-            let (id, _notify_rx) = relay_clone
+            let RelayRegistration { id, .. } = relay_clone
                 .register(src, Destination::OwnedFd { fd: dst })
                 .await
                 .expect("register should succeed");
@@ -313,8 +316,9 @@ async fn test_concurrent_register_and_remove() {
         let relay_clone = test.relay().clone();
         let h = tokio::spawn(async move {
             let (src, dst) = create_pipe();
-            let (id, _notify_rx) =
+            let registration =
                 relay_clone.register(src, Destination::OwnedFd { fd: dst }).await.unwrap();
+            let id = registration.id;
             time::sleep(Duration::from_millis(10)).await;
             relay_clone.remove(id);
             id
@@ -382,8 +386,9 @@ async fn test_status_tracks_add_remove() {
     let mut ids = Vec::new();
     for _ in 0..3 {
         let (src, dst) = create_pipe();
-        let (id, _notify_rx) =
+        let registration =
             test.relay().register(src, Destination::OwnedFd { fd: dst }).await.unwrap();
+        let id = registration.id;
         ids.push(id);
     }
 
@@ -416,8 +421,9 @@ async fn test_bytes_transferred_increments() {
     let (src_r, _src_w) = create_data_pipe(test_data);
     let (dst_r, dst_w) = create_pipe();
 
-    let (id, _notify_rx) =
+    let registration =
         test.relay().register(src_r, Destination::OwnedFd { fd: dst_w }).await.unwrap();
+    let id = registration.id;
 
     time::sleep(Duration::from_millis(50)).await;
 
@@ -445,20 +451,23 @@ async fn test_bytes_transferred_multiple_splices() {
 
     let (src1_r, _src1_w) = create_data_pipe(data1);
     let (dst1_r, dst1_w) = create_pipe();
-    let (id1, _notify_rx) =
+    let registration1 =
         test.relay().register(src1_r, Destination::OwnedFd { fd: dst1_w }).await.unwrap();
+    let id1 = registration1.id;
     relays.push((id1, dst1_r, data1.len()));
 
     let (src2_r, _src2_w) = create_data_pipe(data2);
     let (dst2_r, dst2_w) = create_pipe();
-    let (id2, _notify_rx) =
+    let registration2 =
         test.relay().register(src2_r, Destination::OwnedFd { fd: dst2_w }).await.unwrap();
+    let id2 = registration2.id;
     relays.push((id2, dst2_r, data2.len()));
 
     let (src3_r, _src3_w) = create_data_pipe(data3);
     let (dst3_r, dst3_w) = create_pipe();
-    let (id3, _notify_rx) =
+    let registration3 =
         test.relay().register(src3_r, Destination::OwnedFd { fd: dst3_w }).await.unwrap();
+    let id3 = registration3.id;
     relays.push((id3, dst3_r, data3.len()));
 
     time::sleep(Duration::from_millis(150)).await;
@@ -487,8 +496,9 @@ async fn test_splice_eof_removes_relay() {
     let (src_r, src_w) = create_pipe();
     drop(src_w);
     let (_dst_r, dst_w) = create_pipe();
-    let (id, _notify_rx) =
+    let registration =
         test.relay().register(src_r, Destination::OwnedFd { fd: dst_w }).await.unwrap();
+    let id = registration.id;
 
     time::sleep(Duration::from_millis(50)).await;
 
@@ -506,8 +516,9 @@ async fn test_shutdown_during_active_splice() {
     let (src_r, _src_w) = create_data_pipe(&large_data);
     let (_dst_r, dst_w) = create_pipe();
 
-    let (id, _notify_rx) =
+    let registration =
         test.relay().register(src_r, Destination::OwnedFd { fd: dst_w }).await.unwrap();
+    let id = registration.id;
 
     test.cancel_token.cancel();
 
@@ -526,8 +537,7 @@ async fn test_register_with_stdout() {
     let test = TestExecutor::new().await;
 
     let (src, _src_w) = create_pipe();
-    // Should succeed without panicking
-    let (id, _notify_rx) = test
+    let RelayRegistration { id, .. } = test
         .relay()
         .register(src, Destination::Stdout)
         .await
@@ -547,8 +557,7 @@ async fn test_register_with_stderr() {
     let test = TestExecutor::new().await;
 
     let (src, _src_w) = create_pipe();
-    // Should succeed without panicking
-    let (id, _notify_rx) = test
+    let RelayRegistration { id, .. } = test
         .relay()
         .register(src, Destination::Stderr)
         .await
@@ -571,7 +580,8 @@ async fn test_splice_to_stdout() {
     let (src_r, _src_w) = create_data_pipe(test_data);
 
     // Register relay to stdout
-    let (id, _notify_rx) = test.relay().register(src_r, Destination::Stdout).await.unwrap();
+    let RelayRegistration { id, .. } =
+        test.relay().register(src_r, Destination::Stdout).await.unwrap();
 
     // Wait for data to be spliced
     time::sleep(Duration::from_millis(50)).await;
@@ -594,7 +604,8 @@ async fn test_splice_to_stderr() {
     let (src_r, _src_w) = create_data_pipe(test_data);
 
     // Register relay to stderr
-    let (id, _notify_rx) = test.relay().register(src_r, Destination::Stderr).await.unwrap();
+    let RelayRegistration { id, .. } =
+        test.relay().register(src_r, Destination::Stderr).await.unwrap();
 
     // Wait for data to be spliced
     time::sleep(Duration::from_millis(50)).await;
@@ -620,7 +631,7 @@ async fn test_start_notification_received() {
     let (_dst_r, dst_w) = create_pipe();
 
     // Register with a start notification receiver
-    let (id, mut start_rx) = test
+    let RelayRegistration { id, mut started } = test
         .relay()
         .register(src_r, Destination::OwnedFd { fd: dst_w })
         .await
@@ -630,7 +641,7 @@ async fn test_start_notification_received() {
     time::sleep(Duration::from_millis(50)).await;
 
     // Now the notification should be received
-    start_rx.try_recv().expect("Should receive start notification");
+    started.try_recv().expect("Should receive start notification");
 
     // Remove the relay
     test.relay().remove(id);
@@ -645,7 +656,7 @@ async fn test_start_notification_sent_only_once() {
     let (src_r, _src_w) = create_data_pipe(test_data);
     let (_dst_r, dst_w) = create_pipe();
 
-    let (id, mut start_rx) = test
+    let RelayRegistration { id, mut started } = test
         .relay()
         .register(src_r, Destination::OwnedFd { fd: dst_w })
         .await
@@ -653,10 +664,10 @@ async fn test_start_notification_sent_only_once() {
 
     // Wait for first notification
     time::sleep(Duration::from_millis(50)).await;
-    start_rx.try_recv().expect("Should receive first notification");
+    started.try_recv().expect("Should receive first notification");
 
     // Try to receive again - should be Err because sender was taken
-    assert!(start_rx.try_recv().is_err(), "Should not receive second notification");
+    assert!(started.try_recv().is_err(), "Should not receive second notification");
 
     test.relay().remove(id);
     test.shutdown().await;
@@ -667,13 +678,14 @@ async fn test_start_notification_with_stdout() {
     let test = TestExecutor::new().await;
 
     let (src, _src_w) = create_pipe();
-    let (_id, mut start_rx) = test.relay().register(src, Destination::Stdout).await.unwrap();
+    let RelayRegistration { id: _id, mut started } =
+        test.relay().register(src, Destination::Stdout).await.unwrap();
 
     // Wait for potential splice (there's no data, so no notification expected)
     time::sleep(Duration::from_millis(30)).await;
 
     // Since there's no data to splice, notification should not be sent
-    assert!(start_rx.try_recv().is_err(), "Should not receive notification without data");
+    assert!(started.try_recv().is_err(), "Should not receive notification without data");
 
     test.shutdown().await;
 }
@@ -683,13 +695,14 @@ async fn test_start_notification_with_stderr() {
     let test = TestExecutor::new().await;
 
     let (src, _src_w) = create_pipe();
-    let (_id, mut start_rx) = test.relay().register(src, Destination::Stderr).await.unwrap();
+    let RelayRegistration { id: _id, mut started } =
+        test.relay().register(src, Destination::Stderr).await.unwrap();
 
     // Wait for potential splice (there's no data, so no notification expected)
     time::sleep(Duration::from_millis(30)).await;
 
     // Since there's no data to splice, notification should not be sent
-    assert!(start_rx.try_recv().is_err(), "Should not receive notification without data");
+    assert!(started.try_recv().is_err(), "Should not receive notification without data");
 
     test.shutdown().await;
 }

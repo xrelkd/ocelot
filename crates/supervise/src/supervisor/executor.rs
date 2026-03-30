@@ -103,6 +103,9 @@ impl Executor {
                         tasks.schedule(cancel_token.clone(), &event_sender, interval, Event::Start);
                     }
                 }
+                (Event::LogReady, _) => {
+                    state.notify_log_ready();
+                }
                 (Event::Start, Phase::Pending | Phase::CrashLoopBackOff | Phase::Failed { .. }) => {
                     state.set_starting();
                     match config.command().spawn().await {
@@ -110,24 +113,23 @@ impl Executor {
                             tracing::info!("Started process `{}` with PID `{pid}`", config.name());
                             state.set_running(pid);
 
-                            // Register stdout with SpliceRelay if available
-                            if let Some(stdout_fd) = stdout_fd
-                                && splice_relay
-                                    .register(stdout_fd, Destination::Stdout)
-                                    .await
-                                    .is_none()
-                            {
-                                tracing::error!("Failed to register stdout with SpliceRelay");
+                            if let Some(stdout_fd) = stdout_fd {
+                                tasks.register_splice_relay(
+                                    cancel_token.clone(),
+                                    &event_sender,
+                                    splice_relay.clone(),
+                                    stdout_fd,
+                                    Destination::Stdout,
+                                );
                             }
-
-                            // Register stderr with SpliceRelay if available
-                            if let Some(stderr_fd) = stderr_fd
-                                && splice_relay
-                                    .register(stderr_fd, Destination::Stderr)
-                                    .await
-                                    .is_none()
-                            {
-                                tracing::error!("Failed to register stderr with SpliceRelay");
+                            if let Some(stderr_fd) = stderr_fd {
+                                tasks.register_splice_relay(
+                                    cancel_token.clone(),
+                                    &event_sender,
+                                    splice_relay.clone(),
+                                    stderr_fd,
+                                    Destination::Stderr,
+                                );
                             }
 
                             tasks.wait_for_reap(

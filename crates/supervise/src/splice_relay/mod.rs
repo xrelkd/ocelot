@@ -69,12 +69,18 @@ pub struct SpliceRelay {
     waker: Waker,
 }
 
+#[derive(Debug)]
+pub struct RelayRegistration {
+    pub id: u64,
+    pub started: oneshot::Receiver<()>,
+}
+
 impl SpliceRelay {
     pub async fn register(
         &self,
         src: OwnedFd,
         destination: Destination,
-    ) -> Option<(u64, oneshot::Receiver<()>)> {
+    ) -> Option<RelayRegistration> {
         let (id_sender, id_receiver) = oneshot::channel();
         let (notify_sender, notify_receiver) = oneshot::channel();
         if let Err(err) = self.event_sender.send(Event::Register {
@@ -88,7 +94,7 @@ impl SpliceRelay {
         } else {
             self.waker.wake();
             match id_receiver.await {
-                Ok(Some(id)) => Some((id, notify_receiver)),
+                Ok(Some(id)) => Some(RelayRegistration { id, started: notify_receiver }),
                 _ => None,
             }
         }

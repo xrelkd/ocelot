@@ -85,6 +85,10 @@ impl State {
         let _ = self.dependency_notifier.as_ref().map(|n| n.notify_completed(exit_code));
     }
 
+    pub fn notify_log_ready(&self) {
+        let _ = self.dependency_notifier.as_ref().inspect(|n| n.notify_log_ready());
+    }
+
     pub const fn process_id(&self) -> Option<Pid> { self.spawned }
 
     pub const fn phase(&self) -> Phase { self.phase }
