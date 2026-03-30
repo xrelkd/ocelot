@@ -1,11 +1,4 @@
-use std::{
-    collections::HashMap,
-    os::unix::io::OwnedFd,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        mpsc,
-    },
-};
+use std::{collections::HashMap, os::unix::io::OwnedFd, sync::mpsc};
 
 use nix::{
     fcntl,
@@ -69,7 +62,7 @@ struct ThreadWorker {
     waker: Waker,
     relays: HashMap<u64, RelayEntry>,
     epoll: Epoll,
-    next_id: AtomicU64,
+    next_id: u64,
     status: Status,
 }
 
@@ -91,7 +84,7 @@ impl ThreadWorker {
             waker,
             relays: HashMap::new(),
             epoll,
-            next_id: AtomicU64::new(1),
+            next_id: 1,
             status: Status::default(),
         })
     }
@@ -194,7 +187,8 @@ impl ThreadWorker {
         destination: Destination,
         start_notification: Option<oneshot::Sender<()>>,
     ) -> Result<u64, Error> {
-        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let id = self.next_id;
+        self.next_id += 1;
 
         let epoll_ev = EpollEvent::new(EpollFlags::EPOLLIN, id);
         self.epoll.add(&source, epoll_ev).context(error::AddEpollFdSnafu)?;
