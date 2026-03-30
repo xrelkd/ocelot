@@ -5,7 +5,6 @@ use nix::{
     fcntl::SpliceFFlags,
     poll::PollTimeout,
     sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags},
-    unistd,
 };
 use snafu::ResultExt;
 use tokio::sync::oneshot;
@@ -122,8 +121,7 @@ impl ThreadWorker {
     }
 
     fn handle_control_events(&mut self) -> bool {
-        let mut buf = [0u8; 8];
-        let _ = unistd::read(self.waker.as_ref(), &mut buf);
+        self.waker.consume();
 
         while let Ok(event) = self.event_sender.try_recv() {
             match event {

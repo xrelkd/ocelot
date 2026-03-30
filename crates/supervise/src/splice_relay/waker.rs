@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{mem::MaybeUninit, sync::Arc};
 
 use nix::{
     sys::eventfd::{EfdFlags, EventFd},
@@ -22,7 +22,7 @@ impl From<Arc<EventFd>> for Waker {
 }
 
 impl Waker {
-    const WAKE_MAGIC_NUMBER: u64 = 0xcafe_cafe;
+    const WAKE_BYTES: [u8; 8] = 0xC0DE_CAFE_C0DE_CAFEu64.to_ne_bytes();
 
     pub fn new() -> Result<Self, Error> {
         let event_fd =
@@ -32,8 +32,19 @@ impl Waker {
     }
 
     #[inline]
-    pub fn wake(&self) {
-        let data = const { Self::WAKE_MAGIC_NUMBER.to_ne_bytes() };
-        let _ = unistd::write(self.event_fd.as_ref(), &data);
+    pub fn wake(&self) { let _ = unistd::write(self.event_fd.as_ref(), &Self::WAKE_BYTES); }
+
+    #[inline]
+    pub fn consume(&self) {
+        let mut buf = MaybeUninit::<u64>::uninit();
+
+        #[expect(
+            unsafe_code,
+            reason = "The kernel will initialize the buffer memory via a system call before it is \
+                      accessed by Rust code."
+        )]
+        let slice = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr().cast::<u8>(), 8) };
+        let _ = unistd::read(self.as_ref(), slice);
+        debug_assert_eq!(slice, Self::WAKE_BYTES);
     }
 }
