@@ -2,7 +2,9 @@ use std::time::{Duration, Instant};
 
 use nix::unistd::Pid;
 
-use crate::supervisor::{Phase, RestartPolicy, dependency_registry::DependencyNotifier};
+use crate::supervisor::{
+    Phase, ProcessStatus, RestartPolicy, dependency_registry::DependencyNotifier,
+};
 
 pub struct State {
     spawned: Option<Pid>,
@@ -93,6 +95,7 @@ impl State {
 
     pub const fn phase(&self) -> Phase { self.phase }
 
+    #[cfg(test)]
     pub const fn ready(&self) -> bool { self.ready }
 
     pub fn shutdown_deadline_exceeded(&self) -> bool {
@@ -101,9 +104,20 @@ impl State {
 
     pub const fn clear_shutdown_deadline(&mut self) { self.shutdown_deadline = None; }
 
+    #[cfg(test)]
     pub const fn restart_count(&self) -> u32 { self.restart_count }
 
+    #[cfg(test)]
     pub const fn last_exit_code(&self) -> Option<i32> { self.last_exit_code }
+
+    pub const fn to_status(&self) -> ProcessStatus {
+        ProcessStatus {
+            phase: self.phase,
+            restart_count: self.restart_count,
+            last_exit_code: self.last_exit_code,
+            ready: self.ready,
+        }
+    }
 
     fn should_restart(&self, restart_policy: &RestartPolicy) -> bool {
         match restart_policy {

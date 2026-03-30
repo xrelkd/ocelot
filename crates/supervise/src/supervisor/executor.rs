@@ -7,7 +7,7 @@ use crate::{
     reaper::Reaper,
     splice_relay::Destination,
     supervisor::{
-        Phase, ProcessStatus,
+        Phase,
         config::Config,
         dependency_registry::DependencyRegistry,
         event::Event,
@@ -103,7 +103,7 @@ impl Executor {
                         tasks.schedule(cancel_token.clone(), &event_sender, interval, Event::Start);
                     }
                 }
-                (Event::LogReady, _) => {
+                (Event::LogReady, Phase::Running) => {
                     state.notify_log_ready();
                 }
                 (Event::Start, Phase::Pending | Phase::CrashLoopBackOff | Phase::Failed { .. }) => {
@@ -170,13 +170,7 @@ impl Executor {
                     }
                 }
                 (Event::GetStatus { resp }, _) => {
-                    let status = ProcessStatus {
-                        phase: state.phase(),
-                        restart_count: state.restart_count(),
-                        last_exit_code: state.last_exit_code(),
-                        ready: state.ready(),
-                    };
-                    let _ = resp.send(status);
+                    let _ = resp.send(state.to_status());
                 }
                 _ => {}
             }
