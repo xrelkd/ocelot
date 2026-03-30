@@ -35,9 +35,10 @@ members = [
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-serde      = { version = "1", features = ["derive"] }
-serde_with = { version = "3", features = ["macros"] }
-serde_yaml = "0.9"
+humantime-serde = "1"
+serde           = { version = "1", features = ["derive"] }
+serde_with      = { version = "3", features = ["macros"] }
+serde_yaml      = "0.9"
 
 futures = "0.3"
 tokio = { version = "1", features = [
@@ -71,6 +72,7 @@ procfs = "0.18"
 resolve-path = "0.1"
 shadow-rs = "1.7"
 snafu = "0.9"
+tempfile = "3"
 
 ocelot-entry      = { path = "./crates/entry" }
 ocelot-idle       = { path = "./crates/idle" }
