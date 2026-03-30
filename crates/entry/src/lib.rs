@@ -312,13 +312,13 @@ fn try_reap_process_blocking(pid: Pid) -> Result<Option<ReapedProcess>, Error> {
 
 #[inline]
 #[must_use]
-fn forward_data(src: &impl AsFd, dst: &impl AsFd) -> bool {
+fn forward_data(source: &impl AsFd, destination: &impl AsFd) -> bool {
     // 128KiB
     const BATCH_SIZE: usize = 128 * 1024;
     let flags =
         nix::fcntl::SpliceFFlags::SPLICE_F_MOVE | nix::fcntl::SpliceFFlags::SPLICE_F_NONBLOCK;
     loop {
-        match nix::fcntl::splice(src, None, dst, None, BATCH_SIZE, flags) {
+        match nix::fcntl::splice(source, None, destination, None, BATCH_SIZE, flags) {
             Ok(0) => return true,
             Ok(_) => {}
             Err(nix::Error::EAGAIN) => return false,
