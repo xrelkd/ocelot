@@ -3,6 +3,9 @@ mod destination;
 mod error;
 mod event;
 mod executor;
+mod relay_entry;
+mod relay_info;
+mod status;
 mod waker;
 
 #[cfg(test)]
@@ -13,10 +16,8 @@ use std::{os::unix::io::OwnedFd, sync::mpsc};
 use tokio::sync::oneshot;
 
 pub use self::{
-    config::Config,
-    destination::Destination,
-    error::Error,
-    event::{Event, RelayEntry, RelayInfo, Status},
+    config::Config, destination::Destination, error::Error, event::Event, relay_entry::RelayEntry,
+    relay_info::RelayInfo, status::Status,
 };
 use self::{executor::Executor, waker::Waker};
 

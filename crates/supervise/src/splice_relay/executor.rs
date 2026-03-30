@@ -19,10 +19,9 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::splice_relay::{
-    Destination, Waker,
+    Destination, Event, RelayEntry, RelayInfo, Status, Waker,
     config::Config,
     error::{self, Error},
-    event::{Event, RelayEntry, RelayInfo, Status},
 };
 
 const EVENT_FD_TOKEN: u64 = u64::MAX;
@@ -233,11 +232,7 @@ mod tests {
 
     use nix::{fcntl::OFlag, unistd::pipe2};
 
-    use crate::splice_relay::{
-        Destination,
-        config::Config,
-        event::{RelayEntry, RelayInfo, Status},
-    };
+    use crate::splice_relay::{Destination, RelayEntry, RelayInfo, Status, config::Config};
 
     fn create_pipe() -> (OwnedFd, OwnedFd) {
         let (r, w) = pipe2(OFlag::O_NONBLOCK).expect("pipe2 failed");
