@@ -69,7 +69,7 @@ impl Executor {
 
             match (event, state.phase()) {
                 (Event::Shutdown, Phase::Running) => {
-                    if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if let Some(pid) = state.process_id() {
                         let signal = config.shutdown_signal.unwrap_or(Signal::SIGTERM);
                         forward_signal(pid, signal);
                         state.set_shutting_down(config.termination_grace_period);
@@ -77,7 +77,7 @@ impl Executor {
                     break;
                 }
                 (Event::Shutdown, Phase::ShuttingDown) => {
-                    if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if let Some(pid) = state.process_id() {
                         forward_signal(pid, Signal::SIGKILL);
                     }
                     break;
@@ -96,9 +96,9 @@ impl Executor {
                 (Event::Start, Phase::Pending | Phase::CrashLoopBackOff | Phase::Failed { .. }) => {
                     state.set_starting();
                     match config.command().spawn().await {
-                        Ok(spawned @ SpawnedProcess { pid }) => {
+                        Ok(SpawnedProcess { pid, .. }) => {
                             tracing::info!("Started process `{}` with PID `{pid}`", config.name());
-                            state.set_running(spawned);
+                            state.set_running(pid);
                             tasks.wait_for_reap(
                                 cancel_token.clone(),
                                 &event_sender,
@@ -141,7 +141,7 @@ impl Executor {
                     }
                 }
                 (Event::LivenessChecked { should_kill }, _) => {
-                    if should_kill && let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if should_kill && let Some(pid) = state.process_id() {
                         // Send `SIGKILL` to kill the process and the process will be restarted
                         // while handling `Event::ProcessReaped`.
                         forward_signal(pid, Signal::SIGKILL);
@@ -156,7 +156,7 @@ impl Executor {
                     }
                 }
                 (Event::ForwardSignal { signal }, Phase::Running) => {
-                    if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if let Some(pid) = state.process_id() {
                         forward_signal(pid, signal);
                     }
                 }
@@ -173,7 +173,7 @@ impl Executor {
             }
 
             if matches!(state.phase(), Phase::ShuttingDown) && state.shutdown_deadline_exceeded() {
-                if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                if let Some(pid) = state.process_id() {
                     forward_signal(pid, Signal::SIGKILL);
                     tracing::warn!("Grace period exceeded, sending SIGKILL to process {pid}");
                 }

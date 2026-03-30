@@ -1,11 +1,11 @@
 pub mod config;
 pub mod dependency_registry;
-pub mod event;
-pub mod executor;
+mod event;
+mod executor;
 pub mod probe;
-pub mod spawned_process;
-pub mod state;
-pub mod task_runner;
+mod spawned_process;
+mod state;
+mod task_runner;
 
 use nix::sys::signal::Signal;
 use tokio::sync::{mpsc, oneshot};

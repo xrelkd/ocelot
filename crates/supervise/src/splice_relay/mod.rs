@@ -1,4 +1,5 @@
 mod config;
+mod destination;
 mod error;
 mod event;
 mod executor;
@@ -13,6 +14,7 @@ use tokio::sync::oneshot;
 
 pub use self::{
     config::Config,
+    destination::Destination,
     error::Error,
     event::{Event, RelayEntry, RelayInfo, Status},
 };
@@ -68,14 +70,27 @@ pub struct SpliceRelay {
 }
 
 impl SpliceRelay {
-    pub async fn register(&self, src: OwnedFd, dst: OwnedFd) -> Option<u64> {
-        let (sender, receiver) = oneshot::channel();
-        if let Err(err) = self.event_sender.send(Event::Register { src, dst, sender }) {
+    pub async fn register(
+        &self,
+        src: OwnedFd,
+        destination: Destination,
+    ) -> Option<(u64, oneshot::Receiver<()>)> {
+        let (id_sender, id_receiver) = oneshot::channel();
+        let (notify_sender, notify_receiver) = oneshot::channel();
+        if let Err(err) = self.event_sender.send(Event::Register {
+            source: src,
+            destination,
+            sender: id_sender,
+            start_notification: Some(notify_sender),
+        }) {
             tracing::warn!("{err}");
             None
         } else {
             self.waker.wake();
-            receiver.await.ok().flatten()
+            match id_receiver.await {
+                Ok(Some(id)) => Some((id, notify_receiver)),
+                _ => None,
+            }
         }
     }
 

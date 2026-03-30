@@ -8,16 +8,18 @@ use std::{
 };
 
 use nix::{
-    fcntl::{SpliceFFlags, splice},
+    fcntl,
+    fcntl::SpliceFFlags,
     poll::PollTimeout,
     sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags},
     unistd,
 };
 use snafu::ResultExt;
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::splice_relay::{
-    Waker,
+    Destination, Waker,
     config::Config,
     error::{self, Error},
     event::{Event, RelayEntry, RelayInfo, Status},
@@ -60,8 +62,7 @@ impl Executor {
         drop(event_sender.send(Event::Shutdown));
         waker.wake();
         let _unused = join_handle.join();
-        // FIXME: AI: write log message
-        tracing::info!("");
+        tracing::debug!("Worker thread shut down cleanly");
         Ok(())
     }
 }
@@ -139,8 +140,8 @@ impl ThreadWorker {
 
         while let Ok(event) = self.event_sender.try_recv() {
             match event {
-                Event::Register { src, dst, sender } => {
-                    let result = self.register(src, dst);
+                Event::Register { source: src, destination, sender, start_notification } => {
+                    let result = self.register(src, destination, start_notification);
                     let _unused = sender.send(result.ok());
                 }
                 Event::RemoveRelay { id } => {
@@ -162,33 +163,49 @@ impl ThreadWorker {
 
     fn handle_io_event(&mut self, token: u64) {
         let flags = SpliceFFlags::SPLICE_F_MOVE | SpliceFFlags::SPLICE_F_NONBLOCK;
-        if let Some(entry) = self.relays.get(&token) {
-            let result = splice(
-                &entry.source,
-                None,
-                &entry.destination,
-                None,
-                self.config.chunk_size,
-                flags,
-            );
-            match result {
-                Ok(0) => self.remove(entry.id),
-                Ok(n) => {
-                    self.status.bytes_transferred += n as u64;
+        // Determine if we need to remove this token, and possibly send notification.
+        let remove_id = {
+            if let Some(entry) = self.relays.get_mut(&token) {
+                let dst_fd: &dyn std::os::unix::io::AsFd = match &entry.destination {
+                    Destination::Stdout => &std::io::stdout(),
+                    Destination::Stderr => &std::io::stderr(),
+                    Destination::OwnedFd { fd } => fd,
+                };
+                let result =
+                    fcntl::splice(&entry.source, None, dst_fd, None, self.config.chunk_size, flags);
+                match result {
+                    Ok(0) => Some(entry.id),
+                    Ok(n) => {
+                        self.status.bytes_transferred += n as u64;
+                        if let Some(notify_sender) = entry.start_notification.take() {
+                            let _ = notify_sender.send(());
+                        }
+                        None
+                    }
+                    Err(nix::errno::Errno::EAGAIN) => None,
+                    Err(_) => Some(entry.id),
                 }
-                Err(nix::errno::Errno::EAGAIN) => {}
-                Err(_) => self.remove(entry.id),
+            } else {
+                None
             }
+        };
+        if let Some(id) = remove_id {
+            self.remove(id);
         }
     }
 
-    fn register(&mut self, src: OwnedFd, dst: OwnedFd) -> Result<u64, Error> {
+    fn register(
+        &mut self,
+        src: OwnedFd,
+        destination: Destination,
+        start_notification: Option<oneshot::Sender<()>>,
+    ) -> Result<u64, Error> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
 
         let epoll_ev = EpollEvent::new(EpollFlags::EPOLLIN, id);
         self.epoll.add(&src, epoll_ev).context(error::AddEpollFdSnafu)?;
 
-        let entry = RelayEntry::new(id, src, dst);
+        let entry = RelayEntry::new(id, src, destination, start_notification);
         let _unused = self.relays.insert(id, entry);
         self.status.active_relays = self.relays.len();
         self.status.total_added += 1;
@@ -218,6 +235,7 @@ mod tests {
     use nix::{fcntl::OFlag, unistd::pipe2};
 
     use crate::splice_relay::{
+        Destination,
         config::Config,
         event::{RelayEntry, RelayInfo, Status},
     };
@@ -265,7 +283,7 @@ mod tests {
     #[test]
     fn test_relay_entry_new() {
         let (src, dst) = create_pipe();
-        let entry = RelayEntry::new(42, src, dst);
+        let entry = RelayEntry::new(42, src, Destination::OwnedFd { fd: dst }, None);
         assert_eq!(entry.id, 42);
     }
 

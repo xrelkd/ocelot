@@ -5,7 +5,7 @@ use tokio::{sync::mpsc, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Error,
+    Error, SpliceRelayBuilder,
     error::CreateSignalHandlerSnafu,
     orchestrator::{OrchestratorConfig, event::Event},
     reaper::Reaper,
@@ -49,6 +49,8 @@ impl Executor {
             shutdown_timeout,
         } = self;
 
+        // FIXME: pass `splice_relay` to every supervisor.
+        let (_splice_relay, splice_relay_executor) = SpliceRelayBuilder::new().build().unwrap();
         let (reaper, reaper_executor) = Reaper::new();
         let cancel_token = CancellationToken::new();
         let dependency_registry = DependencyRegistry::new(1024);
@@ -71,7 +73,12 @@ impl Executor {
                 drop(reaper_executor.serve(cancel_token).await);
             }
         });
-
+        let _unused = tasks.spawn({
+            let cancel_token = cancel_token.clone();
+            async move {
+                drop(splice_relay_executor.serve(cancel_token).await);
+            }
+        });
         let _unused = tasks.spawn({
             let mut sigterm =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())

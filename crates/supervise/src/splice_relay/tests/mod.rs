@@ -8,7 +8,7 @@ use tokio::time;
 use tokio_util::sync::CancellationToken;
 
 use super::{Builder, SpliceRelay};
-use crate::splice_relay::Error;
+use crate::splice_relay::{Destination, Error};
 
 // Helper to create a non-blocking pipe pair
 fn create_pipe() -> (OwnedFd, OwnedFd) {
@@ -59,7 +59,11 @@ async fn test_register_success() {
     let test = TestExecutor::new().await;
 
     let (src, dst) = create_pipe();
-    let id = test.relay().register(src, dst).await.expect("register should succeed");
+    let (id, _notify_rx) = test
+        .relay()
+        .register(src, Destination::OwnedFd { fd: dst })
+        .await
+        .expect("register should succeed");
 
     assert!(id > 0, "Registered ID should be positive");
 
@@ -77,7 +81,11 @@ async fn test_register_multiple() {
     let mut ids = Vec::new();
     for _ in 0..3 {
         let (src, dst) = create_pipe();
-        let id = test.relay().register(src, dst).await.expect("register should succeed");
+        let (id, _notify_rx) = test
+            .relay()
+            .register(src, Destination::OwnedFd { fd: dst })
+            .await
+            .expect("register should succeed");
         ids.push(id);
     }
 
@@ -96,7 +104,11 @@ async fn test_remove_relay() {
     let test = TestExecutor::new().await;
 
     let (src, dst) = create_pipe();
-    let id = test.relay().register(src, dst).await.expect("register should succeed");
+    let (id, _notify_rx) = test
+        .relay()
+        .register(src, Destination::OwnedFd { fd: dst })
+        .await
+        .expect("register should succeed");
 
     test.relay().remove(id);
 
@@ -139,8 +151,16 @@ async fn test_get_status_after_operations() {
     let (src1, dst1) = create_pipe();
     let (src2, dst2) = create_pipe();
 
-    let id1 = test.relay().register(src1, dst1).await.expect("register 1 failed");
-    let _id2 = test.relay().register(src2, dst2).await.expect("register 2 failed");
+    let (id1, _notify_rx) = test
+        .relay()
+        .register(src1, Destination::OwnedFd { fd: dst1 })
+        .await
+        .expect("register 1 failed");
+    let _id2 = test
+        .relay()
+        .register(src2, Destination::OwnedFd { fd: dst2 })
+        .await
+        .expect("register 2 failed");
 
     let status1 = test.relay().get_status().await.expect("get_status failed");
     assert_eq!(status1.active_relays, 2);
@@ -175,9 +195,21 @@ async fn test_list_relays_with_entries() {
     let (src2, dst2) = create_pipe();
     let (src3, dst3) = create_pipe();
 
-    let id1 = test.relay().register(src1, dst1).await.expect("register 1 failed");
-    let id2 = test.relay().register(src2, dst2).await.expect("register 2 failed");
-    let _id3 = test.relay().register(src3, dst3).await.expect("register 3 failed");
+    let (id1, _notify_rx) = test
+        .relay()
+        .register(src1, Destination::OwnedFd { fd: dst1 })
+        .await
+        .expect("register 1 failed");
+    let (id2, _notify_rx) = test
+        .relay()
+        .register(src2, Destination::OwnedFd { fd: dst2 })
+        .await
+        .expect("register 2 failed");
+    let _id3 = test
+        .relay()
+        .register(src3, Destination::OwnedFd { fd: dst3 })
+        .await
+        .expect("register 3 failed");
 
     let list = test.relay().list().await;
     assert_eq!(list.len(), 3);
@@ -199,7 +231,7 @@ async fn test_register_after_shutdown() {
     test.cancel_token.cancel();
 
     let (src, dst) = create_pipe();
-    let result = test.relay().register(src, dst).await;
+    let result = test.relay().register(src, Destination::OwnedFd { fd: dst }).await;
     assert!(result.is_none(), "Register after shutdown should return None");
 
     // Clean up
@@ -245,15 +277,18 @@ async fn test_concurrent_registers() {
         let relay_clone = test.relay().clone();
         let handle = tokio::spawn(async move {
             let (src, dst) = create_pipe();
-            relay_clone.register(src, dst).await
+            let (id, _notify_rx) = relay_clone
+                .register(src, Destination::OwnedFd { fd: dst })
+                .await
+                .expect("register should succeed");
+            id
         });
         handles.push(handle);
     }
 
     let mut ids = Vec::new();
     for h in handles {
-        let result = h.await.expect("task should complete");
-        let id = result.expect("register should succeed");
+        let id = h.await.expect("task should complete");
         ids.push(id);
     }
 
@@ -278,7 +313,8 @@ async fn test_concurrent_register_and_remove() {
         let relay_clone = test.relay().clone();
         let h = tokio::spawn(async move {
             let (src, dst) = create_pipe();
-            let id = relay_clone.register(src, dst).await.unwrap();
+            let (id, _notify_rx) =
+                relay_clone.register(src, Destination::OwnedFd { fd: dst }).await.unwrap();
             time::sleep(Duration::from_millis(10)).await;
             relay_clone.remove(id);
             id
@@ -308,7 +344,7 @@ async fn test_list_during_concurrent_modifications() {
         let relay_clone = test.relay().clone();
         let h = tokio::spawn(async move {
             let (src, dst) = create_pipe();
-            relay_clone.register(src, dst).await.unwrap()
+            relay_clone.register(src, Destination::OwnedFd { fd: dst }).await.unwrap()
         });
         register_handles.push(h);
     }
@@ -325,7 +361,7 @@ async fn test_list_during_concurrent_modifications() {
     });
 
     for h in register_handles {
-        let _ = h.await.expect("register task failed");
+        drop(h.await.expect("register task failed"));
     }
 
     let list_counts: Vec<u64> = list_handle.await.expect("list task failed");
@@ -346,7 +382,8 @@ async fn test_status_tracks_add_remove() {
     let mut ids = Vec::new();
     for _ in 0..3 {
         let (src, dst) = create_pipe();
-        let id = test.relay().register(src, dst).await.unwrap();
+        let (id, _notify_rx) =
+            test.relay().register(src, Destination::OwnedFd { fd: dst }).await.unwrap();
         ids.push(id);
     }
 
@@ -379,7 +416,8 @@ async fn test_bytes_transferred_increments() {
     let (src_r, _src_w) = create_data_pipe(test_data);
     let (dst_r, dst_w) = create_pipe();
 
-    let id = test.relay().register(src_r, dst_w).await.unwrap();
+    let (id, _notify_rx) =
+        test.relay().register(src_r, Destination::OwnedFd { fd: dst_w }).await.unwrap();
 
     time::sleep(Duration::from_millis(50)).await;
 
@@ -407,17 +445,20 @@ async fn test_bytes_transferred_multiple_splices() {
 
     let (src1_r, _src1_w) = create_data_pipe(data1);
     let (dst1_r, dst1_w) = create_pipe();
-    let id1 = test.relay().register(src1_r, dst1_w).await.unwrap();
+    let (id1, _notify_rx) =
+        test.relay().register(src1_r, Destination::OwnedFd { fd: dst1_w }).await.unwrap();
     relays.push((id1, dst1_r, data1.len()));
 
     let (src2_r, _src2_w) = create_data_pipe(data2);
     let (dst2_r, dst2_w) = create_pipe();
-    let id2 = test.relay().register(src2_r, dst2_w).await.unwrap();
+    let (id2, _notify_rx) =
+        test.relay().register(src2_r, Destination::OwnedFd { fd: dst2_w }).await.unwrap();
     relays.push((id2, dst2_r, data2.len()));
 
     let (src3_r, _src3_w) = create_data_pipe(data3);
     let (dst3_r, dst3_w) = create_pipe();
-    let id3 = test.relay().register(src3_r, dst3_w).await.unwrap();
+    let (id3, _notify_rx) =
+        test.relay().register(src3_r, Destination::OwnedFd { fd: dst3_w }).await.unwrap();
     relays.push((id3, dst3_r, data3.len()));
 
     time::sleep(Duration::from_millis(150)).await;
@@ -446,7 +487,8 @@ async fn test_splice_eof_removes_relay() {
     let (src_r, src_w) = create_pipe();
     drop(src_w);
     let (_dst_r, dst_w) = create_pipe();
-    let id = test.relay().register(src_r, dst_w).await.unwrap();
+    let (id, _notify_rx) =
+        test.relay().register(src_r, Destination::OwnedFd { fd: dst_w }).await.unwrap();
 
     time::sleep(Duration::from_millis(50)).await;
 
@@ -464,7 +506,8 @@ async fn test_shutdown_during_active_splice() {
     let (src_r, _src_w) = create_data_pipe(&large_data);
     let (_dst_r, dst_w) = create_pipe();
 
-    let id = test.relay().register(src_r, dst_w).await.unwrap();
+    let (id, _notify_rx) =
+        test.relay().register(src_r, Destination::OwnedFd { fd: dst_w }).await.unwrap();
 
     test.relay().clone().shutdown();
     test.cancel_token.cancel();
@@ -473,6 +516,181 @@ async fn test_shutdown_during_active_splice() {
 
     let list = test.relay().list().await;
     assert!(!list.iter().any(|info| info.id == id), "Relay {id} should be removed after shutdown");
+
+    test.shutdown().await;
+}
+
+// ============== Destination Tests ==============
+
+#[tokio::test]
+async fn test_register_with_stdout() {
+    let test = TestExecutor::new().await;
+
+    let (src, _src_w) = create_pipe();
+    // Should succeed without panicking
+    let (id, _notify_rx) = test
+        .relay()
+        .register(src, Destination::Stdout)
+        .await
+        .expect("register with stdout should succeed");
+
+    assert!(id > 0, "Registered ID should be positive");
+
+    let list = test.relay().list().await;
+    assert_eq!(list.len(), 1, "Should have one relay");
+    assert_eq!(list[0].id, id);
+
+    test.shutdown().await;
+}
+
+#[tokio::test]
+async fn test_register_with_stderr() {
+    let test = TestExecutor::new().await;
+
+    let (src, _src_w) = create_pipe();
+    // Should succeed without panicking
+    let (id, _notify_rx) = test
+        .relay()
+        .register(src, Destination::Stderr)
+        .await
+        .expect("register with stderr should succeed");
+
+    assert!(id > 0, "Registered ID should be positive");
+
+    let list = test.relay().list().await;
+    assert_eq!(list.len(), 1, "Should have one relay");
+    assert_eq!(list[0].id, id);
+
+    test.shutdown().await;
+}
+
+#[tokio::test]
+async fn test_splice_to_stdout() {
+    let test = TestExecutor::new().await;
+
+    let test_data = b"Hello, stdout!";
+    let (src_r, _src_w) = create_data_pipe(test_data);
+
+    // Register relay to stdout
+    let (id, _notify_rx) = test.relay().register(src_r, Destination::Stdout).await.unwrap();
+
+    // Wait for data to be spliced
+    time::sleep(Duration::from_millis(50)).await;
+
+    // Remove the relay
+    test.relay().remove(id);
+
+    // Check bytes transferred status
+    let status = test.relay().get_status().await.unwrap();
+    assert_eq!(status.bytes_transferred, test_data.len() as u64);
+
+    test.shutdown().await;
+}
+
+#[tokio::test]
+async fn test_splice_to_stderr() {
+    let test = TestExecutor::new().await;
+
+    let test_data = b"Hello, stderr!";
+    let (src_r, _src_w) = create_data_pipe(test_data);
+
+    // Register relay to stderr
+    let (id, _notify_rx) = test.relay().register(src_r, Destination::Stderr).await.unwrap();
+
+    // Wait for data to be spliced
+    time::sleep(Duration::from_millis(50)).await;
+
+    // Remove the relay
+    test.relay().remove(id);
+
+    // Check bytes transferred status
+    let status = test.relay().get_status().await.unwrap();
+    assert_eq!(status.bytes_transferred, test_data.len() as u64);
+
+    test.shutdown().await;
+}
+
+// ============== Start Notification Tests ==============
+
+#[tokio::test]
+async fn test_start_notification_received() {
+    let test = TestExecutor::new().await;
+
+    let test_data = b"Test data for notification";
+    let (src_r, _src_w) = create_data_pipe(test_data);
+    let (_dst_r, dst_w) = create_pipe();
+
+    // Register with a start notification receiver
+    let (id, mut start_rx) = test
+        .relay()
+        .register(src_r, Destination::OwnedFd { fd: dst_w })
+        .await
+        .expect("register should succeed");
+
+    // Wait for data to be spliced
+    time::sleep(Duration::from_millis(50)).await;
+
+    // Now the notification should be received
+    start_rx.try_recv().expect("Should receive start notification");
+
+    // Remove the relay
+    test.relay().remove(id);
+    test.shutdown().await;
+}
+
+#[tokio::test]
+async fn test_start_notification_sent_only_once() {
+    let test = TestExecutor::new().await;
+
+    let test_data = b"Test data for single notification";
+    let (src_r, _src_w) = create_data_pipe(test_data);
+    let (_dst_r, dst_w) = create_pipe();
+
+    let (id, mut start_rx) = test
+        .relay()
+        .register(src_r, Destination::OwnedFd { fd: dst_w })
+        .await
+        .expect("register should succeed");
+
+    // Wait for first notification
+    time::sleep(Duration::from_millis(50)).await;
+    start_rx.try_recv().expect("Should receive first notification");
+
+    // Try to receive again - should be Err because sender was taken
+    assert!(start_rx.try_recv().is_err(), "Should not receive second notification");
+
+    test.relay().remove(id);
+    test.shutdown().await;
+}
+
+#[tokio::test]
+async fn test_start_notification_with_stdout() {
+    let test = TestExecutor::new().await;
+
+    let (src, _src_w) = create_pipe();
+    let (_id, mut start_rx) = test.relay().register(src, Destination::Stdout).await.unwrap();
+
+    // Wait for potential splice (there's no data, so no notification expected)
+    time::sleep(Duration::from_millis(30)).await;
+
+    // Since there's no data to splice, notification should not be sent
+    assert!(start_rx.try_recv().is_err(), "Should not receive notification without data");
+
+    test.shutdown().await;
+}
+
+#[tokio::test]
+async fn test_start_notification_with_stderr() {
+    let test = TestExecutor::new().await;
+
+    let (src, _src_w) = create_pipe();
+    let (_id, mut start_rx) = test.relay().register(src, Destination::Stderr).await.unwrap();
+
+    // Wait for potential splice (there's no data, so no notification expected)
+    time::sleep(Duration::from_millis(30)).await;
+
+    // Since there's no data to splice, notification should not be sent
+    assert!(start_rx.try_recv().is_err(), "Should not receive notification without data");
 
     test.shutdown().await;
 }
