@@ -21,3 +21,10 @@ result
 dist/
 .aider*
 .rumdl_cache/
+
+# OpenSpec & AI tool configuration directories (user-specific)
+.opencode/
+.claude/
+.gemini/
+.cursor/
+.codex/
