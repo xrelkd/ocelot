@@ -192,16 +192,16 @@ impl ThreadWorker {
 
     fn register(
         &mut self,
-        src: OwnedFd,
+        source: OwnedFd,
         destination: Destination,
         start_notification: Option<oneshot::Sender<()>>,
     ) -> Result<u64, Error> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
 
         let epoll_ev = EpollEvent::new(EpollFlags::EPOLLIN, id);
-        self.epoll.add(&src, epoll_ev).context(error::AddEpollFdSnafu)?;
+        self.epoll.add(&source, epoll_ev).context(error::AddEpollFdSnafu)?;
 
-        let entry = RelayEntry::new(id, src, destination, start_notification);
+        let entry = RelayEntry::new(id, source, destination, start_notification);
         let _unused = self.relays.insert(id, entry);
         self.status.active_relays = self.relays.len();
         self.status.total_added += 1;
