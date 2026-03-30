@@ -13,6 +13,8 @@ pub struct Command {
     args: Vec<OsString>,
     env: HashMap<OsString, OsString>,
     working_directory: Option<PathBuf>,
+    discard_stdout: bool,
+    discard_stderr: bool,
 }
 
 impl Command {
@@ -22,6 +24,8 @@ impl Command {
             args: vec![program.as_ref().to_os_string()],
             env: std::env::vars_os().collect(),
             working_directory: None,
+            discard_stdout: false,
+            discard_stderr: false,
         }
     }
 
@@ -69,6 +73,24 @@ impl Command {
         self.working_directory = Some(dir.as_ref().to_path_buf());
         self
     }
+
+    #[must_use]
+    pub const fn discard_stdout(mut self, discard: bool) -> Self {
+        self.discard_stdout = discard;
+        self
+    }
+
+    #[must_use]
+    pub const fn discard_stderr(mut self, discard: bool) -> Self {
+        self.discard_stderr = discard;
+        self
+    }
+
+    #[must_use]
+    pub const fn is_discard_stdout(&self) -> bool { self.discard_stdout }
+
+    #[must_use]
+    pub const fn is_discard_stderr(&self) -> bool { self.discard_stderr }
 
     /// Execute the command using execve, which replaces the current process
     /// image with the new.

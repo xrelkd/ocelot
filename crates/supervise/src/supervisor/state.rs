@@ -1,11 +1,11 @@
 use std::time::{Duration, Instant};
 
-use crate::supervisor::{
-    Phase, RestartPolicy, dependency_registry::DependencyNotifier, spawned_process::SpawnedProcess,
-};
+use nix::unistd::Pid;
+
+use crate::supervisor::{Phase, RestartPolicy, dependency_registry::DependencyNotifier};
 
 pub struct State {
-    spawned: Option<SpawnedProcess>,
+    spawned: Option<Pid>,
     phase: Phase,
     ready: bool,
     restart_count: u32,
@@ -56,7 +56,7 @@ impl State {
         self.shutdown_deadline = Some(Instant::now() + grace_period);
     }
 
-    pub fn set_running(&mut self, spawned: SpawnedProcess) {
+    pub fn set_running(&mut self, spawned: Pid) {
         self.spawned = Some(spawned);
         self.phase = Phase::Running;
         self.last_exit_code = None;
@@ -85,7 +85,11 @@ impl State {
         let _ = self.dependency_notifier.as_ref().map(|n| n.notify_completed(exit_code));
     }
 
-    pub const fn spawned(&self) -> Option<&SpawnedProcess> { self.spawned.as_ref() }
+    pub fn notify_log_ready(&self) {
+        let _ = self.dependency_notifier.as_ref().inspect(|n| n.notify_log_ready());
+    }
+
+    pub const fn process_id(&self) -> Option<Pid> { self.spawned }
 
     pub const fn phase(&self) -> Phase { self.phase }
 
@@ -142,7 +146,7 @@ mod tests {
         assert!(!state.ready());
         assert_eq!(state.restart_count(), 0);
         assert_eq!(state.last_exit_code(), None);
-        assert!(state.spawned().is_none());
+        assert!(state.process_id().is_none());
     }
 
     #[test]
@@ -150,7 +154,7 @@ mod tests {
         let mut state = State::default();
         state.set_starting();
         assert_eq!(state.phase(), Phase::Pending);
-        assert!(state.spawned().is_none());
+        assert!(state.process_id().is_none());
     }
 
     #[test]
@@ -186,7 +190,7 @@ mod tests {
         assert_eq!(state.phase(), Phase::Completed);
         assert_eq!(state.last_exit_code(), Some(0));
         assert!(!state.ready());
-        assert!(state.spawned().is_none());
+        assert!(state.process_id().is_none());
     }
 
     #[test]

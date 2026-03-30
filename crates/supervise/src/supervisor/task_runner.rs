@@ -1,10 +1,12 @@
-use std::time::Duration;
+use std::{os::fd::OwnedFd, time::Duration};
 
 use tokio::{sync::mpsc, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    reaper::{ReapedProcess, Reaper},
+    Reaper,
+    reaper::ReapedProcess,
+    splice_relay::{Destination, RelayRegistration, SpliceRelay},
     supervisor::{event::Event, probe::Probe},
 };
 
@@ -16,6 +18,15 @@ pub trait TaskRunner {
         reaper: &Reaper,
         pid: nix::unistd::Pid,
         termination_grace_period: Duration,
+    );
+
+    fn register_splice_relay(
+        &mut self,
+        cancel_token: CancellationToken,
+        event_sender: &mpsc::UnboundedSender<Event>,
+        relay: SpliceRelay,
+        source_fd: OwnedFd,
+        destination: Destination,
     );
 
     fn check_readiness(
@@ -65,6 +76,30 @@ impl TaskRunner for JoinSet<()> {
                 -1
             };
             drop(event_sender.send(Event::ProcessReaped { exit_code }));
+        });
+    }
+
+    fn register_splice_relay(
+        &mut self,
+        cancel_token: CancellationToken,
+        event_sender: &mpsc::UnboundedSender<Event>,
+        relay: SpliceRelay,
+        source_fd: OwnedFd,
+        destination: Destination,
+    ) {
+        let event_sender = event_sender.clone();
+        let fut = async move {
+            let res = relay.register(source_fd, destination).await;
+            if let Some(RelayRegistration { started, .. }) = res {
+                let _ = started.await;
+            }
+        };
+        let _unused = self.spawn(async move {
+            tokio::select! {
+                () = fut => {},
+                () = cancel_token.cancelled() => return,
+            }
+            drop(event_sender.send(Event::LogReady));
         });
     }
 

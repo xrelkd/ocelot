@@ -26,4 +26,7 @@ pub enum Error {
 
     #[snafu(display("Failed to receive dependency: {source}"))]
     ReceiveDependency { source: tokio::sync::broadcast::error::RecvError },
+
+    #[snafu(display("Failed to build splice relay, error: {source}"))]
+    BuildSpliceRelay { source: crate::splice_relay::Error },
 }

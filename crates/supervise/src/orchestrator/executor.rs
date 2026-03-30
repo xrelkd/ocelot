@@ -5,8 +5,7 @@ use tokio::{sync::mpsc, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Error,
-    error::CreateSignalHandlerSnafu,
+    Error, SpliceRelayBuilder, error,
     orchestrator::{OrchestratorConfig, event::Event},
     reaper::Reaper,
     supervisor::{Supervisor, SupervisorConfig, dependency_registry::DependencyRegistry},
@@ -49,6 +48,8 @@ impl Executor {
             shutdown_timeout,
         } = self;
 
+        let (splice_relay, splice_relay_executor) =
+            SpliceRelayBuilder::new().build().context(error::BuildSpliceRelaySnafu)?;
         let (reaper, reaper_executor) = Reaper::new();
         let cancel_token = CancellationToken::new();
         let dependency_registry = DependencyRegistry::new(1024);
@@ -57,8 +58,12 @@ impl Executor {
         let mut supervisors = HashMap::new();
         for supervisor in supervisor_configs {
             let name = supervisor.name().to_string();
-            let (supervisor, executor) =
-                Supervisor::new(supervisor, reaper.clone(), dependency_registry.clone());
+            let (supervisor, executor) = Supervisor::new(
+                supervisor,
+                reaper.clone(),
+                splice_relay.clone(),
+                dependency_registry.clone(),
+            );
             let _unused_supervisor = supervisors.insert(name.clone(), supervisor);
             supervisor_executors.push(executor);
         }
@@ -71,14 +76,19 @@ impl Executor {
                 drop(reaper_executor.serve(cancel_token).await);
             }
         });
-
+        let _unused = tasks.spawn({
+            let cancel_token = cancel_token.clone();
+            async move {
+                drop(splice_relay_executor.serve(cancel_token).await);
+            }
+        });
         let _unused = tasks.spawn({
             let mut sigterm =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .context(CreateSignalHandlerSnafu)?;
+                    .context(error::CreateSignalHandlerSnafu)?;
             let mut sigint =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-                    .context(CreateSignalHandlerSnafu)?;
+                    .context(error::CreateSignalHandlerSnafu)?;
             let event_sender = event_sender.clone();
             let cancel_token = cancel_token.clone();
             async move {

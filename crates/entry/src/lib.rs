@@ -174,7 +174,7 @@ where
         let wait_timeout = state.calculate_epoll_wait_timeout()?;
         let num_events = epoll.wait(&mut events, wait_timeout).context(error::WaitEpollSnafu)?;
 
-        for event in &events[..num_events] {
+        for event in events.iter().take(num_events) {
             match event.data() {
                 SIGNAL_TOKEN => {
                     handle_signal(&signal_fd, &mut state)?;

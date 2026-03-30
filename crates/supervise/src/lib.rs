@@ -2,6 +2,7 @@ mod command;
 mod error;
 mod orchestrator;
 mod reaper;
+mod splice_relay;
 mod supervisor;
 
 use nix::unistd;
@@ -12,6 +13,10 @@ pub use self::{
     error::Error,
     orchestrator::OrchestratorConfig,
     reaper::{ReapedProcess, Reaper, ReaperExecutor},
+    splice_relay::{
+        Builder as SpliceRelayBuilder, Config as SpliceRelayConfig, Error as SpliceRelayError,
+        RelayEntry, SpliceRelay, Status as RelayStatus,
+    },
     supervisor::{
         DependencyRegistry, Phase, ProcessStatus, RestartPolicy, Supervisor, SupervisorConfig,
         SupervisorExecutor, config as supervisor_config, probe as supervisor_probe,

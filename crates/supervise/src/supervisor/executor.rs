@@ -3,8 +3,9 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Error,
+    Error, SpliceRelay,
     reaper::Reaper,
+    splice_relay::Destination,
     supervisor::{
         Phase, ProcessStatus,
         config::Config,
@@ -22,6 +23,7 @@ pub struct Executor {
     event_sender: mpsc::UnboundedSender<Event>,
     event_receiver: mpsc::UnboundedReceiver<Event>,
     dependency_registry: DependencyRegistry,
+    splice_relay: SpliceRelay,
 }
 
 impl Executor {
@@ -32,8 +34,9 @@ impl Executor {
         event_sender: mpsc::UnboundedSender<Event>,
         event_receiver: mpsc::UnboundedReceiver<Event>,
         dependency_registry: DependencyRegistry,
+        splice_relay: SpliceRelay,
     ) -> Self {
-        Self { reaper, config, event_sender, event_receiver, dependency_registry }
+        Self { reaper, config, event_sender, event_receiver, dependency_registry, splice_relay }
     }
 
     /// Gracefully shuts down supervised processes by sending SIGTERM first,
@@ -51,7 +54,14 @@ impl Executor {
                   reduce readability and increase complexity"
     )]
     pub async fn run(self, cancel_token: CancellationToken) -> Result<(), Error> {
-        let Self { config, reaper, event_sender, mut event_receiver, dependency_registry } = self;
+        let Self {
+            config,
+            reaper,
+            event_sender,
+            mut event_receiver,
+            dependency_registry,
+            splice_relay,
+        } = self;
         let dependency_waiter = dependency_registry.create_waiter(config.depends_on.clone());
         let dependency_notifier = dependency_registry.create_notifier(&config.name);
         let mut state = State::new(dependency_notifier);
@@ -69,7 +79,7 @@ impl Executor {
 
             match (event, state.phase()) {
                 (Event::Shutdown, Phase::Running) => {
-                    if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if let Some(pid) = state.process_id() {
                         let signal = config.shutdown_signal.unwrap_or(Signal::SIGTERM);
                         forward_signal(pid, signal);
                         state.set_shutting_down(config.termination_grace_period);
@@ -77,7 +87,7 @@ impl Executor {
                     break;
                 }
                 (Event::Shutdown, Phase::ShuttingDown) => {
-                    if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if let Some(pid) = state.process_id() {
                         forward_signal(pid, Signal::SIGKILL);
                     }
                     break;
@@ -93,12 +103,35 @@ impl Executor {
                         tasks.schedule(cancel_token.clone(), &event_sender, interval, Event::Start);
                     }
                 }
+                (Event::LogReady, _) => {
+                    state.notify_log_ready();
+                }
                 (Event::Start, Phase::Pending | Phase::CrashLoopBackOff | Phase::Failed { .. }) => {
                     state.set_starting();
                     match config.command().spawn().await {
-                        Ok(spawned @ SpawnedProcess { pid }) => {
+                        Ok(SpawnedProcess { pid, stdout_fd, stderr_fd }) => {
                             tracing::info!("Started process `{}` with PID `{pid}`", config.name());
-                            state.set_running(spawned);
+                            state.set_running(pid);
+
+                            if let Some(stdout_fd) = stdout_fd {
+                                tasks.register_splice_relay(
+                                    cancel_token.clone(),
+                                    &event_sender,
+                                    splice_relay.clone(),
+                                    stdout_fd,
+                                    Destination::Stdout,
+                                );
+                            }
+                            if let Some(stderr_fd) = stderr_fd {
+                                tasks.register_splice_relay(
+                                    cancel_token.clone(),
+                                    &event_sender,
+                                    splice_relay.clone(),
+                                    stderr_fd,
+                                    Destination::Stderr,
+                                );
+                            }
+
                             tasks.wait_for_reap(
                                 cancel_token.clone(),
                                 &event_sender,
@@ -141,7 +174,7 @@ impl Executor {
                     }
                 }
                 (Event::LivenessChecked { should_kill }, _) => {
-                    if should_kill && let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if should_kill && let Some(pid) = state.process_id() {
                         // Send `SIGKILL` to kill the process and the process will be restarted
                         // while handling `Event::ProcessReaped`.
                         forward_signal(pid, Signal::SIGKILL);
@@ -156,7 +189,7 @@ impl Executor {
                     }
                 }
                 (Event::ForwardSignal { signal }, Phase::Running) => {
-                    if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if let Some(pid) = state.process_id() {
                         forward_signal(pid, signal);
                     }
                 }
@@ -173,7 +206,7 @@ impl Executor {
             }
 
             if matches!(state.phase(), Phase::ShuttingDown) && state.shutdown_deadline_exceeded() {
-                if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                if let Some(pid) = state.process_id() {
                     forward_signal(pid, Signal::SIGKILL);
                     tracing::warn!("Grace period exceeded, sending SIGKILL to process {pid}");
                 }
