@@ -225,10 +225,10 @@ async fn test_list_relays_with_entries() {
 async fn test_register_after_shutdown() {
     let test = TestExecutor::new().await;
 
-    // Manually trigger shutdown via the relay
-    test.relay().clone().shutdown();
-    // Also cancel token to let serve task exit cleanly eventually
+    // Cancel token to trigger shutdown
     test.cancel_token.cancel();
+    // Give executor time to shut down and close the channel
+    time::sleep(Duration::from_millis(50)).await;
 
     let (src, dst) = create_pipe();
     let result = test.relay().register(src, Destination::OwnedFd { fd: dst }).await;
@@ -244,8 +244,9 @@ async fn test_register_after_shutdown() {
 async fn test_get_status_send_error_after_shutdown() {
     let test = TestExecutor::new().await;
 
-    test.relay().clone().shutdown();
     test.cancel_token.cancel();
+    // Give executor time to shut down and close the channel
+    time::sleep(Duration::from_millis(50)).await;
 
     let status = test.relay().get_status().await;
     assert!(status.is_none(), "get_status after shutdown should return None");
@@ -257,7 +258,6 @@ async fn test_get_status_send_error_after_shutdown() {
 async fn test_list_send_error_after_shutdown() {
     let test = TestExecutor::new().await;
 
-    test.relay().clone().shutdown();
     test.cancel_token.cancel();
 
     let list = test.relay().list().await;
@@ -509,7 +509,6 @@ async fn test_shutdown_during_active_splice() {
     let (id, _notify_rx) =
         test.relay().register(src_r, Destination::OwnedFd { fd: dst_w }).await.unwrap();
 
-    test.relay().clone().shutdown();
     test.cancel_token.cancel();
 
     time::sleep(Duration::from_millis(50)).await;

@@ -123,10 +123,4 @@ impl SpliceRelay {
             Vec::new()
         }
     }
-
-    #[tracing::instrument(name = "SpliceRelay::shutdown", skip_all)]
-    pub fn shutdown(self) {
-        let _unused = self.event_sender.send(Event::Shutdown);
-        self.waker.wake();
-    }
 }
