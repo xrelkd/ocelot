@@ -16,7 +16,7 @@ pub use self::{
     dependency_registry::DependencyRegistry,
     executor::Executor as SupervisorExecutor,
 };
-use crate::Reaper;
+use crate::{Reaper, SpliceRelay};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Phase {
@@ -53,6 +53,7 @@ impl Supervisor {
     pub fn new(
         config: SupervisorConfig,
         reaper: Reaper,
+        splice_relay: SpliceRelay,
         dependency_registry: DependencyRegistry,
     ) -> (Self, SupervisorExecutor) {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
@@ -63,6 +64,7 @@ impl Supervisor {
             event_sender,
             event_receiver,
             dependency_registry,
+            splice_relay,
         );
         (handle, executor)
     }

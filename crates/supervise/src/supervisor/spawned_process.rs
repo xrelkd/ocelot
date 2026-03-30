@@ -11,7 +11,6 @@ use tokio::io::unix::AsyncFd;
 use crate::{Error, command::Command, error};
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct SpawnedProcess {
     pub pid: Pid,
     pub stdout_fd: Option<OwnedFd>,

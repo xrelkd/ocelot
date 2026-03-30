@@ -3,8 +3,9 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Error,
+    Error, SpliceRelay,
     reaper::Reaper,
+    splice_relay::Destination,
     supervisor::{
         Phase, ProcessStatus,
         config::Config,
@@ -22,6 +23,7 @@ pub struct Executor {
     event_sender: mpsc::UnboundedSender<Event>,
     event_receiver: mpsc::UnboundedReceiver<Event>,
     dependency_registry: DependencyRegistry,
+    splice_relay: SpliceRelay,
 }
 
 impl Executor {
@@ -32,8 +34,9 @@ impl Executor {
         event_sender: mpsc::UnboundedSender<Event>,
         event_receiver: mpsc::UnboundedReceiver<Event>,
         dependency_registry: DependencyRegistry,
+        splice_relay: SpliceRelay,
     ) -> Self {
-        Self { reaper, config, event_sender, event_receiver, dependency_registry }
+        Self { reaper, config, event_sender, event_receiver, dependency_registry, splice_relay }
     }
 
     /// Gracefully shuts down supervised processes by sending SIGTERM first,
@@ -51,7 +54,14 @@ impl Executor {
                   reduce readability and increase complexity"
     )]
     pub async fn run(self, cancel_token: CancellationToken) -> Result<(), Error> {
-        let Self { config, reaper, event_sender, mut event_receiver, dependency_registry } = self;
+        let Self {
+            config,
+            reaper,
+            event_sender,
+            mut event_receiver,
+            dependency_registry,
+            splice_relay,
+        } = self;
         let dependency_waiter = dependency_registry.create_waiter(config.depends_on.clone());
         let dependency_notifier = dependency_registry.create_notifier(&config.name);
         let mut state = State::new(dependency_notifier);
@@ -96,9 +106,30 @@ impl Executor {
                 (Event::Start, Phase::Pending | Phase::CrashLoopBackOff | Phase::Failed { .. }) => {
                     state.set_starting();
                     match config.command().spawn().await {
-                        Ok(SpawnedProcess { pid, .. }) => {
+                        Ok(SpawnedProcess { pid, stdout_fd, stderr_fd }) => {
                             tracing::info!("Started process `{}` with PID `{pid}`", config.name());
                             state.set_running(pid);
+
+                            // Register stdout with SpliceRelay if available
+                            if let Some(stdout_fd) = stdout_fd
+                                && splice_relay
+                                    .register(stdout_fd, Destination::Stdout)
+                                    .await
+                                    .is_none()
+                            {
+                                tracing::error!("Failed to register stdout with SpliceRelay");
+                            }
+
+                            // Register stderr with SpliceRelay if available
+                            if let Some(stderr_fd) = stderr_fd
+                                && splice_relay
+                                    .register(stderr_fd, Destination::Stderr)
+                                    .await
+                                    .is_none()
+                            {
+                                tracing::error!("Failed to register stderr with SpliceRelay");
+                            }
+
                             tasks.wait_for_reap(
                                 cancel_token.clone(),
                                 &event_sender,

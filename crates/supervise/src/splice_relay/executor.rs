@@ -27,7 +27,6 @@ use crate::splice_relay::{
 
 const EVENT_FD_TOKEN: u64 = u64::MAX;
 
-#[allow(dead_code)]
 pub struct Executor {
     config: Config,
     event_sender: mpsc::Sender<Event>,

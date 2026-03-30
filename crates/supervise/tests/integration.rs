@@ -2,8 +2,8 @@ use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use nix::sys::signal::{self, Signal};
 use ocelot_supervise::{
-    DependencyRegistry, OrchestratorConfig, Phase, Reaper, RestartPolicy, Supervisor,
-    SupervisorConfig, supervisor_config, supervisor_probe,
+    DependencyRegistry, OrchestratorConfig, Phase, Reaper, RestartPolicy, SpliceRelayBuilder,
+    Supervisor, SupervisorConfig, supervisor_config, supervisor_probe,
 };
 use ocelot_test_utils::{find_zombie_processes, run_in_namespace, supports_user_namespace};
 use tokio_util::sync::CancellationToken;
@@ -205,11 +205,13 @@ fn test_supervisor_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let dependency_registry = DependencyRegistry::new(1024);
+        let (splice_relay, splice_relay_executor) = SpliceRelayBuilder::new().build().unwrap();
         let (supervisor, supervisor_executor) =
-            Supervisor::new(config, reaper, dependency_registry);
+            Supervisor::new(config, reaper, splice_relay, dependency_registry);
         let cancel_token = CancellationToken::new();
 
         let _reaper_handle = rt.spawn(reaper_executor.serve(cancel_token.clone()));
+        let _splice_relay_handle = rt.spawn(splice_relay_executor.serve(cancel_token.clone()));
         let _supervisor_handle = rt.spawn(supervisor_executor.run(cancel_token.clone()));
 
         let supervisor_clone = supervisor.clone();
@@ -271,11 +273,13 @@ fn test_restart_policies() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let dependency_registry = DependencyRegistry::new(1024);
+        let (splice_relay, splice_relay_executor) = SpliceRelayBuilder::new().build().unwrap();
         let (supervisor, supervisor_executor) =
-            Supervisor::new(config, reaper, dependency_registry);
+            Supervisor::new(config, reaper, splice_relay, dependency_registry);
         let cancel_token = CancellationToken::new();
 
         let _reaper_handle = rt.spawn(reaper_executor.serve(cancel_token.clone()));
+        let _splice_relay_handle = rt.spawn(splice_relay_executor.serve(cancel_token.clone()));
         let _supervisor_handle = rt.spawn(supervisor_executor.run(cancel_token.clone()));
 
         let supervisor_clone = supervisor.clone();
@@ -317,11 +321,13 @@ fn test_restart_policies() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let dependency_registry = DependencyRegistry::new(1024);
+        let (splice_relay, splice_relay_executor) = SpliceRelayBuilder::new().build().unwrap();
         let (supervisor, supervisor_executor) =
-            Supervisor::new(config, reaper, dependency_registry);
+            Supervisor::new(config, reaper, splice_relay, dependency_registry);
         let cancel_token = CancellationToken::new();
 
         let _reaper_handle = rt.spawn(reaper_executor.serve(cancel_token.clone()));
+        let _splice_relay_handle = rt.spawn(splice_relay_executor.serve(cancel_token.clone()));
         let _supervisor_handle = rt.spawn(supervisor_executor.run(cancel_token.clone()));
 
         let supervisor_clone = supervisor.clone();
@@ -370,11 +376,13 @@ fn test_restart_policies() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let dependency_registry = DependencyRegistry::new(1024);
+        let (splice_relay, splice_relay_executor) = SpliceRelayBuilder::new().build().unwrap();
         let (supervisor, supervisor_executor) =
-            Supervisor::new(config, reaper, dependency_registry);
+            Supervisor::new(config, reaper, splice_relay, dependency_registry);
         let cancel_token = CancellationToken::new();
 
         let _reaper_handle = rt.spawn(reaper_executor.serve(cancel_token.clone()));
+        let _splice_relay_handle = rt.spawn(splice_relay_executor.serve(cancel_token.clone()));
         let _supervisor_handle = rt.spawn(supervisor_executor.run(cancel_token.clone()));
 
         let supervisor_clone = supervisor.clone();
