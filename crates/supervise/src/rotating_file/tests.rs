@@ -6,6 +6,7 @@ use std::{
 };
 
 use flate2::read::GzDecoder;
+use lzzzz::lz4f;
 use tempfile::tempdir;
 use tokio::{fs, io::AsyncWriteExt, time::sleep};
 
@@ -21,7 +22,7 @@ async fn test_size_rotation() -> std::io::Result<()> {
         max_files: None,
         max_age_days: None,
         mode: None,
-        compression: None,
+        compression: LogCompression::None,
     };
     let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
 
@@ -60,7 +61,7 @@ async fn test_max_files_cleanup() -> std::io::Result<()> {
         max_files: Some(2),
         max_age_days: None,
         mode: None,
-        compression: None,
+        compression: LogCompression::None,
     };
     let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
 
@@ -97,7 +98,7 @@ async fn test_max_age_deletion() -> std::io::Result<()> {
         max_files: None,
         max_age_days: Some(0),
         mode: None,
-        compression: None,
+        compression: LogCompression::None,
     };
 
     let rotated_timestamp =
@@ -134,7 +135,7 @@ async fn test_file_mode() -> std::io::Result<()> {
         max_files: None,
         max_age_days: None,
         mode: Some(0o600),
-        compression: None,
+        compression: LogCompression::None,
     };
     let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
 
@@ -164,7 +165,7 @@ async fn test_gzip_compression() -> std::io::Result<()> {
         max_files: None,
         max_age_days: None,
         mode: None,
-        compression: Some(LogCompression::Gzip),
+        compression: LogCompression::Gzip,
     };
     let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
 
@@ -197,6 +198,52 @@ async fn test_gzip_compression() -> std::io::Result<()> {
     let mut decompressed = Vec::new();
     let _unused = decoder.read_to_end(&mut decompressed)?;
     let decompressed_str = String::from_utf8(decompressed).expect("valid utf8");
+    assert_eq!(decompressed_str, "AAAAA");
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_lz4_compression() -> std::io::Result<()> {
+    let dir = tempdir()?;
+    let file_path = dir.path().join("log.txt");
+    let rotation = LogRotationConfig {
+        max_size_bytes: Some(10),
+        rotation_interval_secs: None,
+        max_files: None,
+        max_age_days: None,
+        mode: None,
+        compression: LogCompression::Lz4,
+    };
+    let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
+
+    // First write: 5 bytes (under threshold)
+    rf.write_all(&b"A".repeat(5)).await?;
+    assert_eq!(rf.current_size, 5);
+
+    // Second write: 10 bytes, triggers rotation before write because 5+10 > 10
+    rf.write_all(&b"B".repeat(10)).await?;
+    // After rotation and write, current_size should be 10 (the second write)
+    assert_eq!(rf.current_size, 10);
+
+    // Find the compressed rotated file (should contain the first 5 'A's)
+    let mut entries = fs::read_dir(dir.path()).await?;
+    let mut compressed_path = None;
+    while let Some(entry) = entries.next_entry().await? {
+        let name = entry.file_name();
+        if let Some(s) = name.to_str()
+            && s.starts_with("log.txt.")
+            && Path::new(s).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("lz4"))
+        {
+            compressed_path = Some(entry.path());
+            break;
+        }
+    }
+
+    let compressed_path = compressed_path.expect("compressed file should exist");
+    let compressed_data = fs::read(&compressed_path).await?;
+    let mut decompressed = Vec::new();
+    let n = lz4f::decompress_to_vec(&compressed_data, &mut decompressed)?;
+    let decompressed_str = String::from_utf8(decompressed[..n].to_vec()).expect("valid utf8");
     assert_eq!(decompressed_str, "AAAAA");
     Ok(())
 }

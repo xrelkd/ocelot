@@ -6,6 +6,7 @@ pub enum LogCompression {
     #[default]
     None,
     Gzip,
+    Lz4,
 }
 
 /// Destination for log output.
@@ -24,7 +25,7 @@ pub struct LogRotationConfig {
     pub max_files: Option<u32>,
     pub max_age_days: Option<u32>,
     pub mode: Option<u32>,
-    pub compression: Option<LogCompression>,
+    pub compression: LogCompression,
 }
 
 /// Configuration for a single log stream (stdout or stderr).
