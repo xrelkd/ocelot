@@ -5,8 +5,9 @@ use std::{
 };
 
 use clap::Subcommand;
+use snafu::ResultExt;
 
-use crate::{cli::init_tracing_subscriber, config, error::Error};
+use crate::{cli::init_tracing_subscriber, config, error, error::Error};
 
 #[derive(Clone, Copy, Eq, PartialEq, clap::ValueEnum)]
 pub enum OutputFormat {
@@ -45,7 +46,7 @@ pub fn run(
         Some(Commands::ConfigTemplate) => {
             std::io::stdout()
                 .write_all(config::SupervisorConfig::template_basic().as_slice())
-                .expect("Failed to write to stdout");
+                .context(error::WriteStdoutSnafu)?;
             Ok(0)
         }
         Some(Commands::Validate { file, output }) => Ok(validate_config(&file, output)),
@@ -87,13 +88,13 @@ fn print_error(e: &dyn std::fmt::Display, output: OutputFormat) {
     if output == OutputFormat::Human {
         eprintln!("{message}");
     } else {
-        let json = serde_json::json!({
+        match serde_json::to_string_pretty(&serde_json::json!({
             "valid": false,
-            "errors": [
-                {"message": message}
-            ]
-        });
-        eprintln!("{}", serde_json::to_string_pretty(&json).unwrap());
+            "errors": [{"message": message}]
+        })) {
+            Ok(json) => eprintln!("{json}"),
+            Err(_) => eprintln!("{{\"valid\":false,\"errors\":[{{\"message\":\"{message}\"}}]}}"),
+        }
     }
 }
 

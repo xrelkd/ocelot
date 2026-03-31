@@ -4,8 +4,9 @@ mod zombie_finder;
 use std::{io::Write, path::PathBuf, time::Duration};
 
 use clap::{CommandFactory, Parser, Subcommand};
+use snafu::ResultExt;
 
-use crate::{error::Error, shadow};
+use crate::{error, error::Error, shadow};
 
 #[derive(Parser)]
 #[command(
@@ -117,7 +118,7 @@ impl Cli {
             Some(Commands::Version) => {
                 std::io::stdout()
                     .write_all(Self::command().render_long_version().as_bytes())
-                    .expect("Failed to write to stdout");
+                    .context(error::WriteStdoutSnafu)?;
             }
             Some(Commands::Completions { shell }) => {
                 let mut app = Self::command();
