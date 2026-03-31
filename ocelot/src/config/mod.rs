@@ -6,7 +6,11 @@ mod restart;
 
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 
-use ocelot_supervise::{supervisor_config, supervisor_probe};
+use ocelot_supervise::{
+    LogCompression as SupLogCompression, LogDestination as SupLogDestination,
+    LogRotationConfig as SupLogRotationConfig, LogStreamConfig as SupLogStreamConfig,
+    supervisor_config, supervisor_probe,
+};
 use petgraph::{Direction, graph::DiGraph, stable_graph::StableDiGraph};
 use resolve_path::PathResolveExt;
 use serde::{Deserialize, Serialize};
@@ -20,6 +24,7 @@ pub use self::{
     process::ProcessConfig,
     restart::RestartPolicyConfig,
 };
+use crate::config::process::{LogCompression, LogConfig, LogDestination, LogStreamConfig};
 
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -178,7 +183,7 @@ impl SupervisorConfig {
 
 impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
     fn from(config: ProcessConfig) -> Self {
-        let termination_grace_period = Duration::from_secs(config.termination_grace_period_secs);
+        let termination_grace_period = config.termination_grace_period;
 
         let shutdown_signal = config.shutdown_signal.map(|s| s.to_signal());
 
@@ -190,6 +195,35 @@ impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
                 (name, supervisor_config::ProcessDependency { condition })
             })
             .collect();
+
+        // Map log configuration
+        let (log_stdout, log_stderr) = match config.log {
+            Some(LogConfig { stdout, stderr }) => {
+                let convert = |s: LogStreamConfig| -> SupLogStreamConfig {
+                    let dest = match s.destination {
+                        LogDestination::Null => SupLogDestination::Null,
+                        LogDestination::Inherit => SupLogDestination::Inherit,
+                        LogDestination::File { path } => SupLogDestination::File { path },
+                    };
+                    let rotation = s.rotation.map(|r| SupLogRotationConfig {
+                        max_size_bytes: r.max_size_bytes,
+                        rotation_interval_secs: r.rotation_interval.map(|d| d.as_secs()),
+                        max_files: r.max_files,
+                        max_age_days: r.max_age_days,
+                        mode: r.mode.and_then(|m| u32::from_str_radix(&m, 8).ok()),
+                        compression: r.compression.map(|c| match c {
+                            LogCompression::Gzip => SupLogCompression::Gzip,
+                        }),
+                    });
+                    SupLogStreamConfig { destination: dest, rotation }
+                };
+                (convert(stdout), convert(stderr))
+            }
+            None => (
+                SupLogStreamConfig { destination: SupLogDestination::Inherit, rotation: None },
+                SupLogStreamConfig { destination: SupLogDestination::Inherit, rotation: None },
+            ),
+        };
 
         Self {
             name: String::new(),
@@ -205,6 +239,8 @@ impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
             ),
             shutdown_signal,
             termination_grace_period,
+            log_stdout,
+            log_stderr,
         }
     }
 }
@@ -222,9 +258,9 @@ impl From<ProbeConfig> for supervisor_probe::Probe {
 
         Self {
             handler,
-            initial_delay: Duration::from_secs(config.initial_delay_secs),
-            period: Duration::from_secs(config.period_secs),
-            timeout: Duration::from_secs(config.timeout_secs),
+            initial_delay: config.initial_delay,
+            period: config.period,
+            timeout: config.timeout,
             failure_threshold: config.failure_threshold,
             success_threshold: config.success_threshold,
         }
@@ -247,12 +283,12 @@ impl From<RestartPolicyConfig> for supervisor_config::RestartPolicy {
     fn from(policy: RestartPolicyConfig) -> Self {
         match policy {
             RestartPolicyConfig::Never => Self::Never,
-            RestartPolicyConfig::Always { backoff_secs } => {
-                Self::Always { backoff: Duration::from_secs(backoff_secs.unwrap_or(2)) }
+            RestartPolicyConfig::Always { backoff } => {
+                Self::Always { backoff: backoff.unwrap_or(Duration::from_secs(2)) }
             }
-            RestartPolicyConfig::OnFailure { max_retries, backoff_secs } => Self::OnFailure {
+            RestartPolicyConfig::OnFailure { max_retries, backoff } => Self::OnFailure {
                 max_retries: max_retries.unwrap_or(u32::MAX),
-                backoff: Duration::from_secs(backoff_secs.unwrap_or(2)),
+                backoff: backoff.unwrap_or(Duration::from_secs(2)),
             },
         }
     }
@@ -264,8 +300,10 @@ const fn default_log_level() -> tracing::Level { tracing::Level::INFO }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use nix::sys::signal::Signal;
-    use ocelot_supervise::supervisor_config::DependencyCondition;
+    use ocelot_supervise::{LogDestination, supervisor_config::DependencyCondition};
 
     use crate::config::{
         ProcessConfig, RestartPolicyConfig, SupervisorConfig,
@@ -327,10 +365,10 @@ value: INVALID
     fn test_restart_policy_always_with_backoff() {
         let yaml = r"
 type: Always
-backoffSecs: 5
+backoff: 5s
 ";
         let policy: RestartPolicyConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(policy, RestartPolicyConfig::Always { backoff_secs: Some(5) });
+        assert_eq!(policy, RestartPolicyConfig::Always { backoff: Some(Duration::from_secs(5)) });
     }
 
     #[test]
@@ -338,12 +376,15 @@ backoffSecs: 5
         let yaml = r"
 type: OnFailure
 maxRetries: 10
-backoffSecs: 3
+backoff: 3s
 ";
         let policy: RestartPolicyConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(
             policy,
-            RestartPolicyConfig::OnFailure { max_retries: Some(10), backoff_secs: Some(3) }
+            RestartPolicyConfig::OnFailure {
+                max_retries: Some(10),
+                backoff: Some(Duration::from_secs(3))
+            }
         );
     }
 
@@ -351,7 +392,7 @@ backoffSecs: 3
     fn test_process_config_to_supervisor_config() {
         let yaml = r"
 program: /usr/bin/test
-terminationGracePeriodSecs: 30
+terminationGracePeriod: 30s
 ";
         let config: ProcessConfig = serde_yaml::from_str(yaml).unwrap();
         let supervisor_config: ocelot_supervise::SupervisorConfig = config.into();
@@ -462,14 +503,14 @@ processes:
     #[test]
     fn test_probe_config_tcp_socket() {
         let yaml = r"
-handler:
-  type: tcpSocket
-  port: 5432
-initialDelaySecs: 10
-";
+        handler:
+          type: tcpSocket
+          port: 5432
+        initialDelay: 10s
+        ";
         let config: ProbeConfig = serde_yaml::from_str(yaml).unwrap();
         assert!(matches!(config.handler, ProbeHandlerConfig::TcpSocket { port: 5432, .. }));
-        assert_eq!(config.initial_delay_secs, 10);
+        assert_eq!(config.initial_delay, Duration::from_secs(10));
     }
 
     #[test]
@@ -612,5 +653,26 @@ processes:
         assert!(db_sup.depends_on.is_empty());
         let cache_sup = supervisors.iter().find(|s| s.name == "cache").unwrap();
         assert!(cache_sup.depends_on.is_empty());
+    }
+
+    #[test]
+    fn test_backward_compatibility_no_log_field() {
+        // Verify that configs without the optional log field default to Inherit for
+        // both streams
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let supervisors = config.to_supervisors();
+        let app_sup = supervisors.iter().find(|s| s.name == "app").unwrap();
+
+        // Without log config, both stdout and stderr should default to Inherit
+        assert!(matches!(app_sup.log_stdout.destination, LogDestination::Inherit));
+        assert!(matches!(app_sup.log_stderr.destination, LogDestination::Inherit));
+        assert!(app_sup.log_stdout.rotation.is_none());
+        assert!(app_sup.log_stderr.rotation.is_none());
     }
 }
