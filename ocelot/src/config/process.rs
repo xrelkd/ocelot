@@ -1,7 +1,12 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr, time::Duration};
 
+use bytesize::ByteSize;
 use nix::sys::signal::Signal;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{MapAccess, Visitor},
+    ser::SerializeMap,
+};
 
 use crate::config::{
     dependency::DependencyConfig, probe::ProbeConfig, restart::RestartPolicyConfig,
@@ -37,8 +42,12 @@ pub struct ProcessConfig {
     #[serde(default)]
     pub arguments: Vec<String>,
 
-    #[serde(default)]
-    pub environment_variables: HashMap<String, String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_env_vars",
+        serialize_with = "serialize_env_vars"
+    )]
+    pub environment_variables: Vec<(String, String)>,
 
     pub working_directory: Option<String>,
 
@@ -62,6 +71,52 @@ pub struct ProcessConfig {
 }
 
 const fn default_termination_grace_period() -> Duration { Duration::from_secs(60) }
+
+impl ProcessConfig {
+    /// Returns the value of the given environment variable key, if present.
+    pub fn get_env(&self, key: &str) -> Option<&String> {
+        self.environment_variables.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
+    }
+}
+
+// Custom deserializer/serializer for environment_variables as Vec<(String,
+// String)> to preserve order and allow duplicate detection.
+fn deserialize_env_vars<'de, D>(deserializer: D) -> Result<Vec<(String, String)>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct VecVisitor;
+    impl<'de> Visitor<'de> for VecVisitor {
+        type Value = Vec<(String, String)>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a mapping of environment variables")
+        }
+
+        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let mut vec = Vec::new();
+            while let Some((key, value)) = map.next_entry()? {
+                vec.push((key, value));
+            }
+            Ok(vec)
+        }
+    }
+    deserializer.deserialize_map(VecVisitor)
+}
+
+fn serialize_env_vars<S>(vec: &Vec<(String, String)>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut map = serializer.serialize_map(Some(vec.len()))?;
+    for (k, v) in vec {
+        map.serialize_entry(k, v)?;
+    }
+    map.end()
+}
 
 /// Top-level logging configuration for a process.
 ///
@@ -96,8 +151,10 @@ pub enum LogDestination {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LogRotationConfig {
-    /// Maximum size in bytes before rotating. None means no size limit.
-    pub max_size_bytes: Option<u64>,
+    /// Maximum size in bytes before rotating. Accepts raw integers or
+    /// human-readable strings like "10MB", "1GB". None means no size limit.
+    #[serde(default)]
+    pub max_size_bytes: Option<ByteSize>,
     /// Time interval for rotation as a human-readable duration (e.g., "1h",
     /// "24h"). None means no time-based rotation.
     #[serde(default, with = "humantime_serde")]
@@ -142,6 +199,7 @@ pub enum LogCompression {
 mod tests {
     use std::time::Duration;
 
+    use bytesize::ByteSize;
     use nix::sys::signal::Signal;
 
     use crate::config::process::{LogRotationConfig, ProcessConfig, ShutdownSignalConfig};
@@ -234,7 +292,7 @@ terminationGracePeriod: 30s
         let config: ProcessConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.program, "/usr/bin/myapp");
         assert_eq!(config.arguments, vec!["--config", "/etc/config.yaml"]);
-        assert_eq!(config.environment_variables.get("LOG_LEVEL"), Some(&"debug".to_string()));
+        assert_eq!(config.get_env("LOG_LEVEL"), Some(&"debug".to_string()));
         assert_eq!(config.working_directory, Some("/app".to_string()));
         assert_eq!(config.termination_grace_period, Duration::from_secs(30));
     }
@@ -247,8 +305,46 @@ rotationInterval: 24h
 maxFiles: 7
 ";
         let config: LogRotationConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.max_size_bytes, Some(10_485_760));
+        assert_eq!(config.max_size_bytes, Some(ByteSize::b(10_485_760)));
         assert_eq!(config.rotation_interval, Some(Duration::from_secs(86400)));
         assert_eq!(config.max_files, Some(7));
+    }
+
+    #[test]
+    fn test_size_human_readable_mb() {
+        let yaml = r"
+maxSizeBytes: 10MB
+rotationInterval: 24h
+maxFiles: 7
+";
+        let config: LogRotationConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.max_size_bytes, Some(ByteSize::mb(10)));
+    }
+
+    #[test]
+    fn test_size_human_readable_gb() {
+        let yaml = r"
+maxSizeBytes: 1GB
+";
+        let config: LogRotationConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.max_size_bytes, Some(ByteSize::gb(1)));
+    }
+
+    #[test]
+    fn test_size_human_readable_kb() {
+        let yaml = r"
+maxSizeBytes: 512KB
+";
+        let config: LogRotationConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.max_size_bytes, Some(ByteSize::kb(512)));
+    }
+
+    #[test]
+    fn test_size_invalid_format() {
+        let yaml = r"
+maxSizeBytes: not_a_size
+";
+        let result: Result<LogRotationConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
     }
 }

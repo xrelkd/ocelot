@@ -8,6 +8,12 @@ use clap::Subcommand;
 
 use crate::{cli::init_tracing_subscriber, config, error::Error};
 
+#[derive(Clone, Copy, Eq, PartialEq, clap::ValueEnum)]
+pub enum OutputFormat {
+    Human,
+    Json,
+}
+
 #[derive(Clone, Subcommand)]
 pub enum Commands {
     #[clap(visible_alias = "r", about = "Run supervisor with configuration file")]
@@ -21,6 +27,13 @@ pub enum Commands {
 
     #[clap(about = "Output the configuration template in YAML format")]
     ConfigTemplate,
+
+    #[clap(about = "Validate the configuration file")]
+    Validate {
+        file: PathBuf,
+        #[clap(long, default_value = "human")]
+        output: OutputFormat,
+    },
 }
 
 pub fn run(
@@ -35,6 +48,7 @@ pub fn run(
                 .expect("Failed to write to stdout");
             Ok(0)
         }
+        Some(Commands::Validate { file, output }) => Ok(validate_config(&file, output)),
         Some(Commands::Run { file, log_level }) => run_supervisor(file, log_level),
         None => {
             let file = file.ok_or_else(|| Error::InvalidArgument {
@@ -42,6 +56,44 @@ pub fn run(
             })?;
             run_supervisor(file, log_level)
         }
+    }
+}
+
+fn validate_config(file: &PathBuf, output: OutputFormat) -> i32 {
+    // Load config
+    let cfg = match config::SupervisorConfig::load(file) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            print_error(&e, output);
+            return 1;
+        }
+    };
+    // Validate
+    if let Err(e) = cfg.validate() {
+        print_error(&e, output);
+        return 1;
+    }
+    // Success
+    if output == OutputFormat::Human {
+        println!("Configuration is valid");
+    } else {
+        println!("{{\"valid\":true}}");
+    }
+    0
+}
+
+fn print_error(e: &dyn std::fmt::Display, output: OutputFormat) {
+    let message = e.to_string();
+    if output == OutputFormat::Human {
+        eprintln!("{message}");
+    } else {
+        let json = serde_json::json!({
+            "valid": false,
+            "errors": [
+                {"message": message}
+            ]
+        });
+        eprintln!("{}", serde_json::to_string_pretty(&json).unwrap());
     }
 }
 
