@@ -57,6 +57,7 @@ tokio-util = { version = "0.7" }
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 exitcode = "1"
+flate2 = { version = "1", features = ["rust_backend"] }
 nix = { version = "0.31", features = [
   "event",
   "fs",
@@ -70,7 +71,7 @@ nix = { version = "0.31", features = [
 petgraph = "0.8"
 procfs = "0.18"
 resolve-path = "0.1"
-shadow-rs = "1.7"
+shadow-rs = "1"
 snafu = "0.9"
 tempfile = "3"
 
