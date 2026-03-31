@@ -9,7 +9,7 @@ pub enum Error {
     #[snafu(display("Failed to open config file: {}", filename.display()))]
     OpenConfig { filename: std::path::PathBuf, source: std::io::Error },
 
-    #[snafu(display("Failed to parse config file: {}", filename.display()))]
+    #[snafu(display("Failed to parse config file: {}, error: {source}", filename.display()))]
     ParseConfig { filename: std::path::PathBuf, source: serde_yaml::Error },
 
     #[snafu(display("Configuration validation failed: {source}"))]
