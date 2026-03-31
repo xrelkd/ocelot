@@ -23,6 +23,8 @@ nix   = { workspace = true }
 snafu = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
+
 ocelot-test-utils = { workspace = true }
 
 [lints]

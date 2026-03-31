@@ -7,7 +7,7 @@ use crate::{
     reaper::Reaper,
     splice_relay::Destination,
     supervisor::{
-        Phase,
+        LogDestination, Phase,
         config::Config,
         dependency_registry::DependencyRegistry,
         event::Event,
@@ -220,23 +220,64 @@ impl ProcessSpawnContext<'_> {
         tracing::info!("Started process `{}` with PID `{pid}`", config.name());
         state.set_running(pid);
 
+        // Handle stdout logging based on config
         if let Some(stdout_fd) = stdout_fd {
-            tasks.register_splice_relay(
-                cancel_token.clone(),
-                event_sender,
-                splice_relay.clone(),
-                stdout_fd,
-                Destination::Stdout,
-            );
+            match config.log_stdout.destination {
+                LogDestination::Inherit => {
+                    tasks.register_splice_relay(
+                        cancel_token.clone(),
+                        event_sender,
+                        splice_relay.clone(),
+                        stdout_fd,
+                        Destination::Stdout,
+                    );
+                }
+                LogDestination::File { path: _ } => {
+                    if let LogDestination::File { path } = &config.log_stdout.destination {
+                        tasks.register_file_logging(
+                            cancel_token.clone(),
+                            event_sender,
+                            stdout_fd,
+                            path,
+                            config.log_stdout.rotation.clone(),
+                        );
+                    }
+                }
+                LogDestination::Null => {
+                    // Should not happen: stdout_fd exists but destination Null means it should be
+                    // discarded.
+                    tracing::warn!("stdout_fd present but log destination is Null; ignoring");
+                }
+            }
         }
+
+        // Handle stderr logging based on config
         if let Some(stderr_fd) = stderr_fd {
-            tasks.register_splice_relay(
-                cancel_token.clone(),
-                event_sender,
-                splice_relay,
-                stderr_fd,
-                Destination::Stderr,
-            );
+            match config.log_stderr.destination {
+                LogDestination::Inherit => {
+                    tasks.register_splice_relay(
+                        cancel_token.clone(),
+                        event_sender,
+                        splice_relay,
+                        stderr_fd,
+                        Destination::Stderr,
+                    );
+                }
+                LogDestination::File { path: _ } => {
+                    if let LogDestination::File { path } = &config.log_stderr.destination {
+                        tasks.register_file_logging(
+                            cancel_token.clone(),
+                            event_sender,
+                            stderr_fd,
+                            path,
+                            config.log_stderr.rotation.clone(),
+                        );
+                    }
+                }
+                LogDestination::Null => {
+                    tracing::warn!("stderr_fd present but log destination is Null; ignoring");
+                }
+            }
         }
 
         tasks.wait_for_reap(
@@ -257,7 +298,7 @@ impl ProcessSpawnContext<'_> {
 
 fn forward_signal(pid: Pid, signal: Signal) {
     tracing::info!("Sending signal {signal:?} to process {pid}");
-    if let Err(e) = nix::sys::signal::kill(pid, signal) {
-        tracing::warn!("Failed to send signal to process: {}", e);
+    if let Err(err) = nix::sys::signal::kill(pid, signal) {
+        tracing::warn!("Failed to send signal to process: {err}");
     }
 }

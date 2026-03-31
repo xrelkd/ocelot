@@ -2,6 +2,7 @@ mod command;
 mod error;
 mod orchestrator;
 mod reaper;
+mod rotating_file;
 mod splice_relay;
 mod supervisor;
 
@@ -18,8 +19,12 @@ pub use self::{
         RelayEntry, SpliceRelay, Status as RelayStatus,
     },
     supervisor::{
-        DependencyRegistry, Phase, ProcessStatus, RestartPolicy, Supervisor, SupervisorConfig,
-        SupervisorExecutor, config as supervisor_config, probe as supervisor_probe,
+        DependencyRegistry, LogDestination, LogRotationConfig, LogStreamConfig, Phase,
+        ProcessStatus, RestartPolicy, Supervisor, SupervisorConfig, SupervisorExecutor,
+        config as supervisor_config,
+        config::{DependencyCondition, ProcessDependency},
+        probe as supervisor_probe,
+        probe::{Probe, ProbeHandler},
     },
 };
 use crate::orchestrator::Orchestrator;

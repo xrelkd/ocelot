@@ -2,6 +2,7 @@ pub mod config;
 pub mod dependency_registry;
 mod event;
 mod executor;
+mod log_config;
 pub mod probe;
 mod spawned_process;
 mod state;
@@ -15,6 +16,7 @@ pub use self::{
     config::{Config as SupervisorConfig, RestartPolicy},
     dependency_registry::DependencyRegistry,
     executor::Executor as SupervisorExecutor,
+    log_config::{LogDestination, LogRotationConfig, LogStreamConfig},
 };
 use crate::{Reaper, SpliceRelay};
 

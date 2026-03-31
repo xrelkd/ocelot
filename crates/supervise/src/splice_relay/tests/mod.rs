@@ -7,8 +7,7 @@ use nix::{
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use super::{Builder, SpliceRelay};
-use crate::splice_relay::{Destination, Error, RelayRegistration};
+use crate::splice_relay::{Builder, Destination, Error, RelayRegistration, SpliceRelay};
 
 // Helper to create a non-blocking pipe pair
 fn create_pipe() -> (OwnedFd, OwnedFd) {
