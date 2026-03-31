@@ -3,12 +3,9 @@ mod error;
 mod probe;
 mod process;
 mod restart;
+mod utils;
 
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    time::Duration,
-};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use ocelot_supervise::{
     LogCompression as SupLogCompression, LogDestination as SupLogDestination,
@@ -196,7 +193,7 @@ impl SupervisorConfig {
                 });
             };
             // Extract a cycle from this SCC using DFS
-            find_cycle_in_scc(&graph, &scc, node).map_or_else(
+            utils::find_cycle_in_scc(&graph, &scc, node).map_or_else(
                 || {
                     Err(Error::Validate {
                         source: ValidationError::CyclicDependency { cycle: vec![node_name] },
@@ -336,59 +333,6 @@ impl From<RestartPolicyConfig> for supervisor_config::RestartPolicy {
 const fn default_shutdown_timeout_secs() -> u64 { 60 }
 
 const fn default_log_level() -> tracing::Level { tracing::Level::INFO }
-
-/// Find a cycle within the given strongly connected component starting from
-/// `start`. Returns a list of node indices representing the cycle,
-/// where the first and last nodes are the same (the cycle is closed).
-fn find_cycle_in_scc(
-    graph: &DiGraph<String, ()>,
-    scc: &[petgraph::graph::NodeIndex],
-    start: petgraph::graph::NodeIndex,
-) -> Option<Vec<petgraph::graph::NodeIndex>> {
-    let scc_set: HashSet<_> = scc.iter().copied().collect();
-    let mut stack = Vec::new();
-    let mut on_stack = HashSet::new();
-    let mut visited = HashSet::new();
-
-    stack.push(start);
-    let _ = on_stack.insert(start);
-    let _ = visited.insert(start);
-
-    while let Some(&node) = stack.last() {
-        // Explore neighbors within the SCC
-        let mut found_next = false;
-        for neighbor in graph.neighbors_directed(node, Direction::Outgoing) {
-            if !scc_set.contains(&neighbor) {
-                continue;
-            }
-            if visited.insert(neighbor) {
-                stack.push(neighbor);
-                let _ = on_stack.insert(neighbor);
-                found_next = true;
-                break;
-            } else if on_stack.contains(&neighbor) {
-                // Back edge found: node -> neighbor, and neighbor is on the current DFS stack.
-                // Cycle: neighbor -> ... -> node -> neighbor.
-                // Collect nodes from stack from neighbor to node.
-                let mut cycle = Vec::new();
-                for &idx in stack.iter().rev() {
-                    cycle.push(idx);
-                    if idx == neighbor {
-                        break;
-                    }
-                }
-                cycle.reverse(); // now from neighbor to node
-                cycle.push(neighbor); // close the cycle
-                return Some(cycle);
-            }
-        }
-        if !found_next {
-            let _ = stack.pop();
-            let _ = on_stack.remove(&node);
-        }
-    }
-    None
-}
 
 #[cfg(test)]
 mod tests {
