@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bytesize",
  "clap",
@@ -936,7 +936,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-entry"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "nix",
  "ocelot-test-utils",
@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-idle"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "nix",
  "ocelot-test-utils",
@@ -956,7 +956,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-supervise"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "flate2",
  "futures",
@@ -971,7 +971,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-test-utils"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "nix",
  "procfs",
@@ -979,7 +979,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-zombie"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "nix",
  "snafu",
