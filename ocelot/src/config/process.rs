@@ -63,6 +63,21 @@ pub struct ProcessConfig {
 
 const fn default_termination_grace_period() -> Duration { Duration::from_secs(60) }
 
+/// Top-level logging configuration for a process.
+///
+/// Contains separate configurations for stdout and stderr streams.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LogConfig {
+    /// Configuration for standard output.
+    #[serde(default)]
+    pub stdout: LogStreamConfig,
+
+    /// Configuration for standard error.
+    #[serde(default)]
+    pub stderr: LogStreamConfig,
+}
+
 // Log configuration types
 /// Destination for log output.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -112,16 +127,8 @@ pub struct LogStreamConfig {
     pub rotation: Option<LogRotationConfig>,
 }
 
-/// Top-level logging configuration for a process.
-///
-/// Contains separate configurations for stdout and stderr streams.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LogConfig {
-    /// Configuration for standard output.
-    pub stdout: LogStreamConfig,
-    /// Configuration for standard error.
-    pub stderr: LogStreamConfig,
+impl Default for LogStreamConfig {
+    fn default() -> Self { Self { destination: LogDestination::Inherit, rotation: None } }
 }
 
 /// Compression algorithm for rotated log files.
