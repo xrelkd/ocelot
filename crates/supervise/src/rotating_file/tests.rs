@@ -6,7 +6,7 @@ use std::{
 };
 
 use flate2::read::GzDecoder;
-use lzzzz::lz4f;
+use lz4_flex::frame::FrameDecoder as Lz4FrameDecoder;
 use tempfile::tempdir;
 use tokio::{fs, io::AsyncWriteExt, time::sleep};
 
@@ -241,9 +241,10 @@ async fn test_lz4_compression() -> std::io::Result<()> {
 
     let compressed_path = compressed_path.expect("compressed file should exist");
     let compressed_data = fs::read(&compressed_path).await?;
+    let mut decoder = Lz4FrameDecoder::new(&compressed_data[..]);
     let mut decompressed = Vec::new();
-    let n = lz4f::decompress_to_vec(&compressed_data, &mut decompressed)?;
-    let decompressed_str = String::from_utf8(decompressed[..n].to_vec()).expect("valid utf8");
+    let _ = decoder.read_to_end(&mut decompressed)?;
+    let decompressed_str = String::from_utf8(decompressed).expect("valid utf8");
     assert_eq!(decompressed_str, "AAAAA");
     Ok(())
 }

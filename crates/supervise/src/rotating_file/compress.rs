@@ -4,7 +4,7 @@ use std::{
 };
 
 use flate2::write::GzEncoder;
-use lzzzz::lz4f;
+use lz4_flex::frame::FrameEncoder as Lz4FrameEncoder;
 
 pub fn compress_gzip<R: Read, W: Write>(source: &mut R, destination: &mut W) -> io::Result<()> {
     let mut encoder = GzEncoder::new(destination, flate2::Compression::default());
@@ -14,8 +14,8 @@ pub fn compress_gzip<R: Read, W: Write>(source: &mut R, destination: &mut W) -> 
 }
 
 pub fn compress_lz4<R: Read, W: Write>(source: &mut R, destination: &mut W) -> io::Result<()> {
-    let mut compressor = lz4f::WriteCompressor::new(destination, lz4f::Preferences::default())?;
+    let mut compressor = Lz4FrameEncoder::new(destination);
     let _ = io::copy(source, &mut compressor)?;
-    compressor.flush()?;
+    let _ = compressor.finish()?;
     Ok(())
 }
