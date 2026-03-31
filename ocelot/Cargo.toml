@@ -13,11 +13,16 @@ categories.workspace   = true
 keywords.workspace     = true
 
 [dependencies]
-serde      = { workspace = true }
-serde_yaml = { workspace = true }
-
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+bytesize        = { workspace = true }
+humantime-serde = { workspace = true }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+serde_valid     = { workspace = true }
+serde_with      = { workspace = true }
+serde_yaml      = { workspace = true }
 
 tokio = { workspace = true }
 

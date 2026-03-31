@@ -1,8 +1,7 @@
+use std::io;
+
 use snafu::Snafu;
 
-// RATIONALE: Variant names are intentionally verbose to match error types from
-// different sub-crates, making the error source clear.
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
@@ -26,6 +25,9 @@ pub enum Error {
 
     #[snafu(display("{message}"))]
     InvalidArgument { message: String },
+
+    #[snafu(display("Failed to write to stdout, error: {source}"))]
+    WriteStdout { source: io::Error },
 }
 
 impl From<ocelot_idle::Error> for Error {

@@ -1,12 +1,13 @@
-use nix::sys::signal::Signal;
+use nix::{sys::signal::Signal, unistd::Pid};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Error,
+    Error, SpliceRelay,
     reaper::Reaper,
+    splice_relay::Destination,
     supervisor::{
-        Phase, ProcessStatus,
+        LogDestination, Phase,
         config::Config,
         dependency_registry::DependencyRegistry,
         event::Event,
@@ -22,6 +23,7 @@ pub struct Executor {
     event_sender: mpsc::UnboundedSender<Event>,
     event_receiver: mpsc::UnboundedReceiver<Event>,
     dependency_registry: DependencyRegistry,
+    splice_relay: SpliceRelay,
 }
 
 impl Executor {
@@ -32,8 +34,9 @@ impl Executor {
         event_sender: mpsc::UnboundedSender<Event>,
         event_receiver: mpsc::UnboundedReceiver<Event>,
         dependency_registry: DependencyRegistry,
+        splice_relay: SpliceRelay,
     ) -> Self {
-        Self { reaper, config, event_sender, event_receiver, dependency_registry }
+        Self { reaper, config, event_sender, event_receiver, dependency_registry, splice_relay }
     }
 
     /// Gracefully shuts down supervised processes by sending SIGTERM first,
@@ -44,12 +47,21 @@ impl Executor {
     ///
     /// Returns an error if signal handlers cannot be created or if there are
     /// issues with task spawning.
-    // RATIONALE: This is the main event loop containing the core state machine.
-    // Refactoring would require extracting the match arms into separate functions
-    // which would reduce readability and increase complexity.
-    #[allow(clippy::too_many_lines)]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "This is the main event loop containing the core state machine; refactoring \
+                  would require extracting the match arms into separate functions which would \
+                  reduce readability and increase complexity"
+    )]
     pub async fn run(self, cancel_token: CancellationToken) -> Result<(), Error> {
-        let Self { config, reaper, event_sender, mut event_receiver, dependency_registry } = self;
+        let Self {
+            config,
+            reaper,
+            event_sender,
+            mut event_receiver,
+            dependency_registry,
+            splice_relay,
+        } = self;
         let dependency_waiter = dependency_registry.create_waiter(config.depends_on.clone());
         let dependency_notifier = dependency_registry.create_notifier(&config.name);
         let mut state = State::new(dependency_notifier);
@@ -67,7 +79,7 @@ impl Executor {
 
             match (event, state.phase()) {
                 (Event::Shutdown, Phase::Running) => {
-                    if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if let Some(pid) = state.process_id() {
                         let signal = config.shutdown_signal.unwrap_or(Signal::SIGTERM);
                         forward_signal(pid, signal);
                         state.set_shutting_down(config.termination_grace_period);
@@ -75,7 +87,7 @@ impl Executor {
                     break;
                 }
                 (Event::Shutdown, Phase::ShuttingDown) => {
-                    if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if let Some(pid) = state.process_id() {
                         forward_signal(pid, Signal::SIGKILL);
                     }
                     break;
@@ -91,25 +103,24 @@ impl Executor {
                         tasks.schedule(cancel_token.clone(), &event_sender, interval, Event::Start);
                     }
                 }
+                (Event::LogReady, Phase::Running) => {
+                    state.notify_log_ready();
+                }
                 (Event::Start, Phase::Pending | Phase::CrashLoopBackOff | Phase::Failed { .. }) => {
                     state.set_starting();
                     match config.command().spawn().await {
-                        Ok(spawned @ SpawnedProcess { pid }) => {
-                            tracing::info!("Started process `{}` with PID `{pid}`", config.name());
-                            state.set_running(spawned);
-                            tasks.wait_for_reap(
-                                cancel_token.clone(),
-                                &event_sender,
-                                &reaper,
-                                pid,
-                                config.termination_grace_period,
-                            );
-                            if config.liveness_probe.is_some() {
-                                drop(event_sender.send(Event::CheckLiveness));
+                        Ok(spawned_process) => {
+                            ProcessSpawnContext {
+                                config: &config,
+                                state: &mut state,
+                                cancel_token: cancel_token.clone(),
+                                event_sender: &event_sender,
+                                splice_relay: splice_relay.clone(),
+                                reaper: &reaper,
+                                tasks: &mut tasks,
+                                spawned_process,
                             }
-                            if config.readiness_probe.is_some() {
-                                drop(event_sender.send(Event::CheckReadiness));
-                            }
+                            .spawn();
                         }
                         Err(err) => {
                             tracing::error!("Failed to start process: {err}");
@@ -139,7 +150,7 @@ impl Executor {
                     }
                 }
                 (Event::LivenessChecked { should_kill }, _) => {
-                    if should_kill && let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if should_kill && let Some(pid) = state.process_id() {
                         // Send `SIGKILL` to kill the process and the process will be restarted
                         // while handling `Event::ProcessReaped`.
                         forward_signal(pid, Signal::SIGKILL);
@@ -154,24 +165,18 @@ impl Executor {
                     }
                 }
                 (Event::ForwardSignal { signal }, Phase::Running) => {
-                    if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                    if let Some(pid) = state.process_id() {
                         forward_signal(pid, signal);
                     }
                 }
                 (Event::GetStatus { resp }, _) => {
-                    let status = ProcessStatus {
-                        phase: state.phase(),
-                        restart_count: state.restart_count(),
-                        last_exit_code: state.last_exit_code(),
-                        ready: state.ready(),
-                    };
-                    let _ = resp.send(status);
+                    let _ = resp.send(state.to_status());
                 }
                 _ => {}
             }
 
             if matches!(state.phase(), Phase::ShuttingDown) && state.shutdown_deadline_exceeded() {
-                if let Some(&SpawnedProcess { pid }) = state.spawned() {
+                if let Some(pid) = state.process_id() {
                     forward_signal(pid, Signal::SIGKILL);
                     tracing::warn!("Grace period exceeded, sending SIGKILL to process {pid}");
                 }
@@ -181,15 +186,119 @@ impl Executor {
             while tasks.try_join_next().is_some() {}
         }
 
+        // Wait for all remaining tasks to complete before exit
         while tasks.join_next().await.is_some() {}
 
         Ok(())
     }
 }
 
-fn forward_signal(pid: nix::unistd::Pid, signal: Signal) {
+struct ProcessSpawnContext<'a> {
+    config: &'a Config,
+    state: &'a mut State,
+    cancel_token: CancellationToken,
+    event_sender: &'a mpsc::UnboundedSender<Event>,
+    splice_relay: SpliceRelay,
+    reaper: &'a Reaper,
+    tasks: &'a mut tokio::task::JoinSet<()>,
+    spawned_process: SpawnedProcess,
+}
+
+impl ProcessSpawnContext<'_> {
+    fn spawn(self) {
+        let ProcessSpawnContext {
+            config,
+            state,
+            cancel_token,
+            event_sender,
+            splice_relay,
+            reaper,
+            tasks,
+            spawned_process: SpawnedProcess { pid, stdout_fd, stderr_fd },
+        } = self;
+
+        tracing::info!("Started process `{}` with PID `{pid}`", config.name());
+        state.set_running(pid);
+
+        // Handle stdout logging based on config
+        if let Some(stdout_fd) = stdout_fd {
+            match config.log_stdout.destination {
+                LogDestination::Inherit => {
+                    tasks.register_splice_relay(
+                        cancel_token.clone(),
+                        event_sender,
+                        splice_relay.clone(),
+                        stdout_fd,
+                        Destination::Stdout,
+                    );
+                }
+                LogDestination::File { path: _ } => {
+                    if let LogDestination::File { path } = &config.log_stdout.destination {
+                        tasks.register_file_logging(
+                            cancel_token.clone(),
+                            event_sender,
+                            stdout_fd,
+                            path,
+                            config.log_stdout.rotation.clone(),
+                        );
+                    }
+                }
+                LogDestination::Null => {
+                    // Should not happen: stdout_fd exists but destination Null means it should be
+                    // discarded.
+                    tracing::warn!("stdout_fd present but log destination is Null; ignoring");
+                }
+            }
+        }
+
+        // Handle stderr logging based on config
+        if let Some(stderr_fd) = stderr_fd {
+            match config.log_stderr.destination {
+                LogDestination::Inherit => {
+                    tasks.register_splice_relay(
+                        cancel_token.clone(),
+                        event_sender,
+                        splice_relay,
+                        stderr_fd,
+                        Destination::Stderr,
+                    );
+                }
+                LogDestination::File { path: _ } => {
+                    if let LogDestination::File { path } = &config.log_stderr.destination {
+                        tasks.register_file_logging(
+                            cancel_token.clone(),
+                            event_sender,
+                            stderr_fd,
+                            path,
+                            config.log_stderr.rotation.clone(),
+                        );
+                    }
+                }
+                LogDestination::Null => {
+                    tracing::warn!("stderr_fd present but log destination is Null; ignoring");
+                }
+            }
+        }
+
+        tasks.wait_for_reap(
+            cancel_token,
+            event_sender,
+            reaper,
+            pid,
+            config.termination_grace_period,
+        );
+        if config.liveness_probe.is_some() {
+            drop(event_sender.send(Event::CheckLiveness));
+        }
+        if config.readiness_probe.is_some() {
+            drop(event_sender.send(Event::CheckReadiness));
+        }
+    }
+}
+
+fn forward_signal(pid: Pid, signal: Signal) {
     tracing::info!("Sending signal {signal:?} to process {pid}");
-    if let Err(e) = nix::sys::signal::kill(pid, signal) {
-        tracing::warn!("Failed to send signal to process: {}", e);
+    if let Err(err) = nix::sys::signal::kill(pid, signal) {
+        tracing::warn!("Failed to send signal to process: {err}");
     }
 }

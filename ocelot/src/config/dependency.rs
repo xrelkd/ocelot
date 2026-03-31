@@ -1,13 +1,13 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DependencyConfig {
     #[serde(default)]
     pub condition: Option<DependencyCondition>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum DependencyCondition {
     #[default]
@@ -20,7 +20,7 @@ pub enum DependencyCondition {
 
 #[cfg(test)]
 mod tests {
-    use super::{DependencyCondition, DependencyConfig};
+    use crate::config::dependency::{DependencyCondition, DependencyConfig};
 
     #[test]
     fn test_dependency_condition_started() {

@@ -56,8 +56,7 @@ pub fn find_zombie_processes() -> TestResult<Vec<i32>> {
 /// ```
 #[must_use]
 pub fn supports_user_namespace() -> bool {
-    // SAFETY: Fork is safe in single-threaded context.
-    #[allow(unsafe_code)]
+    #[expect(unsafe_code, reason = "Fork is safe in single-threaded context")]
     match unsafe { unistd::fork() } {
         Ok(unistd::ForkResult::Parent { child }) => {
             matches!(
@@ -110,7 +109,10 @@ pub fn supports_user_namespace() -> bool {
 /// }).unwrap();
 /// assert_eq!(exit_code, 0);
 /// ```
-#[allow(unsafe_code, unused_unsafe)]
+#[expect(
+    unsafe_code,
+    reason = "Namespace isolation testing requires forking, which uses unsafe blocks"
+)]
 pub fn run_in_namespace<F>(test_fn: F) -> TestResult<i32>
 where
     F: FnOnce() -> TestResult<i32> + Send + 'static,
@@ -189,8 +191,6 @@ fn setup_uid_gid_map(uid: unistd::Uid, gid: unistd::Gid) -> TestResult<()> {
 
 // Re-mount /proc inside the new mount namespace.
 fn setup_proc_mount() -> TestResult<()> {
-    // SAFETY: mount is safe in a private mount namespace with user namespace
-    // mapping to root.
     mount::mount(
         Some("proc"),
         Path::new("/proc"),

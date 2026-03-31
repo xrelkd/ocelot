@@ -4,8 +4,9 @@ mod zombie_finder;
 use std::{io::Write, path::PathBuf, time::Duration};
 
 use clap::{CommandFactory, Parser, Subcommand};
+use snafu::ResultExt;
 
-use crate::{error::Error, shadow};
+use crate::{error, error::Error, shadow};
 
 #[derive(Parser)]
 #[command(
@@ -21,7 +22,6 @@ pub struct Cli {
     pub commands: Option<Commands>,
 }
 
-#[allow(variant_size_differences)]
 #[derive(Clone, Subcommand)]
 pub enum Commands {
     #[clap(about = "Print the version information")]
@@ -71,8 +71,8 @@ pub enum Commands {
         #[clap(short, long)]
         file: Option<PathBuf>,
 
-        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
-        log_level: tracing::Level,
+        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL")]
+        log_level: Option<tracing::Level>,
     },
 
     #[clap(
@@ -118,7 +118,7 @@ impl Cli {
             Some(Commands::Version) => {
                 std::io::stdout()
                     .write_all(Self::command().render_long_version().as_bytes())
-                    .expect("Failed to write to stdout");
+                    .context(error::WriteStdoutSnafu)?;
             }
             Some(Commands::Completions { shell }) => {
                 let mut app = Self::command();

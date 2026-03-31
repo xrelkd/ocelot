@@ -1,13 +1,19 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, path::PathBuf, str::FromStr, time::Duration};
 
+use bytesize::ByteSize;
 use nix::sys::signal::Signal;
-use serde::Deserialize;
-
-use crate::config::{
-    dependency::DependencyConfig, probe::ProbeConfig, restart::RestartPolicyConfig,
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{MapAccess, Visitor},
+    ser::SerializeMap,
 };
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+use crate::config::{
+    ValidationError, dependency::DependencyConfig, error::Error, probe::ProbeConfig,
+    restart::RestartPolicyConfig,
+};
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase", deny_unknown_fields)]
 pub enum ShutdownSignalConfig {
     #[default]
@@ -29,7 +35,7 @@ impl ShutdownSignalConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProcessConfig {
     pub program: String,
@@ -37,8 +43,12 @@ pub struct ProcessConfig {
     #[serde(default)]
     pub arguments: Vec<String>,
 
-    #[serde(default)]
-    pub environment_variables: HashMap<String, String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_env_vars",
+        serialize_with = "serialize_env_vars"
+    )]
+    pub environment_variables: Vec<(String, String)>,
 
     pub working_directory: Option<String>,
 
@@ -54,17 +64,302 @@ pub struct ProcessConfig {
     #[serde(default)]
     pub shutdown_signal: Option<ShutdownSignalConfig>,
 
-    #[serde(default = "default_termination_grace_period_secs")]
-    pub termination_grace_period_secs: u64,
+    #[serde(with = "humantime_serde", default = "default_termination_grace_period")]
+    pub termination_grace_period: Duration,
+
+    #[serde(default)]
+    pub log: Option<LogConfig>,
 }
 
-const fn default_termination_grace_period_secs() -> u64 { 60 }
+const fn default_termination_grace_period() -> Duration { Duration::from_secs(60) }
+
+impl ProcessConfig {
+    /// Returns the value of the given environment variable key, if present.
+    pub fn get_env(&self, key: &str) -> Option<&String> {
+        self.environment_variables.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
+    }
+
+    /// Validates this process configuration.
+    pub fn validate(&self, name: &str) -> Result<(), Error> {
+        self.validate_program(name)?;
+        self.validate_termination_grace_period()?;
+        self.validate_log_rotation(name)?;
+        self.validate_probes()?;
+        self.validate_restart_backoff()?;
+        self.validate_environment_variables(name)?;
+        Ok(())
+    }
+
+    fn validate_program(&self, name: &str) -> Result<(), Error> {
+        if self.program.is_empty() {
+            return Err(Error::Validate {
+                source: ValidationError::MissingProcessProgram { process: name.to_string() },
+            });
+        }
+        Ok(())
+    }
+
+    const fn validate_termination_grace_period(&self) -> Result<(), Error> {
+        if self.termination_grace_period.is_zero() {
+            return Err(Error::Validate {
+                source: ValidationError::InvalidTerminationGracePeriod {
+                    value: self.termination_grace_period.as_secs(),
+                },
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_log_rotation(&self, name: &str) -> Result<(), Error> {
+        let Some(log) = &self.log else { return Ok(()) };
+
+        for (stream_name, stream_config) in [("stdout", &log.stdout), ("stderr", &log.stderr)] {
+            if let Some(rotation) = &stream_config.rotation {
+                let checks = [
+                    (
+                        rotation.max_size_bytes.map(|s| s.as_u64()),
+                        format!("{stream_name}.maxSizeBytes"),
+                    ),
+                    (
+                        rotation.rotation_interval.map(|d| d.as_secs()),
+                        format!("{stream_name}.rotationInterval"),
+                    ),
+                    (rotation.max_files.map(u64::from), format!("{stream_name}.maxFiles")),
+                    (rotation.max_age_days.map(u64::from), format!("{stream_name}.maxAgeDays")),
+                ];
+
+                for (value, field) in checks {
+                    if value == Some(0) {
+                        return Err(Error::Validate {
+                            source: ValidationError::InvalidLogRotation { field, value: 0 },
+                        });
+                    }
+                }
+
+                let has_size = rotation.max_size_bytes.is_some_and(|s| s.as_u64() > 0);
+                let has_interval = rotation.rotation_interval.is_some_and(|d| d.as_secs() > 0);
+                if !has_size && !has_interval {
+                    return Err(Error::Validate {
+                        source: ValidationError::InvalidRotationConfiguration {
+                            reason: format!(
+                                "{stream_name}: at least one of maxSizeBytes or rotationInterval \
+                                 must be > 0"
+                            ),
+                        },
+                    });
+                }
+
+                match stream_config.destination {
+                    LogDestination::Null | LogDestination::Inherit => {
+                        eprintln!(
+                            "Warning: Process '{name}' has rotation configured for {stream_name} \
+                             stream but destination is {:?}; rotation will have no effect.",
+                            stream_config.destination
+                        );
+                    }
+                    LogDestination::File { .. } => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_probes(&self) -> Result<(), Error> {
+        for probe in [&self.readiness_probe, &self.liveness_probe] {
+            let Some(p) = probe else { continue };
+
+            let timeout_secs = p.timeout.as_secs();
+            let period_secs = p.period.as_secs();
+            if timeout_secs > period_secs {
+                return Err(Error::Validate {
+                    source: ValidationError::InvalidProbeTimeout {
+                        timeout: timeout_secs,
+                        period: period_secs,
+                    },
+                });
+            }
+
+            match &p.handler {
+                crate::config::ProbeHandlerConfig::HttpGet { port, .. }
+                | crate::config::ProbeHandlerConfig::TcpSocket { port, .. } => {
+                    if !(1..=65535).contains(port) {
+                        return Err(Error::Validate {
+                            source: ValidationError::InvalidProbePort { port: *port },
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    const fn validate_restart_backoff(&self) -> Result<(), Error> {
+        let Some(restart_policy) = &self.restart_policy else { return Ok(()) };
+
+        match restart_policy {
+            RestartPolicyConfig::Always { backoff }
+            | RestartPolicyConfig::OnFailure { backoff, .. } => {
+                if let Some(backoff) = backoff
+                    && backoff.is_zero()
+                {
+                    return Err(Error::Validate {
+                        source: ValidationError::InvalidRestartBackoff {
+                            backoff: backoff.as_secs(),
+                        },
+                    });
+                }
+            }
+            RestartPolicyConfig::Never => {}
+        }
+        Ok(())
+    }
+
+    fn validate_environment_variables(&self, name: &str) -> Result<(), Error> {
+        let (_seen, duplicates): (_, Vec<_>) = self.environment_variables.iter().fold(
+            (std::collections::HashSet::new(), Vec::new()),
+            |(mut seen, mut dups), (key, _)| {
+                if !seen.insert(key) {
+                    dups.push(key.clone());
+                }
+                (seen, dups)
+            },
+        );
+        if !duplicates.is_empty() {
+            return Err(Error::Validate {
+                source: ValidationError::DuplicateEnvironmentVariables {
+                    process: name.to_string(),
+                    variables: duplicates,
+                },
+            });
+        }
+        Ok(())
+    }
+}
+
+// Custom deserializer/serializer for environment_variables as Vec<(String,
+// String)> to preserve order and allow duplicate detection.
+fn deserialize_env_vars<'de, D>(deserializer: D) -> Result<Vec<(String, String)>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct VecVisitor;
+    impl<'de> Visitor<'de> for VecVisitor {
+        type Value = Vec<(String, String)>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a mapping of environment variables")
+        }
+
+        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let mut vec = Vec::new();
+            while let Some((key, value)) = map.next_entry()? {
+                vec.push((key, value));
+            }
+            Ok(vec)
+        }
+    }
+    deserializer.deserialize_map(VecVisitor)
+}
+
+fn serialize_env_vars<S>(vec: &Vec<(String, String)>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut map = serializer.serialize_map(Some(vec.len()))?;
+    for (k, v) in vec {
+        map.serialize_entry(k, v)?;
+    }
+    map.end()
+}
+
+/// Top-level logging configuration for a process.
+///
+/// Contains separate configurations for stdout and stderr streams.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LogConfig {
+    /// Configuration for standard output.
+    #[serde(default)]
+    pub stdout: LogStreamConfig,
+
+    /// Configuration for standard error.
+    #[serde(default)]
+    pub stderr: LogStreamConfig,
+}
+
+// Log configuration types
+/// Destination for log output.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
+pub enum LogDestination {
+    Null,
+    Inherit,
+    File { path: PathBuf },
+}
+
+/// Configuration for log file rotation.
+///
+/// Rotation can be triggered based on maximum file size, time interval, or
+/// both. If both are specified, whichever condition is met first will trigger
+/// rotation.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LogRotationConfig {
+    /// Maximum size in bytes before rotating. Accepts raw integers or
+    /// human-readable strings like "10MB", "1GB". None means no size limit.
+    #[serde(default)]
+    pub max_size_bytes: Option<ByteSize>,
+    /// Time interval for rotation as a human-readable duration (e.g., "1h",
+    /// "24h"). None means no time-based rotation.
+    #[serde(default, with = "humantime_serde")]
+    pub rotation_interval: Option<Duration>,
+    /// Maximum number of rotated files to retain. Older files are deleted.
+    pub max_files: Option<u32>,
+    /// Maximum age in days before auto-deleting rotated files.
+    pub max_age_days: Option<u32>,
+    /// File creation mode (permissions) for log files as an octal string
+    /// (e.g., "644", "600").
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// Compression algorithm for rotated log files.
+    #[serde(default)]
+    pub compression: Option<LogCompression>,
+}
+
+/// Configuration for a single log stream (stdout or stderr).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LogStreamConfig {
+    /// Where to send the log output.
+    pub destination: LogDestination,
+    /// Optional rotation configuration, only applicable when destination is
+    /// `File`.
+    #[serde(default)]
+    pub rotation: Option<LogRotationConfig>,
+}
+
+impl Default for LogStreamConfig {
+    fn default() -> Self { Self { destination: LogDestination::Inherit, rotation: None } }
+}
+
+/// Compression algorithm for rotated log files.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogCompression {
+    Gzip,
+}
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use bytesize::ByteSize;
     use nix::sys::signal::Signal;
 
-    use super::{ProcessConfig, ShutdownSignalConfig};
+    use crate::config::process::{LogRotationConfig, ProcessConfig, ShutdownSignalConfig};
 
     #[test]
     fn test_shutdown_signal_sigterm_explicit() {
@@ -136,7 +431,7 @@ program: /usr/bin/myapp
         let config: ProcessConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.program, "/usr/bin/myapp");
         assert!(config.arguments.is_empty());
-        assert_eq!(config.termination_grace_period_secs, 60);
+        assert_eq!(config.termination_grace_period, Duration::from_secs(60));
     }
 
     #[test]
@@ -149,13 +444,64 @@ arguments:
 environmentVariables:
   LOG_LEVEL: debug
 workingDirectory: /app
-terminationGracePeriodSecs: 30
+terminationGracePeriod: 30s
 ";
         let config: ProcessConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.program, "/usr/bin/myapp");
         assert_eq!(config.arguments, vec!["--config", "/etc/config.yaml"]);
-        assert_eq!(config.environment_variables.get("LOG_LEVEL"), Some(&"debug".to_string()));
+        assert_eq!(config.get_env("LOG_LEVEL"), Some(&"debug".to_string()));
         assert_eq!(config.working_directory, Some("/app".to_string()));
-        assert_eq!(config.termination_grace_period_secs, 30);
+        assert_eq!(config.termination_grace_period, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_log_rotation_config_duration() {
+        let yaml = r"
+maxSizeBytes: 10485760
+rotationInterval: 24h
+maxFiles: 7
+";
+        let config: LogRotationConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.max_size_bytes, Some(ByteSize::b(10_485_760)));
+        assert_eq!(config.rotation_interval, Some(Duration::from_secs(86400)));
+        assert_eq!(config.max_files, Some(7));
+    }
+
+    #[test]
+    fn test_size_human_readable_mb() {
+        let yaml = r"
+maxSizeBytes: 10MB
+rotationInterval: 24h
+maxFiles: 7
+";
+        let config: LogRotationConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.max_size_bytes, Some(ByteSize::mb(10)));
+    }
+
+    #[test]
+    fn test_size_human_readable_gb() {
+        let yaml = r"
+maxSizeBytes: 1GB
+";
+        let config: LogRotationConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.max_size_bytes, Some(ByteSize::gb(1)));
+    }
+
+    #[test]
+    fn test_size_human_readable_kb() {
+        let yaml = r"
+maxSizeBytes: 512KB
+";
+        let config: LogRotationConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.max_size_bytes, Some(ByteSize::kb(512)));
+    }
+
+    #[test]
+    fn test_size_invalid_format() {
+        let yaml = r"
+maxSizeBytes: not_a_size
+";
+        let result: Result<LogRotationConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
     }
 }

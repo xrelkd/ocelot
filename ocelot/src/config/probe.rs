@@ -1,19 +1,21 @@
-use serde::Deserialize;
+use std::time::Duration;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProbeConfig {
     #[serde(default)]
     pub handler: ProbeHandlerConfig,
 
-    #[serde(default)]
-    pub initial_delay_secs: u64,
+    #[serde(with = "humantime_serde", default = "default_initial_delay")]
+    pub initial_delay: Duration,
 
-    #[serde(default = "default_period_secs")]
-    pub period_secs: u64,
+    #[serde(with = "humantime_serde", default = "default_period")]
+    pub period: Duration,
 
-    #[serde(default = "default_timeout_secs")]
-    pub timeout_secs: u64,
+    #[serde(with = "humantime_serde", default = "default_timeout")]
+    pub timeout: Duration,
 
     #[serde(default = "default_failure_threshold")]
     pub failure_threshold: i32,
@@ -22,8 +24,9 @@ pub struct ProbeConfig {
     pub success_threshold: i32,
 }
 
-const fn default_period_secs() -> u64 { 10 }
-const fn default_timeout_secs() -> u64 { 1 }
+const fn default_period() -> Duration { Duration::from_secs(10) }
+const fn default_timeout() -> Duration { Duration::from_secs(1) }
+const fn default_initial_delay() -> Duration { Duration::from_secs(0) }
 const fn default_failure_threshold() -> i32 { 3 }
 const fn default_success_threshold() -> i32 { 1 }
 
@@ -31,7 +34,7 @@ impl Default for ProbeHandlerConfig {
     fn default() -> Self { Self::HttpGet { host: None, path: "/".to_string(), port: 80 } }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ProbeHandlerConfig {
     HttpGet { host: Option<String>, path: String, port: u16 },
@@ -40,7 +43,9 @@ pub enum ProbeHandlerConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProbeConfig, ProbeHandlerConfig};
+    use std::time::Duration;
+
+    use crate::config::probe::{ProbeConfig, ProbeHandlerConfig};
 
     #[test]
     fn test_probe_handler_http_get_serde() {
@@ -115,16 +120,16 @@ handler:
   type: httpGet
   path: /ready
   port: 8080
-initialDelaySecs: 5
-periodSecs: 10
-timeoutSecs: 2
+initialDelay: 5s
+period: 10s
+timeout: 2s
 failureThreshold: 3
 successThreshold: 1
 ";
         let config: ProbeConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.initial_delay_secs, 5);
-        assert_eq!(config.period_secs, 10);
-        assert_eq!(config.timeout_secs, 2);
+        assert_eq!(config.initial_delay, Duration::from_secs(5));
+        assert_eq!(config.period, Duration::from_secs(10));
+        assert_eq!(config.timeout, Duration::from_secs(2));
         assert_eq!(config.failure_threshold, 3);
         assert_eq!(config.success_threshold, 1);
     }
@@ -133,9 +138,9 @@ successThreshold: 1
     fn test_probe_config_defaults() {
         let yaml = "{}";
         let config: ProbeConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.initial_delay_secs, 0);
-        assert_eq!(config.period_secs, 10);
-        assert_eq!(config.timeout_secs, 1);
+        assert_eq!(config.initial_delay, Duration::from_secs(0));
+        assert_eq!(config.period, Duration::from_secs(10));
+        assert_eq!(config.timeout, Duration::from_secs(1));
         assert_eq!(config.failure_threshold, 3);
         assert_eq!(config.success_threshold, 1);
     }

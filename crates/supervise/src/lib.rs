@@ -2,6 +2,8 @@ mod command;
 mod error;
 mod orchestrator;
 mod reaper;
+mod rotating_file;
+mod splice_relay;
 mod supervisor;
 
 use nix::unistd;
@@ -12,9 +14,17 @@ pub use self::{
     error::Error,
     orchestrator::OrchestratorConfig,
     reaper::{ReapedProcess, Reaper, ReaperExecutor},
+    splice_relay::{
+        Builder as SpliceRelayBuilder, Config as SpliceRelayConfig, Error as SpliceRelayError,
+        RelayEntry, SpliceRelay, Status as RelayStatus,
+    },
     supervisor::{
-        DependencyRegistry, Phase, ProcessStatus, RestartPolicy, Supervisor, SupervisorConfig,
-        SupervisorExecutor, config as supervisor_config, probe as supervisor_probe,
+        DependencyRegistry, LogCompression, LogDestination, LogRotationConfig, LogStreamConfig,
+        Phase, ProcessStatus, RestartPolicy, Supervisor, SupervisorConfig, SupervisorExecutor,
+        config as supervisor_config,
+        config::{DependencyCondition, ProcessDependency},
+        probe as supervisor_probe,
+        probe::{Probe, ProbeHandler},
     },
 };
 use crate::orchestrator::Orchestrator;
@@ -46,7 +56,7 @@ pub fn execute(config: OrchestratorConfig) -> Result<i32, Error> {
     if pid.as_raw() == 1 {
         tracing::info!("Start with PID 1");
     } else {
-        tracing::warn!("Entry should be the first process (PID 1), current PID: {pid}");
+        tracing::warn!("Supervise should be the first process (PID 1), current PID: {pid}");
     }
 
     let runtime = tokio::runtime::Runtime::new().context(error::InitializeTokioRuntimeSnafu)?;

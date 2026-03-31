@@ -13,4 +13,5 @@ pub enum Event {
     ReadinessChecked { ready: bool },
     LivenessChecked { should_kill: bool },
     GetStatus { resp: oneshot::Sender<ProcessStatus> },
+    LogReady,
 }

@@ -2,7 +2,13 @@ use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use nix::sys::signal::Signal;
 
-use crate::{Command, supervisor::probe::Probe};
+use crate::{
+    Command,
+    supervisor::{
+        log_config::{LogDestination, LogStreamConfig},
+        probe::Probe,
+    },
+};
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -18,6 +24,8 @@ pub struct Config {
     pub restart_policy: RestartPolicy,
     pub shutdown_signal: Option<Signal>,
     pub termination_grace_period: Duration,
+    pub log_stdout: LogStreamConfig,
+    pub log_stderr: LogStreamConfig,
 }
 
 impl Default for Config {
@@ -34,6 +42,8 @@ impl Default for Config {
             restart_policy: RestartPolicy::default(),
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         }
     }
 }
@@ -49,6 +59,12 @@ impl Config {
             .envs(self.environment_variables.clone());
         if let Some(dir) = &self.working_directory {
             cmd = cmd.current_dir(dir.clone());
+        }
+        if matches!(self.log_stdout.destination, LogDestination::Null) {
+            cmd = cmd.discard_stdout(true);
+        }
+        if matches!(self.log_stderr.destination, LogDestination::Null) {
+            cmd = cmd.discard_stderr(true);
         }
         cmd
     }

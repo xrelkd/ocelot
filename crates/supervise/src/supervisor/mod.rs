@@ -1,11 +1,12 @@
 pub mod config;
 pub mod dependency_registry;
-pub mod event;
-pub mod executor;
+mod event;
+mod executor;
+mod log_config;
 pub mod probe;
-pub mod spawned_process;
-pub mod state;
-pub mod task_runner;
+mod spawned_process;
+mod state;
+mod task_runner;
 
 use nix::sys::signal::Signal;
 use tokio::sync::{mpsc, oneshot};
@@ -15,8 +16,9 @@ pub use self::{
     config::{Config as SupervisorConfig, RestartPolicy},
     dependency_registry::DependencyRegistry,
     executor::Executor as SupervisorExecutor,
+    log_config::{LogCompression, LogDestination, LogRotationConfig, LogStreamConfig},
 };
-use crate::Reaper;
+use crate::{Reaper, SpliceRelay};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Phase {
@@ -53,6 +55,7 @@ impl Supervisor {
     pub fn new(
         config: SupervisorConfig,
         reaper: Reaper,
+        splice_relay: SpliceRelay,
         dependency_registry: DependencyRegistry,
     ) -> (Self, SupervisorExecutor) {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
@@ -63,6 +66,7 @@ impl Supervisor {
             event_sender,
             event_receiver,
             dependency_registry,
+            splice_relay,
         );
         (handle, executor)
     }

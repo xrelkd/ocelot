@@ -1,11 +1,13 @@
 use std::time::{Duration, Instant};
 
+use nix::unistd::Pid;
+
 use crate::supervisor::{
-    Phase, RestartPolicy, dependency_registry::DependencyNotifier, spawned_process::SpawnedProcess,
+    Phase, ProcessStatus, RestartPolicy, dependency_registry::DependencyNotifier,
 };
 
 pub struct State {
-    spawned: Option<SpawnedProcess>,
+    spawned: Option<Pid>,
     phase: Phase,
     ready: bool,
     restart_count: u32,
@@ -56,7 +58,7 @@ impl State {
         self.shutdown_deadline = Some(Instant::now() + grace_period);
     }
 
-    pub fn set_running(&mut self, spawned: SpawnedProcess) {
+    pub fn set_running(&mut self, spawned: Pid) {
         self.spawned = Some(spawned);
         self.phase = Phase::Running;
         self.last_exit_code = None;
@@ -85,10 +87,15 @@ impl State {
         let _ = self.dependency_notifier.as_ref().map(|n| n.notify_completed(exit_code));
     }
 
-    pub const fn spawned(&self) -> Option<&SpawnedProcess> { self.spawned.as_ref() }
+    pub fn notify_log_ready(&self) {
+        let _ = self.dependency_notifier.as_ref().inspect(|n| n.notify_log_ready());
+    }
+
+    pub const fn process_id(&self) -> Option<Pid> { self.spawned }
 
     pub const fn phase(&self) -> Phase { self.phase }
 
+    #[cfg(test)]
     pub const fn ready(&self) -> bool { self.ready }
 
     pub fn shutdown_deadline_exceeded(&self) -> bool {
@@ -97,9 +104,20 @@ impl State {
 
     pub const fn clear_shutdown_deadline(&mut self) { self.shutdown_deadline = None; }
 
+    #[cfg(test)]
     pub const fn restart_count(&self) -> u32 { self.restart_count }
 
+    #[cfg(test)]
     pub const fn last_exit_code(&self) -> Option<i32> { self.last_exit_code }
+
+    pub const fn to_status(&self) -> ProcessStatus {
+        ProcessStatus {
+            phase: self.phase,
+            restart_count: self.restart_count,
+            last_exit_code: self.last_exit_code,
+            ready: self.ready,
+        }
+    }
 
     fn should_restart(&self, restart_policy: &RestartPolicy) -> bool {
         match restart_policy {
@@ -133,7 +151,7 @@ impl State {
 mod tests {
     use std::time::Duration;
 
-    use super::{Phase, RestartPolicy, State};
+    use crate::supervisor::{Phase, RestartPolicy, state::State};
 
     #[test]
     fn test_default_state() {
@@ -142,7 +160,7 @@ mod tests {
         assert!(!state.ready());
         assert_eq!(state.restart_count(), 0);
         assert_eq!(state.last_exit_code(), None);
-        assert!(state.spawned().is_none());
+        assert!(state.process_id().is_none());
     }
 
     #[test]
@@ -150,7 +168,7 @@ mod tests {
         let mut state = State::default();
         state.set_starting();
         assert_eq!(state.phase(), Phase::Pending);
-        assert!(state.spawned().is_none());
+        assert!(state.process_id().is_none());
     }
 
     #[test]
@@ -186,7 +204,7 @@ mod tests {
         assert_eq!(state.phase(), Phase::Completed);
         assert_eq!(state.last_exit_code(), Some(0));
         assert!(!state.ready());
-        assert!(state.spawned().is_none());
+        assert!(state.process_id().is_none());
     }
 
     #[test]

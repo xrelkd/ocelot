@@ -223,14 +223,15 @@ Usage: ocelot supervise [OPTIONS] [COMMAND]
 Commands:
   run              Run supervisor with configuration file [aliases: r]
   config-template  Output the configuration template in YAML format
+  validate         Validate the configuration file
   help             Print this message or the help of the given subcommand(s)
 
 Options:
   -f, --file <FILE>
 
+
       --log-level <LOG_LEVEL>
           [env: OCELOT_LOG_LEVEL=]
-          [default: info]
 
   -h, --help
           Print help (see a summary with '-h')

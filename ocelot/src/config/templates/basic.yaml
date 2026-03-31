@@ -1,4 +1,5 @@
 version: "1.0"
+logLevel: info
 
 processes:
   nginx:
@@ -6,15 +7,15 @@ processes:
     arguments:
       - -g
       - daemon off;
-    terminationGracePeriodSecs: 60
+    terminationGracePeriod: 60s
     readinessProbe:
       handler:
         type: httpGet
         path: /health
         port: 80
-      initialDelaySecs: 5
-      periodSecs: 10
-      timeoutSecs: 1
+      initialDelay: 5s
+      period: 10s
+      timeout: 1s
       failureThreshold: 3
       successThreshold: 1
     livenessProbe:
@@ -22,8 +23,8 @@ processes:
         type: tcpSocket
         host: localhost
         port: 80
-      periodSecs: 30
-      timeoutSecs: 5
+      period: 30s
+      timeout: 5s
       failureThreshold: 3
     restartPolicy:
       type: Never
@@ -39,27 +40,42 @@ processes:
       LOG_LEVEL: info
       DATABASE_URL: postgres://localhost:5432/mydb
     workingDirectory: /opt/myapp
-    terminationGracePeriodSecs: 30
+    terminationGracePeriod: 30s
     shutdownSignal:
       type: name
       value: SIGTERM
     restartPolicy:
       type: OnFailure
       maxRetries: 3
-      backoffSecs: 5
+      backoff: 5s
+    log:
+      stdout:
+        destination:
+          type: file
+          path: /var/log/myapp/stdout.log
+        rotation:
+          maxSizeBytes: 10485760 # 10MB
+          rotationInterval: 24h # rotate daily
+          maxFiles: 7
+      stderr:
+        destination:
+          type: file
+          path: /var/log/myapp/stderr.log
+        rotation:
+          maxSizeBytes: 10485760
 
   redis:
     program: /usr/bin/redis-server
     arguments:
       - --port
       - 6379
-    terminationGracePeriodSecs: 10
+    terminationGracePeriod: 10s
     shutdownSignal:
       type: number
       value: 9
     restartPolicy:
       type: Always
-      backoffSecs: 1
+      backoff: 1s
 
   postgres:
     program: /usr/bin/postgres
@@ -70,20 +86,21 @@ processes:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: secret
     workingDirectory: /var/lib/postgresql
-    terminationGracePeriodSecs: 30
+    terminationGracePeriod: 30s
     readinessProbe:
       handler:
         type: tcpSocket
         port: 5432
-      initialDelaySecs: 10
-      periodSecs: 5
+      initialDelay: 10s
+      period: 5s
     livenessProbe:
       handler:
         type: tcpSocket
         port: 5432
-      initialDelaySecs: 15
-      periodSecs: 20
-      timeoutSecs: 3
+      initialDelay: 15s
+      period: 20s
+      timeout: 3s
       failureThreshold: 3
     restartPolicy:
       type: Always
+      backoff: 1s

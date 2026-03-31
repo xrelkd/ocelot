@@ -49,6 +49,10 @@ impl DependencyNotifier {
     pub fn notify_completed(&self, exit_code: i32) {
         drop(self.tx.send(DependencyEvent::Completed { name: self.name.clone(), exit_code }));
     }
+
+    pub fn notify_log_ready(&self) {
+        drop(self.tx.send(DependencyEvent::LogReady { name: self.name.clone() }));
+    }
 }
 
 pub struct DependencyWaiter {
@@ -61,10 +65,10 @@ impl DependencyWaiter {
         while !self.pending.is_empty() {
             let event = tokio::select! {
                 () = cancel_token.cancelled() => return Ok(()),
-                res = self.rx.recv() => res.context(error::DependencyBroadcastSnafu)?,
+                res = self.rx.recv() => res.context(error::ReceiveDependencySnafu)?,
             };
-
-            if self.handle_event(event) {
+            let should_break = self.handle_event(event);
+            if should_break {
                 break;
             }
         }
@@ -87,6 +91,9 @@ impl DependencyWaiter {
                 };
                 self.check_satisfied(&name, cond);
             }
+            DependencyEvent::LogReady { name } => {
+                self.check_satisfied(&name, DependencyCondition::LogReady);
+            }
         }
         self.pending.is_empty()
     }
@@ -106,4 +113,5 @@ enum DependencyEvent {
     Started { name: String },
     Healthy { name: String },
     Completed { name: String, exit_code: i32 },
+    LogReady { name: String },
 }
