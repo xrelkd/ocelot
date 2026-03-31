@@ -326,7 +326,7 @@ pub struct LogRotationConfig {
     pub mode: Option<String>,
     /// Compression algorithm for rotated log files.
     #[serde(default)]
-    pub compression: Option<LogCompression>,
+    pub compression: LogCompression,
 }
 
 /// Configuration for a single log stream (stdout or stderr).
@@ -346,10 +346,13 @@ impl Default for LogStreamConfig {
 }
 
 /// Compression algorithm for rotated log files.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogCompression {
+    #[default]
+    None,
     Gzip,
+    Lz4,
 }
 
 #[cfg(test)]
