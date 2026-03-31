@@ -1,11 +1,13 @@
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{collections::HashMap, fs, path::PathBuf, time::Duration};
 
 use nix::sys::signal::{self, Signal};
 use ocelot_supervise::{
-    DependencyRegistry, OrchestratorConfig, Phase, Reaper, RestartPolicy, SpliceRelayBuilder,
-    Supervisor, SupervisorConfig, supervisor_config, supervisor_probe,
+    DependencyRegistry, LogDestination, LogRotationConfig, LogStreamConfig, OrchestratorConfig,
+    Phase, Reaper, RestartPolicy, SpliceRelayBuilder, Supervisor, SupervisorConfig,
+    supervisor_config, supervisor_probe,
 };
 use ocelot_test_utils::{find_zombie_processes, run_in_namespace, supports_user_namespace};
+use tempfile::tempdir;
 use tokio_util::sync::CancellationToken;
 
 /// Test normal exit with exit code 0
@@ -15,13 +17,13 @@ fn test_execute_normal_exit() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
     let exit_code = run_in_namespace(|| {
-        let my_pid = nix::unistd::getpid();
-        eprintln!("[test] PID of execute process: {my_pid}");
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
 
         let sender = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(100));
-            let _ = signal::kill(nix::unistd::Pid::from_raw(my_pid.as_raw()), Signal::SIGTERM);
-            eprintln!("[test] Sent SIGTERM to {my_pid}");
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
         });
 
         let supervisor_config = SupervisorConfig {
@@ -36,6 +38,8 @@ fn test_execute_normal_exit() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         };
 
         let orchestrator_config = OrchestratorConfig {
@@ -66,13 +70,13 @@ fn test_execute_timeout_kill() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
     let exit_code = run_in_namespace(|| {
-        let my_pid = nix::unistd::getpid();
-        eprintln!("[test] PID of execute process: {my_pid}");
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
 
         let sender = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(200));
-            let _ = signal::kill(nix::unistd::Pid::from_raw(my_pid.as_raw()), Signal::SIGTERM);
-            eprintln!("[test] Sent SIGTERM to {my_pid}");
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
         });
 
         let supervisor_config = SupervisorConfig {
@@ -91,6 +95,8 @@ fn test_execute_timeout_kill() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(1),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         };
 
         let orchestrator_config = OrchestratorConfig {
@@ -135,13 +141,13 @@ fn test_execute_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
             Err(e) => return Err(format!("fork failed: {e}").into()),
         }
 
-        let my_pid = nix::unistd::getpid();
-        eprintln!("[test] PID of execute process: {my_pid}");
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
 
         let sender = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(100));
-            let _ = signal::kill(nix::unistd::Pid::from_raw(my_pid.as_raw()), Signal::SIGTERM);
-            eprintln!("[test] Sent SIGTERM to {my_pid}");
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
         });
 
         let supervisor_config = SupervisorConfig {
@@ -156,6 +162,8 @@ fn test_execute_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(3),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         };
 
         let orchestrator_config = OrchestratorConfig {
@@ -202,6 +210,8 @@ fn test_supervisor_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         };
 
         let dependency_registry = DependencyRegistry::new(1024);
@@ -270,6 +280,8 @@ fn test_restart_policies() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         };
 
         let dependency_registry = DependencyRegistry::new(1024);
@@ -318,6 +330,8 @@ fn test_restart_policies() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Always { backoff: Duration::from_millis(100) },
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         };
 
         let dependency_registry = DependencyRegistry::new(1024);
@@ -373,6 +387,8 @@ fn test_restart_policies() -> Result<(), Box<dyn std::error::Error>> {
             },
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         };
 
         let dependency_registry = DependencyRegistry::new(1024);
@@ -414,13 +430,13 @@ fn test_multiple_supervisors() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
     let exit_code = run_in_namespace(|| {
-        let my_pid = nix::unistd::getpid();
-        eprintln!("[test] PID of execute process: {my_pid}");
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
 
         let sender = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(200));
-            let _ = signal::kill(nix::unistd::Pid::from_raw(my_pid.as_raw()), Signal::SIGTERM);
-            eprintln!("[test] Sent SIGTERM to {my_pid}");
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
         });
 
         let config1 = SupervisorConfig {
@@ -435,6 +451,8 @@ fn test_multiple_supervisors() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(3),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         };
 
         let config2 = SupervisorConfig {
@@ -449,6 +467,8 @@ fn test_multiple_supervisors() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(3),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         };
 
         let orchestrator_config = OrchestratorConfig {
@@ -461,6 +481,10 @@ fn test_multiple_supervisors() -> Result<(), Box<dyn std::error::Error>> {
         drop(sender.join());
 
         eprintln!("[test] execute returned: {code}");
+        let zombies = find_zombie_processes()?;
+        if !zombies.is_empty() {
+            eprintln!("Zombies found after execute: {zombies:?}");
+        }
         Ok(code)
     })?;
     assert_eq!(exit_code, 0);
@@ -474,13 +498,13 @@ fn test_process_dependencies() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
     let exit_code = run_in_namespace(|| {
-        let my_pid = nix::unistd::getpid();
-        eprintln!("[test] PID of execute process: {my_pid}");
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
 
         let sender = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(200));
-            let _ = signal::kill(nix::unistd::Pid::from_raw(my_pid.as_raw()), Signal::SIGTERM);
-            eprintln!("[test] Sent SIGTERM to {my_pid}");
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
         });
 
         // First process (dependency)
@@ -496,6 +520,7 @@ fn test_process_dependencies() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(3),
+            ..SupervisorConfig::default()
         };
 
         // Second process depends on parent
@@ -515,6 +540,7 @@ fn test_process_dependencies() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(3),
+            ..SupervisorConfig::default()
         };
 
         let orchestrator_config = OrchestratorConfig {
@@ -527,6 +553,10 @@ fn test_process_dependencies() -> Result<(), Box<dyn std::error::Error>> {
         drop(sender.join());
 
         eprintln!("[test] execute returned: {code}");
+        let zombies = find_zombie_processes()?;
+        if !zombies.is_empty() {
+            eprintln!("Zombies found after process dependencies test: {zombies:?}");
+        }
         Ok(code)
     })?;
     assert_eq!(exit_code, 0);
@@ -540,13 +570,13 @@ fn test_signal_forwarding() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
     let exit_code = run_in_namespace(|| {
-        let my_pid = nix::unistd::getpid();
-        eprintln!("[test] PID of execute process: {my_pid}");
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
 
         let sender = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(200));
-            let _ = signal::kill(nix::unistd::Pid::from_raw(my_pid.as_raw()), Signal::SIGTERM);
-            eprintln!("[test] Sent SIGTERM to {my_pid}");
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
         });
 
         let supervisor_config = SupervisorConfig {
@@ -561,6 +591,7 @@ fn test_signal_forwarding() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(2),
+            ..SupervisorConfig::default()
         };
 
         let orchestrator_config = OrchestratorConfig {
@@ -573,6 +604,10 @@ fn test_signal_forwarding() -> Result<(), Box<dyn std::error::Error>> {
         drop(sender.join());
 
         eprintln!("[test] execute returned: {code}");
+        let zombies = find_zombie_processes()?;
+        if !zombies.is_empty() {
+            eprintln!("Zombies found after signal forwarding test: {zombies:?}");
+        }
         Ok(code)
     })?;
     assert_eq!(exit_code, 0);
@@ -586,13 +621,13 @@ fn test_probes() -> Result<(), Box<dyn std::error::Error>> {
     assert!(supports_user_namespace(), "user namespaces not supported");
 
     let exit_code = run_in_namespace(|| {
-        let my_pid = nix::unistd::getpid();
-        eprintln!("[test] PID of execute process: {my_pid}");
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
 
         let sender = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(200));
-            let _ = signal::kill(nix::unistd::Pid::from_raw(my_pid.as_raw()), Signal::SIGTERM);
-            eprintln!("[test] Sent SIGTERM to {my_pid}");
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
         });
 
         // Use nc to listen on port 8080 for readiness probe
@@ -632,6 +667,7 @@ fn test_probes() -> Result<(), Box<dyn std::error::Error>> {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(3),
+            ..SupervisorConfig::default()
         };
 
         let orchestrator_config = OrchestratorConfig {
@@ -644,6 +680,10 @@ fn test_probes() -> Result<(), Box<dyn std::error::Error>> {
         drop(sender.join());
 
         eprintln!("[test] execute returned: {code}");
+        let zombies = find_zombie_processes()?;
+        if !zombies.is_empty() {
+            eprintln!("Zombies found after probes test: {zombies:?}");
+        }
         Ok(code)
     })?;
     assert_eq!(exit_code, 0);
@@ -659,12 +699,13 @@ fn test_exit_code_propagation() -> Result<(), Box<dyn std::error::Error>> {
     // Test various exit codes
     for &expected_exit_code in &[0, 1, 42, 127, 255] {
         let exit_code = run_in_namespace(move || -> Result<i32, Box<dyn std::error::Error>> {
-            let my_pid = nix::unistd::getpid();
-            eprintln!("[test] PID: {my_pid}, expected exit: {expected_exit_code}");
+            let parent_pid = nix::unistd::getpid();
+            eprintln!("[test] PID: {parent_pid}, expected exit: {expected_exit_code}");
 
             let sender = std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_millis(200));
-                let _ = signal::kill(nix::unistd::Pid::from_raw(my_pid.as_raw()), Signal::SIGTERM);
+                let _ =
+                    signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
             });
 
             let supervisor_config = SupervisorConfig {
@@ -683,6 +724,7 @@ fn test_exit_code_propagation() -> Result<(), Box<dyn std::error::Error>> {
                 restart_policy: RestartPolicy::Never,
                 shutdown_signal: None,
                 termination_grace_period: Duration::from_secs(3),
+                ..SupervisorConfig::default()
             };
 
             let orchestrator_config = OrchestratorConfig {
@@ -693,10 +735,363 @@ fn test_exit_code_propagation() -> Result<(), Box<dyn std::error::Error>> {
             let code = ocelot_supervise::execute(orchestrator_config)?;
 
             drop(sender.join());
+            eprintln!("[test] execute returned: {code}");
+            let zombies = find_zombie_processes()?;
+            if !zombies.is_empty() {
+                eprintln!("Zombies found after exit code propagation test: {zombies:?}");
+            }
             Ok(code)
         })?;
         assert_eq!(exit_code, 0, "Orchestrator should return 0 on graceful shutdown");
     }
 
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
+fn test_stdout_file_size_rotation() -> Result<(), Box<dyn std::error::Error>> {
+    assert!(supports_user_namespace(), "user namespaces not supported");
+
+    let _exit_code = run_in_namespace(|| -> Result<i32, Box<dyn std::error::Error>> {
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
+
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(500));
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
+        });
+
+        let dir = tempdir()?;
+        let log_path = dir.path().join("stdout.log");
+
+        let supervisor_config = SupervisorConfig {
+            name: "test".to_string(),
+            program: PathBuf::from("bash"),
+            arguments: vec![
+                "-c".to_string(),
+                "trap '' TERM; for i in $(seq 1 100); do echo \"Hello $i\"; sleep 0.1; done"
+                    .to_string(),
+            ],
+            environment_variables: HashMap::default(),
+            working_directory: None,
+            depends_on: HashMap::default(),
+            readiness_probe: None,
+            liveness_probe: None,
+            restart_policy: RestartPolicy::Never,
+            shutdown_signal: None,
+            termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig {
+                destination: LogDestination::File { path: log_path.clone() },
+                rotation: Some(LogRotationConfig {
+                    max_size_bytes: Some(30),
+                    rotation_interval_secs: None,
+                    max_files: None,
+                    max_age_days: None,
+                    mode: None,
+                }),
+            },
+            log_stderr: LogStreamConfig { destination: LogDestination::Null, rotation: None },
+        };
+
+        let orchestrator_config = OrchestratorConfig {
+            supervisors: vec![supervisor_config],
+            shutdown_timeout: Duration::from_secs(3),
+        };
+
+        let code = ocelot_supervise::execute(orchestrator_config)?;
+        drop(sender.join());
+
+        assert!(log_path.exists(), "stdout.log should exist");
+
+        let mut rotated_count = 0;
+        let mut entries = fs::read_dir(dir.path())?;
+        while let Some(entry) = entries.next().transpose()? {
+            let name = entry.file_name();
+            if let Some(s) = name.to_str()
+                && s.starts_with("stdout.log.")
+            {
+                rotated_count += 1;
+            }
+        }
+        assert!(rotated_count > 0, "Expected at least one rotated file, found {rotated_count}");
+
+        let zombies = find_zombie_processes()?;
+        if !zombies.is_empty() {
+            eprintln!("Zombies found after stdout rotation test: {zombies:?}");
+        }
+
+        Ok(code)
+    })?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
+fn test_stderr_file_rotation_with_max_files() -> Result<(), Box<dyn std::error::Error>> {
+    assert!(supports_user_namespace(), "user namespaces not supported");
+
+    let _exit_code = run_in_namespace(|| -> Result<i32, Box<dyn std::error::Error>> {
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
+
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(500));
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
+        });
+
+        let dir = tempdir()?;
+        let log_path = dir.path().join("stderr.log");
+
+        let supervisor_config = SupervisorConfig {
+            name: "test".to_string(),
+            program: PathBuf::from("bash"),
+            arguments: vec![
+                "-c".to_string(),
+                "trap '' TERM; for i in $(seq 1 100); do echo \"Err $i\" >&2; sleep 0.1; done"
+                    .to_string(),
+            ],
+            environment_variables: HashMap::default(),
+            working_directory: None,
+            depends_on: HashMap::default(),
+            readiness_probe: None,
+            liveness_probe: None,
+            restart_policy: RestartPolicy::Never,
+            shutdown_signal: None,
+            termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig { destination: LogDestination::Null, rotation: None },
+            log_stderr: LogStreamConfig {
+                destination: LogDestination::File { path: log_path },
+                rotation: Some(LogRotationConfig {
+                    max_size_bytes: Some(20),
+                    rotation_interval_secs: None,
+                    max_files: Some(2),
+                    max_age_days: None,
+                    mode: None,
+                }),
+            },
+        };
+
+        let orchestrator_config = OrchestratorConfig {
+            supervisors: vec![supervisor_config],
+            shutdown_timeout: Duration::from_secs(3),
+        };
+
+        let code = ocelot_supervise::execute(orchestrator_config)?;
+        drop(sender.join());
+
+        let mut rotated_files = Vec::new();
+        let mut entries = fs::read_dir(dir.path())?;
+        while let Some(entry) = entries.next().transpose()? {
+            let name = entry.file_name();
+            if let Some(s) = name.to_str()
+                && s.starts_with("stderr.log.")
+            {
+                rotated_files.push(s.to_string());
+            }
+        }
+
+        assert!(
+            rotated_files.len() <= 2,
+            "Expected at most 2 rotated files, found {rotated_files_len}: {rotated_files:?}",
+            rotated_files_len = rotated_files.len(),
+            rotated_files = rotated_files
+        );
+
+        let zombies = find_zombie_processes()?;
+        if !zombies.is_empty() {
+            eprintln!("Zombies found after stderr rotation test: {zombies:?}");
+        }
+
+        Ok(code)
+    })?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
+fn test_time_based_rotation() -> Result<(), Box<dyn std::error::Error>> {
+    assert!(supports_user_namespace(), "user namespaces not supported");
+
+    let _exit_code = run_in_namespace(|| -> Result<i32, Box<dyn std::error::Error>> {
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
+
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(3500));
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
+        });
+
+        let dir = tempdir()?;
+        let log_path = dir.path().join("time_rotation.log");
+
+        let supervisor_config = SupervisorConfig {
+            name: "test".to_string(),
+            program: PathBuf::from("bash"),
+            arguments: vec![
+                "-c".to_string(),
+                "trap '' TERM; for i in $(seq 1 10); do echo \"Tick $i\"; sleep 1; done"
+                    .to_string(),
+            ],
+            environment_variables: HashMap::default(),
+            working_directory: None,
+            depends_on: HashMap::default(),
+            readiness_probe: None,
+            liveness_probe: None,
+            restart_policy: RestartPolicy::Never,
+            shutdown_signal: None,
+            termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig {
+                destination: LogDestination::File { path: log_path.clone() },
+                rotation: Some(LogRotationConfig {
+                    max_size_bytes: None,
+                    rotation_interval_secs: Some(1),
+                    max_files: None,
+                    max_age_days: None,
+                    mode: None,
+                }),
+            },
+            log_stderr: LogStreamConfig { destination: LogDestination::Null, rotation: None },
+        };
+
+        let orchestrator_config = OrchestratorConfig {
+            supervisors: vec![supervisor_config],
+            shutdown_timeout: Duration::from_secs(5),
+        };
+
+        let code = ocelot_supervise::execute(orchestrator_config)?;
+        drop(sender.join());
+
+        assert!(log_path.exists(), "time_rotation.log should exist");
+
+        let mut rotated_count = 0;
+        let mut entries = fs::read_dir(dir.path())?;
+        while let Some(entry) = entries.next().transpose()? {
+            let name = entry.file_name();
+            if let Some(s) = name.to_str()
+                && s.starts_with("time_rotation.log.")
+            {
+                rotated_count += 1;
+            }
+        }
+        assert!(
+            rotated_count > 0,
+            "Expected at least one rotated file from time-based rotation, found {rotated_count}"
+        );
+
+        let zombies = find_zombie_processes()?;
+        if !zombies.is_empty() {
+            eprintln!("Zombies found after time rotation test: {zombies:?}");
+        }
+
+        Ok(code)
+    })?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
+fn test_null_destination() -> Result<(), Box<dyn std::error::Error>> {
+    assert!(supports_user_namespace(), "user namespaces not supported");
+
+    let _exit_code = run_in_namespace(|| -> Result<i32, Box<dyn std::error::Error>> {
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
+
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
+        });
+
+        let dir = tempdir()?;
+        let log_path = dir.path().join("should_not_exist.log");
+
+        let supervisor_config = SupervisorConfig {
+            name: "test".to_string(),
+            program: PathBuf::from("bash"),
+            arguments: vec!["-c".to_string(), "echo Hello".to_string()],
+            environment_variables: HashMap::default(),
+            working_directory: None,
+            depends_on: HashMap::default(),
+            readiness_probe: None,
+            liveness_probe: None,
+            restart_policy: RestartPolicy::Never,
+            shutdown_signal: None,
+            termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig { destination: LogDestination::Null, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Null, rotation: None },
+        };
+
+        let orchestrator_config = OrchestratorConfig {
+            supervisors: vec![supervisor_config],
+            shutdown_timeout: Duration::from_secs(3),
+        };
+
+        let code = ocelot_supervise::execute(orchestrator_config)?;
+        drop(sender.join());
+
+        assert!(!log_path.exists(), "Log file should not exist for Null destination");
+
+        let zombies = find_zombie_processes()?;
+        if !zombies.is_empty() {
+            eprintln!("Zombies found after null destination test: {zombies:?}");
+        }
+
+        Ok(code)
+    })?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires user namespaces (unshare CLONE_NEWUSER) and root/CAP_SYS_ADMIN"]
+fn test_inherit_destination() -> Result<(), Box<dyn std::error::Error>> {
+    assert!(supports_user_namespace(), "user namespaces not supported");
+
+    let _exit_code = run_in_namespace(|| -> Result<i32, Box<dyn std::error::Error>> {
+        let parent_pid = nix::unistd::getpid();
+        eprintln!("[test] PID of execute process: {parent_pid}");
+
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            let _ = signal::kill(nix::unistd::Pid::from_raw(parent_pid.as_raw()), Signal::SIGTERM);
+            eprintln!("[test] Sent SIGTERM to {parent_pid}");
+        });
+
+        let supervisor_config = SupervisorConfig {
+            name: "test".to_string(),
+            program: PathBuf::from("true"),
+            arguments: vec![],
+            environment_variables: HashMap::default(),
+            working_directory: None,
+            depends_on: HashMap::default(),
+            readiness_probe: None,
+            liveness_probe: None,
+            restart_policy: RestartPolicy::Never,
+            shutdown_signal: None,
+            termination_grace_period: Duration::from_secs(5),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+        };
+
+        let orchestrator_config = OrchestratorConfig {
+            supervisors: vec![supervisor_config],
+            shutdown_timeout: Duration::from_secs(3),
+        };
+
+        let code = ocelot_supervise::execute(orchestrator_config)?;
+        drop(sender.join());
+
+        eprintln!("[test] execute returned: {code}");
+        let zombies = find_zombie_processes()?;
+        if !zombies.is_empty() {
+            eprintln!("Zombies found after execute: {zombies:?}");
+        }
+
+        Ok(code)
+    })?;
     Ok(())
 }

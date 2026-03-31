@@ -1,13 +1,18 @@
-use std::{os::fd::OwnedFd, time::Duration};
+use std::{os::fd::OwnedFd, path::Path, time::Duration};
 
-use tokio::{sync::mpsc, task::JoinSet};
+use tokio::{
+    io::{self, AsyncWriteExt, unix::AsyncFd},
+    sync::mpsc,
+    task::JoinSet,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     Reaper,
     reaper::ReapedProcess,
+    rotating_file::RotatingFile,
     splice_relay::{Destination, RelayRegistration, SpliceRelay},
-    supervisor::{event::Event, probe::Probe},
+    supervisor::{event::Event, log_config::LogRotationConfig, probe::Probe},
 };
 
 pub trait TaskRunner {
@@ -27,6 +32,15 @@ pub trait TaskRunner {
         relay: SpliceRelay,
         source_fd: OwnedFd,
         destination: Destination,
+    );
+
+    fn register_file_logging(
+        &mut self,
+        cancel_token: CancellationToken,
+        event_sender: &mpsc::UnboundedSender<Event>,
+        source_fd: OwnedFd,
+        file_path: impl AsRef<Path> + Send,
+        rotation: Option<LogRotationConfig>,
     );
 
     fn check_readiness(
@@ -98,8 +112,87 @@ impl TaskRunner for JoinSet<()> {
             tokio::select! {
                 () = fut => {},
                 () = cancel_token.cancelled() => return,
-            }
+            };
             drop(event_sender.send(Event::LogReady));
+        });
+    }
+
+    fn register_file_logging(
+        &mut self,
+        cancel_token: CancellationToken,
+        event_sender: &mpsc::UnboundedSender<Event>,
+        source_fd: OwnedFd,
+        file_path: impl AsRef<Path> + Send,
+        rotation: Option<LogRotationConfig>,
+    ) {
+        let event_sender = event_sender.clone();
+        let file_path = file_path.as_ref().to_path_buf();
+        let rotation_config = rotation.unwrap_or_default();
+        let fut = async move {
+            let mut ready = false;
+
+            // Open rotating file.
+            let mut rotating_file = match RotatingFile::new(file_path.clone(), rotation_config)
+                .await
+            {
+                Ok(rf) => rf,
+                Err(err) => {
+                    tracing::error!("Failed to open rotating file {}: {err}", file_path.display());
+                    return Ok::<(), std::io::Error>(());
+                }
+            };
+
+            // Prepare to read from `source_fd`.
+            let source_fd = AsyncFd::new(source_fd)?;
+            let mut buf = [0u8; 8192];
+
+            loop {
+                let readable = tokio::select! {
+                    readable = source_fd.readable() => readable,
+                    () = cancel_token.cancelled() => break,
+                };
+
+                let result = match readable {
+                    Ok(mut guard) => guard.try_io(|inner| {
+                        let fd = inner.get_ref();
+                        nix::unistd::read(fd, &mut buf).map_err(io::Error::from)
+                    }),
+                    Err(err) => {
+                        tracing::debug!("AsyncFd readable error: {err}");
+                        break;
+                    }
+                };
+                match result {
+                    Ok(Ok(0)) => break,
+                    Ok(Ok(n)) => {
+                        if !ready {
+                            ready = true;
+                            drop(event_sender.send(Event::LogReady));
+                        }
+                        // Write to rotating file
+                        if let Err(err) = rotating_file.write_all(&buf[..n]).await {
+                            tracing::error!("Failed to write to rotating file: {err}");
+                            break;
+                        }
+                    }
+                    Ok(Err(err)) => {
+                        tracing::debug!("Read error from source fd: {err}");
+                        break;
+                    }
+                    Err(_) => {
+                        // Would block - shouldn't happen because readable
+                        // indicated ready.
+                    }
+                }
+            }
+            Ok(())
+        };
+
+        let _unused = self.spawn(async move {
+            match fut.await {
+                Ok(()) => {}
+                Err(err) => tracing::error!("File logging task failed: {err}"),
+            }
         });
     }
 
