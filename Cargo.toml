@@ -234,7 +234,10 @@ nursery  = "deny"
 pedantic = "deny"
 
 [profile.release]
-opt-level = 3
+opt-level     = "z"
+lto           = "fat"
+codegen-units = 1
+strip         = "symbols"
 
 [profile.dev]
 opt-level = 0
