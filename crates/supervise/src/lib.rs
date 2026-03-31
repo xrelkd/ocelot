@@ -56,7 +56,7 @@ pub fn execute(config: OrchestratorConfig) -> Result<i32, Error> {
     if pid.as_raw() == 1 {
         tracing::info!("Start with PID 1");
     } else {
-        tracing::warn!("Entry should be the first process (PID 1), current PID: {pid}");
+        tracing::warn!("Supervise should be the first process (PID 1), current PID: {pid}");
     }
 
     let runtime = tokio::runtime::Runtime::new().context(error::InitializeTokioRuntimeSnafu)?;
