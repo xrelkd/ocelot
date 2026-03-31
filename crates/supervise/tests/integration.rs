@@ -790,6 +790,7 @@ fn test_stdout_file_size_rotation() -> Result<(), Box<dyn std::error::Error>> {
                     max_files: None,
                     max_age_days: None,
                     mode: None,
+                    compression: None,
                 }),
             },
             log_stderr: LogStreamConfig { destination: LogDestination::Null, rotation: None },
@@ -870,6 +871,7 @@ fn test_stderr_file_rotation_with_max_files() -> Result<(), Box<dyn std::error::
                     max_files: Some(2),
                     max_age_days: None,
                     mode: None,
+                    compression: None,
                 }),
             },
         };
@@ -952,6 +954,7 @@ fn test_time_based_rotation() -> Result<(), Box<dyn std::error::Error>> {
                     max_files: None,
                     max_age_days: None,
                     mode: None,
+                    compression: None,
                 }),
             },
             log_stderr: LogStreamConfig { destination: LogDestination::Null, rotation: None },

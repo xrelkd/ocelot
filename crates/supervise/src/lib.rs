@@ -19,8 +19,8 @@ pub use self::{
         RelayEntry, SpliceRelay, Status as RelayStatus,
     },
     supervisor::{
-        DependencyRegistry, LogDestination, LogRotationConfig, LogStreamConfig, Phase,
-        ProcessStatus, RestartPolicy, Supervisor, SupervisorConfig, SupervisorExecutor,
+        DependencyRegistry, LogCompression, LogDestination, LogRotationConfig, LogStreamConfig,
+        Phase, ProcessStatus, RestartPolicy, Supervisor, SupervisorConfig, SupervisorExecutor,
         config as supervisor_config,
         config::{DependencyCondition, ProcessDependency},
         probe as supervisor_probe,

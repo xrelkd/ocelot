@@ -16,7 +16,7 @@ pub use self::{
     config::{Config as SupervisorConfig, RestartPolicy},
     dependency_registry::DependencyRegistry,
     executor::Executor as SupervisorExecutor,
-    log_config::{LogDestination, LogRotationConfig, LogStreamConfig},
+    log_config::{LogCompression, LogDestination, LogRotationConfig, LogStreamConfig},
 };
 use crate::{Reaper, SpliceRelay};
 

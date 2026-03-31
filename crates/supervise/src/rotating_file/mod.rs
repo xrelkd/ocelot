@@ -2,6 +2,7 @@
 mod tests;
 
 use std::{
+    io::Write as _,
     os::unix::fs::OpenOptionsExt,
     path::PathBuf,
     pin::Pin,
@@ -9,9 +10,11 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use flate2::{Compression, write::GzEncoder};
+use nix::unistd::fsync;
 use tokio::{fs::File, io, io::AsyncWrite};
 
-use crate::supervisor::LogRotationConfig;
+use crate::supervisor::{LogCompression, LogRotationConfig};
 
 /// A file writer that automatically rotates log files based on size and/or time
 /// constraints.
@@ -124,15 +127,29 @@ impl RotatingFile {
                 .current_file
                 .take()
                 .ok_or_else(|| io::Error::other("RotatingFile: no current file to rotate"))?;
-            let old_file = old_tokio_file.into_std();
-            drop(old_file);
+            // Ensure all buffered data is flushed to disk before reading for compression
+            fsync(&old_tokio_file)?;
+            drop(old_tokio_file);
         }
 
         {
             let timestamp =
                 SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-            let rotated_path = format!("{}.{}", self.base_path.display(), timestamp);
-            std::fs::rename(&self.base_path, &rotated_path)?;
+
+            let rotated_path = if self.rotation.compression == Some(LogCompression::Gzip) {
+                format!("{}.{}.gz", self.base_path.display(), timestamp)
+            } else {
+                format!("{}.{}", self.base_path.display(), timestamp)
+            };
+
+            if self.rotation.compression == Some(LogCompression::Gzip) {
+                let source_data = std::fs::read(&self.base_path)?;
+                let compressed = compress_gzip(&source_data)?;
+                std::fs::write(&rotated_path, compressed)?;
+                std::fs::remove_file(&self.base_path)?;
+            } else {
+                std::fs::rename(&self.base_path, &rotated_path)?;
+            }
         }
 
         if let (Some(max_files), Some(parent)) = (self.rotation.max_files, self.base_path.parent())
@@ -233,4 +250,12 @@ impl AsyncWrite for RotatingFile {
             pin.poll_shutdown(cx)
         })
     }
+}
+
+fn compress_gzip(data: &[u8]) -> io::Result<Vec<u8>> {
+    let mut writer = std::io::BufWriter::new(Vec::new());
+    let mut encoder = GzEncoder::new(&mut writer, Compression::default());
+    encoder.write_all(data)?;
+    let _unused = encoder.finish()?;
+    Ok(writer.into_inner()?)
 }

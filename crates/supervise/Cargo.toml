@@ -19,8 +19,9 @@ futures    = { workspace = true }
 tokio      = { workspace = true }
 tokio-util = { workspace = true }
 
-nix   = { workspace = true }
-snafu = { workspace = true }
+flate2 = { workspace = true }
+nix    = { workspace = true }
+snafu  = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
