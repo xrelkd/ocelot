@@ -9,7 +9,8 @@ use serde::{
 };
 
 use crate::config::{
-    dependency::DependencyConfig, probe::ProbeConfig, restart::RestartPolicyConfig,
+    ValidationError, dependency::DependencyConfig, error::Error, probe::ProbeConfig,
+    restart::RestartPolicyConfig,
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
@@ -76,6 +77,162 @@ impl ProcessConfig {
     /// Returns the value of the given environment variable key, if present.
     pub fn get_env(&self, key: &str) -> Option<&String> {
         self.environment_variables.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
+    }
+
+    /// Validates this process configuration.
+    pub fn validate(&self, name: &str) -> Result<(), Error> {
+        self.validate_program(name)?;
+        self.validate_termination_grace_period()?;
+        self.validate_log_rotation(name)?;
+        self.validate_probes()?;
+        self.validate_restart_backoff()?;
+        self.validate_environment_variables(name)?;
+        Ok(())
+    }
+
+    fn validate_program(&self, name: &str) -> Result<(), Error> {
+        if self.program.is_empty() {
+            return Err(Error::Validate {
+                source: ValidationError::MissingProcessProgram { process: name.to_string() },
+            });
+        }
+        Ok(())
+    }
+
+    const fn validate_termination_grace_period(&self) -> Result<(), Error> {
+        if self.termination_grace_period.is_zero() {
+            return Err(Error::Validate {
+                source: ValidationError::InvalidTerminationGracePeriod {
+                    value: self.termination_grace_period.as_secs(),
+                },
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_log_rotation(&self, name: &str) -> Result<(), Error> {
+        let Some(log) = &self.log else { return Ok(()) };
+
+        for (stream_name, stream_config) in [("stdout", &log.stdout), ("stderr", &log.stderr)] {
+            if let Some(rotation) = &stream_config.rotation {
+                let checks = [
+                    (
+                        rotation.max_size_bytes.map(|s| s.as_u64()),
+                        format!("{stream_name}.maxSizeBytes"),
+                    ),
+                    (
+                        rotation.rotation_interval.map(|d| d.as_secs()),
+                        format!("{stream_name}.rotationInterval"),
+                    ),
+                    (rotation.max_files.map(u64::from), format!("{stream_name}.maxFiles")),
+                    (rotation.max_age_days.map(u64::from), format!("{stream_name}.maxAgeDays")),
+                ];
+
+                for (value, field) in checks {
+                    if value == Some(0) {
+                        return Err(Error::Validate {
+                            source: ValidationError::InvalidLogRotation { field, value: 0 },
+                        });
+                    }
+                }
+
+                let has_size = rotation.max_size_bytes.is_some_and(|s| s.as_u64() > 0);
+                let has_interval = rotation.rotation_interval.is_some_and(|d| d.as_secs() > 0);
+                if !has_size && !has_interval {
+                    return Err(Error::Validate {
+                        source: ValidationError::InvalidRotationConfiguration {
+                            reason: format!(
+                                "{stream_name}: at least one of maxSizeBytes or rotationInterval \
+                                 must be > 0"
+                            ),
+                        },
+                    });
+                }
+
+                match stream_config.destination {
+                    LogDestination::Null | LogDestination::Inherit => {
+                        eprintln!(
+                            "Warning: Process '{name}' has rotation configured for {stream_name} \
+                             stream but destination is {:?}; rotation will have no effect.",
+                            stream_config.destination
+                        );
+                    }
+                    LogDestination::File { .. } => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_probes(&self) -> Result<(), Error> {
+        for probe in [&self.readiness_probe, &self.liveness_probe] {
+            let Some(p) = probe else { continue };
+
+            let timeout_secs = p.timeout.as_secs();
+            let period_secs = p.period.as_secs();
+            if timeout_secs > period_secs {
+                return Err(Error::Validate {
+                    source: ValidationError::InvalidProbeTimeout {
+                        timeout: timeout_secs,
+                        period: period_secs,
+                    },
+                });
+            }
+
+            match &p.handler {
+                crate::config::ProbeHandlerConfig::HttpGet { port, .. }
+                | crate::config::ProbeHandlerConfig::TcpSocket { port, .. } => {
+                    if !(1..=65535).contains(port) {
+                        return Err(Error::Validate {
+                            source: ValidationError::InvalidProbePort { port: *port },
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    const fn validate_restart_backoff(&self) -> Result<(), Error> {
+        let Some(restart_policy) = &self.restart_policy else { return Ok(()) };
+
+        match restart_policy {
+            RestartPolicyConfig::Always { backoff }
+            | RestartPolicyConfig::OnFailure { backoff, .. } => {
+                if let Some(backoff) = backoff
+                    && backoff.is_zero()
+                {
+                    return Err(Error::Validate {
+                        source: ValidationError::InvalidRestartBackoff {
+                            backoff: backoff.as_secs(),
+                        },
+                    });
+                }
+            }
+            RestartPolicyConfig::Never => {}
+        }
+        Ok(())
+    }
+
+    fn validate_environment_variables(&self, name: &str) -> Result<(), Error> {
+        let (_seen, duplicates): (_, Vec<_>) = self.environment_variables.iter().fold(
+            (std::collections::HashSet::new(), Vec::new()),
+            |(mut seen, mut dups), (key, _)| {
+                if !seen.insert(key) {
+                    dups.push(key.clone());
+                }
+                (seen, dups)
+            },
+        );
+        if !duplicates.is_empty() {
+            return Err(Error::Validate {
+                source: ValidationError::DuplicateEnvironmentVariables {
+                    process: name.to_string(),
+                    variables: duplicates,
+                },
+            });
+        }
+        Ok(())
     }
 }
 

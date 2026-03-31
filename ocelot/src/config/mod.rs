@@ -61,8 +61,6 @@ impl SupervisorConfig {
         serde_yaml::from_slice(&data).context(error::ParseConfigSnafu { filename: resolved_path })
     }
 
-    pub fn template_basic() -> Vec<u8> { include_bytes!("templates/basic.yaml").to_vec() }
-
     /// Converts the `SupervisorConfig` into a vector of
     /// `ocelot_supervise::SupervisorConfig` by transforming each process
     /// configuration and resolving dependencies using a directed graph.
@@ -107,7 +105,7 @@ impl SupervisorConfig {
                                 (dep_name, supervisor_config::ProcessDependency { condition })
                             })
                         })
-                        .collect::<HashMap<_, _>>()
+                        .collect()
                 };
                 supervisor
             })
@@ -119,10 +117,8 @@ impl SupervisorConfig {
         self.check_version()?;
         self.check_missing_dependencies()?;
         self.detect_dependency_cycles()?;
-        // Validate each process configuration
-        for (name, config) in &self.processes {
-            self.validate_process_config(name, config)?;
-        }
+        self.validate_process_configs()?;
+
         Ok(())
     }
 
@@ -136,188 +132,11 @@ impl SupervisorConfig {
         Ok(())
     }
 
-    #[allow(
-        clippy::too_many_lines,
-        clippy::unused_self,
-        clippy::collapsible_if,
-        clippy::uninlined_format_args,
-        clippy::unnecessary_map_or
-    )]
-    fn validate_process_config(&self, name: &str, config: &ProcessConfig) -> Result<(), Error> {
-        // 2.2: Check program is non-empty
-        if config.program.is_empty() {
-            return Err(Error::Validate {
-                source: ValidationError::MissingProcessProgram { process: name.to_string() },
-            });
+    /// Validate each process configuration.
+    fn validate_process_configs(&self) -> Result<(), Error> {
+        for (name, config) in &self.processes {
+            config.validate(name)?;
         }
-
-        // 2.3: Check termination_grace_period > 0
-        if config.termination_grace_period.is_zero() {
-            return Err(Error::Validate {
-                source: ValidationError::InvalidTerminationGracePeriod {
-                    value: config.termination_grace_period.as_secs(),
-                },
-            });
-        }
-
-        // 2.3: Check termination_grace_period > 0
-        if config.termination_grace_period.is_zero() {
-            return Err(Error::Validate {
-                source: ValidationError::InvalidTerminationGracePeriod {
-                    value: config.termination_grace_period.as_secs(),
-                },
-            });
-        }
-
-        // 2.4: Validate log rotation parameters
-        if let Some(log) = &config.log {
-            for (stream_name, stream_config) in [("stdout", &log.stdout), ("stderr", &log.stderr)] {
-                if let Some(rotation) = &stream_config.rotation {
-                    // Validate each rotation field is positive if Some
-                    if let Some(max_size) = rotation.max_size_bytes {
-                        if max_size.as_u64() == 0 {
-                            return Err(Error::Validate {
-                                source: ValidationError::InvalidLogRotation {
-                                    field: format!("{}.maxSizeBytes", stream_name),
-                                    value: 0,
-                                },
-                            });
-                        }
-                    }
-                    if let Some(interval) = rotation.rotation_interval {
-                        if interval.is_zero() {
-                            return Err(Error::Validate {
-                                source: ValidationError::InvalidLogRotation {
-                                    field: format!("{}.rotationInterval", stream_name),
-                                    value: 0,
-                                },
-                            });
-                        }
-                    }
-                    if let Some(max_files) = rotation.max_files {
-                        if max_files == 0 {
-                            return Err(Error::Validate {
-                                source: ValidationError::InvalidLogRotation {
-                                    field: format!("{}.maxFiles", stream_name),
-                                    value: 0,
-                                },
-                            });
-                        }
-                    }
-                    if let Some(max_age) = rotation.max_age_days {
-                        if max_age == 0 {
-                            return Err(Error::Validate {
-                                source: ValidationError::InvalidLogRotation {
-                                    field: format!("{}.maxAgeDays", stream_name),
-                                    value: 0,
-                                },
-                            });
-                        }
-                    }
-                    // 2.4: Ensure at least one of max_size_bytes or rotation_interval_secs is
-                    // positive
-                    let has_size = rotation.max_size_bytes.map_or(false, |s| s.as_u64() > 0);
-                    let has_interval =
-                        rotation.rotation_interval.map_or(false, |d| d.as_secs() > 0);
-                    if !has_size && !has_interval {
-                        return Err(Error::Validate {
-                            source: ValidationError::InvalidRotationConfiguration {
-                                reason: format!(
-                                    "{}: at least one of maxSizeBytes or rotationInterval must be \
-                                     > 0",
-                                    stream_name
-                                ),
-                            },
-                        });
-                    }
-                }
-            }
-        }
-
-        // 2.5: Probe validation
-        for (_probe_name, probe) in
-            [("readinessProbe", &config.readiness_probe), ("livenessProbe", &config.liveness_probe)]
-        {
-            if let Some(p) = probe {
-                // timeout <= period
-                let timeout_secs = p.timeout.as_secs();
-                let period_secs = p.period.as_secs();
-                if timeout_secs > period_secs {
-                    return Err(Error::Validate {
-                        source: ValidationError::InvalidProbeTimeout {
-                            timeout: timeout_secs,
-                            period: period_secs,
-                        },
-                    });
-                }
-                // Port range validation for HTTP and TCP handlers
-                match &p.handler {
-                    ProbeHandlerConfig::HttpGet { port, .. }
-                    | ProbeHandlerConfig::TcpSocket { port, .. } => {
-                        if !(1..=65535).contains(port) {
-                            return Err(Error::Validate {
-                                source: ValidationError::InvalidProbePort { port: *port },
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        // 2.6: Restart backoff validation
-        if let Some(restart_policy) = &config.restart_policy {
-            match restart_policy {
-                RestartPolicyConfig::Always { backoff }
-                | RestartPolicyConfig::OnFailure { backoff, .. } => {
-                    if let Some(backoff) = backoff {
-                        if backoff.is_zero() {
-                            return Err(Error::Validate {
-                                source: ValidationError::InvalidRestartBackoff {
-                                    backoff: backoff.as_secs(),
-                                },
-                            });
-                        }
-                    }
-                }
-                RestartPolicyConfig::Never => {}
-            }
-        }
-
-        // 2.7: Detect duplicate environment variables
-        let mut seen = HashSet::new();
-        let mut duplicates = Vec::new();
-        for (key, _) in &config.environment_variables {
-            if !seen.insert(key) {
-                duplicates.push(key.clone());
-            }
-        }
-        if !duplicates.is_empty() {
-            return Err(Error::Validate {
-                source: ValidationError::DuplicateEnvironmentVariables {
-                    process: name.to_string(),
-                    variables: duplicates,
-                },
-            });
-        }
-
-        // 2.8: Warn if rotation destination is Null/Inherit with rotation configured
-        if let Some(log) = &config.log {
-            for (stream_name, stream_config) in [("stdout", &log.stdout), ("stderr", &log.stderr)] {
-                if let Some(_rotation) = &stream_config.rotation {
-                    match stream_config.destination {
-                        LogDestination::Null | LogDestination::Inherit => {
-                            eprintln!(
-                                "Warning: Process '{}' has rotation configured for {} stream but \
-                                 destination is {:?}; rotation will have no effect.",
-                                name, stream_name, stream_config.destination
-                            );
-                        }
-                        LogDestination::File { .. } => {}
-                    }
-                }
-            }
-        }
-
         Ok(())
     }
 
@@ -347,7 +166,6 @@ impl SupervisorConfig {
     /// Time complexity: O(P + D) where P = number of processes, D = total
     /// dependencies. Space complexity: O(P + D) for the graph and index
     /// map.
-    #[allow(clippy::option_if_let_else)]
     fn detect_dependency_cycles(&self) -> Result<(), Error> {
         let mut graph = DiGraph::<String, ()>::new();
         let mut indices = HashMap::new();
@@ -357,9 +175,9 @@ impl SupervisorConfig {
         }
 
         for (name, config) in &self.processes {
-            let from = indices[&name.clone()];
+            let from = indices[name];
             for dep_name in config.depends_on.keys() {
-                let to = indices[&dep_name.clone()];
+                let to = indices[dep_name];
                 let _ = graph.add_edge(from, to, ());
             }
         }
@@ -378,76 +196,23 @@ impl SupervisorConfig {
                 });
             };
             // Extract a cycle from this SCC using DFS
-            if let Some(cycle_nodes) = Self::find_cycle_in_scc(&graph, &scc, node) {
-                let cycle = cycle_nodes.into_iter().map(|idx| graph[idx].clone()).collect();
-                Err(Error::Validate { source: ValidationError::CyclicDependency { cycle } })
-            } else {
-                // Could not find a cycle? Return single node as fallback
-                Err(Error::Validate {
-                    source: ValidationError::CyclicDependency { cycle: vec![node_name] },
-                })
-            }
+            find_cycle_in_scc(&graph, &scc, node).map_or_else(
+                || {
+                    Err(Error::Validate {
+                        source: ValidationError::CyclicDependency { cycle: vec![node_name] },
+                    })
+                },
+                |cycle_nodes| {
+                    let cycle = cycle_nodes.into_iter().map(|idx| graph[idx].clone()).collect();
+                    Err(Error::Validate { source: ValidationError::CyclicDependency { cycle } })
+                },
+            )
         } else {
             Ok(())
         }
     }
 
-    /// Find a cycle within the given strongly connected component starting from
-    /// `start`. Returns a list of node indices representing the cycle,
-    /// where the first and last nodes are the same (the cycle is closed).
-    #[allow(unused_results, clippy::collection_is_never_read)]
-    fn find_cycle_in_scc(
-        graph: &DiGraph<String, ()>,
-        scc: &[petgraph::graph::NodeIndex],
-        start: petgraph::graph::NodeIndex,
-    ) -> Option<Vec<petgraph::graph::NodeIndex>> {
-        let scc_set: HashSet<_> = scc.iter().copied().collect();
-        let mut stack = Vec::new();
-        let mut on_stack = HashSet::new();
-        let mut visited = HashSet::new();
-        let mut parent: HashMap<petgraph::graph::NodeIndex, petgraph::graph::NodeIndex> =
-            HashMap::new();
-
-        stack.push(start);
-        on_stack.insert(start);
-        visited.insert(start);
-
-        while let Some(&node) = stack.last() {
-            // Explore neighbors within the SCC
-            let mut found_next = false;
-            for neighbor in graph.neighbors_directed(node, Direction::Outgoing) {
-                if !scc_set.contains(&neighbor) {
-                    continue;
-                }
-                if visited.insert(neighbor) {
-                    parent.insert(neighbor, node);
-                    stack.push(neighbor);
-                    on_stack.insert(neighbor);
-                    found_next = true;
-                    break;
-                } else if on_stack.contains(&neighbor) {
-                    // Back edge found: node -> neighbor, and neighbor is on the current DFS stack.
-                    // Cycle: neighbor -> ... -> node -> neighbor.
-                    // Collect nodes from stack from neighbor to node.
-                    let mut cycle = Vec::new();
-                    for &idx in stack.iter().rev() {
-                        cycle.push(idx);
-                        if idx == neighbor {
-                            break;
-                        }
-                    }
-                    cycle.reverse(); // now from neighbor to node
-                    cycle.push(neighbor); // close the cycle
-                    return Some(cycle);
-                }
-            }
-            if !found_next {
-                stack.pop();
-                on_stack.remove(&node);
-            }
-        }
-        None
-    }
+    pub fn template_basic() -> Vec<u8> { include_bytes!("templates/basic.yaml").to_vec() }
 }
 
 impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
@@ -571,6 +336,59 @@ impl From<RestartPolicyConfig> for supervisor_config::RestartPolicy {
 const fn default_shutdown_timeout_secs() -> u64 { 60 }
 
 const fn default_log_level() -> tracing::Level { tracing::Level::INFO }
+
+/// Find a cycle within the given strongly connected component starting from
+/// `start`. Returns a list of node indices representing the cycle,
+/// where the first and last nodes are the same (the cycle is closed).
+fn find_cycle_in_scc(
+    graph: &DiGraph<String, ()>,
+    scc: &[petgraph::graph::NodeIndex],
+    start: petgraph::graph::NodeIndex,
+) -> Option<Vec<petgraph::graph::NodeIndex>> {
+    let scc_set: HashSet<_> = scc.iter().copied().collect();
+    let mut stack = Vec::new();
+    let mut on_stack = HashSet::new();
+    let mut visited = HashSet::new();
+
+    stack.push(start);
+    let _ = on_stack.insert(start);
+    let _ = visited.insert(start);
+
+    while let Some(&node) = stack.last() {
+        // Explore neighbors within the SCC
+        let mut found_next = false;
+        for neighbor in graph.neighbors_directed(node, Direction::Outgoing) {
+            if !scc_set.contains(&neighbor) {
+                continue;
+            }
+            if visited.insert(neighbor) {
+                stack.push(neighbor);
+                let _ = on_stack.insert(neighbor);
+                found_next = true;
+                break;
+            } else if on_stack.contains(&neighbor) {
+                // Back edge found: node -> neighbor, and neighbor is on the current DFS stack.
+                // Cycle: neighbor -> ... -> node -> neighbor.
+                // Collect nodes from stack from neighbor to node.
+                let mut cycle = Vec::new();
+                for &idx in stack.iter().rev() {
+                    cycle.push(idx);
+                    if idx == neighbor {
+                        break;
+                    }
+                }
+                cycle.reverse(); // now from neighbor to node
+                cycle.push(neighbor); // close the cycle
+                return Some(cycle);
+            }
+        }
+        if !found_next {
+            let _ = stack.pop();
+            let _ = on_stack.remove(&node);
+        }
+    }
+    None
+}
 
 #[cfg(test)]
 mod tests {
