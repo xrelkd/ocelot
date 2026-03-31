@@ -7,8 +7,9 @@ mod restart;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use ocelot_supervise::{
-    LogDestination as SupLogDestination, LogRotationConfig as SupLogRotationConfig,
-    LogStreamConfig as SupLogStreamConfig, supervisor_config, supervisor_probe,
+    LogCompression as SupLogCompression, LogDestination as SupLogDestination,
+    LogRotationConfig as SupLogRotationConfig, LogStreamConfig as SupLogStreamConfig,
+    supervisor_config, supervisor_probe,
 };
 use petgraph::{Direction, graph::DiGraph, stable_graph::StableDiGraph};
 use resolve_path::PathResolveExt;
@@ -23,7 +24,7 @@ pub use self::{
     process::ProcessConfig,
     restart::RestartPolicyConfig,
 };
-use crate::config::process::{LogConfig, LogDestination, LogStreamConfig};
+use crate::config::process::{LogCompression, LogConfig, LogDestination, LogStreamConfig};
 
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -210,6 +211,9 @@ impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
                         max_files: r.max_files,
                         max_age_days: r.max_age_days,
                         mode: r.mode.and_then(|m| u32::from_str_radix(&m, 8).ok()),
+                        compression: r.compression.map(|c| match c {
+                            LogCompression::Gzip => SupLogCompression::Gzip,
+                        }),
                     });
                     SupLogStreamConfig { destination: dest, rotation }
                 };
