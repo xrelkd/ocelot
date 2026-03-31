@@ -55,7 +55,7 @@ impl CommandExt for Command {
                 drop(stderr_writer);
 
                 let err_reader = AsyncFd::new(err_reader).context(error::RegisterFdSnafu)?;
-                let _guard = err_reader.readable().await.expect("Pipe error");
+                let _guard = err_reader.readable().await.context(error::PipeReadSnafu)?;
 
                 let mut buf = [0u8; 4];
                 match unistd::read(err_reader.as_fd(), &mut buf).context(error::ReadPipeSnafu)? {

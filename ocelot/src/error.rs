@@ -1,3 +1,5 @@
+use std::io;
+
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
@@ -23,6 +25,9 @@ pub enum Error {
 
     #[snafu(display("{message}"))]
     InvalidArgument { message: String },
+
+    #[snafu(display("Failed to write to stdout, error: {source}"))]
+    WriteStdout { source: io::Error },
 }
 
 impl From<ocelot_idle::Error> for Error {

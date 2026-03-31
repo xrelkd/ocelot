@@ -3,6 +3,7 @@ mod error;
 mod probe;
 mod process;
 mod restart;
+mod utils;
 
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 
@@ -19,7 +20,7 @@ use snafu::ResultExt;
 
 pub use self::{
     dependency::DependencyCondition,
-    error::Error,
+    error::{Error, ValidationError},
     probe::{ProbeConfig, ProbeHandlerConfig},
     process::ProcessConfig,
     restart::RestartPolicyConfig,
@@ -56,8 +57,6 @@ impl SupervisorConfig {
             .with_context(|_| error::OpenConfigSnafu { filename: resolved_path.clone() })?;
         serde_yaml::from_slice(&data).context(error::ParseConfigSnafu { filename: resolved_path })
     }
-
-    pub fn template_basic() -> Vec<u8> { include_bytes!("templates/basic.yaml").to_vec() }
 
     /// Converts the `SupervisorConfig` into a vector of
     /// `ocelot_supervise::SupervisorConfig` by transforming each process
@@ -103,27 +102,37 @@ impl SupervisorConfig {
                                 (dep_name, supervisor_config::ProcessDependency { condition })
                             })
                         })
-                        .collect::<HashMap<_, _>>()
+                        .collect()
                 };
                 supervisor
             })
             .collect()
     }
 
-    /// Validates process dependencies, detecting cycles (using topological
-    /// sort) and missing dependencies. Returns `Ok(())` if the
-    /// configuration is valid, or a `ValidationError` otherwise.
+    /// Validates all processes in the configuration.
     pub fn validate(&self) -> Result<(), Error> {
         self.check_version()?;
         self.check_missing_dependencies()?;
-        self.detect_dependency_cycles()
+        self.detect_dependency_cycles()?;
+        self.validate_process_configs()?;
+
+        Ok(())
     }
 
+    /// Checks that the config version is supported.
     fn check_version(&self) -> Result<(), Error> {
         if self.version != Self::SUPPORTED_VERSION {
             return Err(Error::Validate {
-                source: error::ValidationError::InvalidVersion { version: self.version.clone() },
+                source: ValidationError::InvalidVersion { version: self.version.clone() },
             });
+        }
+        Ok(())
+    }
+
+    /// Validate each process configuration.
+    fn validate_process_configs(&self) -> Result<(), Error> {
+        for (name, config) in &self.processes {
+            config.validate(name)?;
         }
         Ok(())
     }
@@ -137,7 +146,7 @@ impl SupervisorConfig {
             for dep_name in config.depends_on.keys() {
                 if !self.processes.contains_key(dep_name) {
                     return Err(Error::Validate {
-                        source: error::ValidationError::MissingDependency {
+                        source: ValidationError::MissingDependency {
                             process: name.clone(),
                             depends_on: dep_name.clone(),
                         },
@@ -148,7 +157,8 @@ impl SupervisorConfig {
         Ok(())
     }
 
-    /// Detects circular dependencies using topological sort (Kahn's algorithm).
+    /// Detects circular dependencies using topological sort (Kahn's algorithm)
+    /// and extracts full cycle path using Kosaraju's algorithm + DFS.
     ///
     /// Time complexity: O(P + D) where P = number of processes, D = total
     /// dependencies. Space complexity: O(P + D) for the graph and index
@@ -162,23 +172,44 @@ impl SupervisorConfig {
         }
 
         for (name, config) in &self.processes {
-            let from = indices[&name.clone()];
+            let from = indices[name];
             for dep_name in config.depends_on.keys() {
-                let to = indices[&dep_name.clone()];
+                let to = indices[dep_name];
                 let _ = graph.add_edge(from, to, ());
             }
         }
 
         if let Err(cycle) = petgraph::algo::toposort(&graph, None) {
             let node = cycle.node_id();
-            let process_name = graph[node].clone();
-            Err(Error::Validate {
-                source: error::ValidationError::CyclicDependency { process: process_name },
-            })
+            // Get strongly connected components
+            let sccs = petgraph::algo::kosaraju_scc(&graph);
+            let node_name = graph[node].clone();
+            // Find the SCC containing the failing node
+            let scc_opt = sccs.iter().find(|scc| scc.contains(&node)).cloned();
+            let Some(scc) = scc_opt else {
+                // Should not happen: toposort failed, node must be in a cycle SCC
+                return Err(Error::Validate {
+                    source: ValidationError::CyclicDependency { cycle: vec![node_name] },
+                });
+            };
+            // Extract a cycle from this SCC using DFS
+            utils::find_cycle_in_scc(&graph, &scc, node).map_or_else(
+                || {
+                    Err(Error::Validate {
+                        source: ValidationError::CyclicDependency { cycle: vec![node_name] },
+                    })
+                },
+                |cycle_nodes| {
+                    let cycle = cycle_nodes.into_iter().map(|idx| graph[idx].clone()).collect();
+                    Err(Error::Validate { source: ValidationError::CyclicDependency { cycle } })
+                },
+            )
         } else {
             Ok(())
         }
     }
+
+    pub fn template_basic() -> Vec<u8> { include_bytes!("templates/basic.yaml").to_vec() }
 }
 
 impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
@@ -196,6 +227,11 @@ impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
             })
             .collect();
 
+        // Convert environment_variables from Vec<(String, String)> to HashMap<String,
+        // String>
+        let environment_variables =
+            config.environment_variables.into_iter().collect::<HashMap<_, _>>();
+
         // Map log configuration
         let (log_stdout, log_stderr) = match config.log {
             Some(LogConfig { stdout, stderr }) => {
@@ -206,7 +242,7 @@ impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
                         LogDestination::File { path } => SupLogDestination::File { path },
                     };
                     let rotation = s.rotation.map(|r| SupLogRotationConfig {
-                        max_size_bytes: r.max_size_bytes,
+                        max_size_bytes: r.max_size_bytes.map(|s| s.as_u64()),
                         rotation_interval_secs: r.rotation_interval.map(|d| d.as_secs()),
                         max_files: r.max_files,
                         max_age_days: r.max_age_days,
@@ -229,7 +265,7 @@ impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
             name: String::new(),
             program: PathBuf::from(config.program),
             arguments: config.arguments,
-            environment_variables: config.environment_variables,
+            environment_variables,
             working_directory: config.working_directory.map(PathBuf::from),
             depends_on,
             readiness_probe: config.readiness_probe.map(supervisor_probe::Probe::from),
@@ -306,7 +342,7 @@ mod tests {
     use ocelot_supervise::{LogDestination, supervisor_config::DependencyCondition};
 
     use crate::config::{
-        ProcessConfig, RestartPolicyConfig, SupervisorConfig,
+        Error, ProcessConfig, RestartPolicyConfig, SupervisorConfig, ValidationError,
         dependency::DependencyConfig,
         probe::{ProbeConfig, ProbeHandlerConfig},
         process::ShutdownSignalConfig,
@@ -422,7 +458,9 @@ environmentVariables:
   BAZ: qux
 ";
         let config: ProcessConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.environment_variables.get("FOO"), Some(&"bar".to_string()));
+        assert_eq!(config.program, "/usr/bin/test");
+        assert!(config.arguments.is_empty());
+        assert_eq!(config.get_env("FOO"), Some(&"bar".to_string()));
         assert_eq!(config.environment_variables.len(), 2);
     }
 
@@ -674,5 +712,357 @@ processes:
         assert!(matches!(app_sup.log_stderr.destination, LogDestination::Inherit));
         assert!(app_sup.log_stdout.rotation.is_none());
         assert!(app_sup.log_stderr.rotation.is_none());
+    }
+
+    #[test]
+    fn test_validate_missing_program() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: ""
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::MissingProcessProgram { .. }));
+                if let ValidationError::MissingProcessProgram { process } = source {
+                    assert_eq!(process, "app");
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_invalid_termination_grace_period() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            terminationGracePeriod: 0s
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::InvalidTerminationGracePeriod { .. }));
+                if let ValidationError::InvalidTerminationGracePeriod { value } = source {
+                    assert_eq!(value, 0);
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_invalid_log_rotation_max_size_zero() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            log:
+              stdout:
+                destination:
+                  type: file
+                  path: /var/log/app/stdout.log
+                rotation:
+                  maxSizeBytes: 0
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::InvalidLogRotation { .. }));
+                if let ValidationError::InvalidLogRotation { field, value } = source {
+                    assert_eq!(field, "stdout.maxSizeBytes");
+                    assert_eq!(value, 0);
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_invalid_log_rotation_interval_zero() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            log:
+              stdout:
+                destination:
+                  type: file
+                  path: /var/log/app/stdout.log
+                rotation:
+                  rotationInterval: 0s
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::InvalidLogRotation { .. }));
+                if let ValidationError::InvalidLogRotation { field, value } = source {
+                    assert_eq!(field, "stdout.rotationInterval");
+                    assert_eq!(value, 0);
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_invalid_log_rotation_max_files_zero() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            log:
+              stdout:
+                destination:
+                  type: file
+                  path: /var/log/app/stdout.log
+                rotation:
+                  maxFiles: 0
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::InvalidLogRotation { .. }));
+                if let ValidationError::InvalidLogRotation { field, value } = source {
+                    assert_eq!(field, "stdout.maxFiles");
+                    assert_eq!(value, 0);
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_invalid_log_rotation_max_age_zero() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            log:
+              stdout:
+                destination:
+                  type: file
+                  path: /var/log/app/stdout.log
+                rotation:
+                  maxAgeDays: 0
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::InvalidLogRotation { .. }));
+                if let ValidationError::InvalidLogRotation { field, value } = source {
+                    assert_eq!(field, "stdout.maxAgeDays");
+                    assert_eq!(value, 0);
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_log_rotation_both_zero() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            log:
+              stdout:
+                destination:
+                  type: file
+                  path: /var/log/app/stdout.log
+                rotation:
+                  maxSizeBytes: 0
+                  rotationInterval: 0s
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        // When both are zero, the first check (maxSizeBytes == 0) catches it
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::InvalidLogRotation { .. }));
+                if let ValidationError::InvalidLogRotation { field, value } = source {
+                    assert_eq!(field, "stdout.maxSizeBytes");
+                    assert_eq!(value, 0);
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_invalid_probe_timeout() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            readinessProbe:
+              handler:
+                type: httpGet
+                path: /health
+                port: 8080
+              initialDelay: 5s
+              period: 10s
+              timeout: 15s
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::InvalidProbeTimeout { .. }));
+                if let ValidationError::InvalidProbeTimeout { timeout, period } = source {
+                    assert_eq!(timeout, 15);
+                    assert_eq!(period, 10);
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_invalid_probe_port() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            readinessProbe:
+              handler:
+                type: httpGet
+                path: /health
+                port: 0
+              period: 10s
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::InvalidProbePort { .. }));
+                if let ValidationError::InvalidProbePort { port } = source {
+                    assert_eq!(port, 0);
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_invalid_restart_backoff() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            restartPolicy:
+              type: Always
+              backoff: 0s
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::InvalidRestartBackoff { .. }));
+                if let ValidationError::InvalidRestartBackoff { backoff } = source {
+                    assert_eq!(backoff, 0);
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_duplicate_environment_variables() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            environmentVariables:
+              FOO: bar
+              FOO: baz
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::DuplicateEnvironmentVariables { .. }));
+                if let ValidationError::DuplicateEnvironmentVariables { process, variables } =
+                    source
+                {
+                    assert_eq!(process, "app");
+                    assert_eq!(variables, vec!["FOO"]);
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_cycle_detection_full_path() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          a:
+            program: /usr/bin/a
+            dependsOn:
+              b:
+                condition: Started
+          b:
+            program: /usr/bin/b
+            dependsOn:
+              c:
+                condition: Started
+          c:
+            program: /usr/bin/c
+            dependsOn:
+              a:
+                condition: Started
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        let err = config.validate().unwrap_err();
+        match err {
+            Error::Validate { source } => {
+                assert!(matches!(source, ValidationError::CyclicDependency { .. }));
+                if let ValidationError::CyclicDependency { cycle } = source {
+                    // The cycle should contain all three nodes in order
+                    assert!(cycle.len() >= 3);
+                    assert!(cycle.contains(&"a".to_string()));
+                    assert!(cycle.contains(&"b".to_string()));
+                    assert!(cycle.contains(&"c".to_string()));
+                }
+            }
+            _ => panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_successful_config() {
+        let yaml = r#"
+        version: "1.0"
+        processes:
+          app:
+            program: /usr/bin/app
+            terminationGracePeriod: 30s
+            environmentVariables:
+              FOO: bar
+              BAZ: qux
+        "#;
+        let config: SupervisorConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.validate().is_ok());
     }
 }
