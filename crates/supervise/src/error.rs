@@ -29,4 +29,13 @@ pub enum Error {
 
     #[snafu(display("Failed to build splice relay, error: {source}"))]
     BuildSpliceRelay { source: crate::splice_relay::Error },
+
+    #[snafu(display("Failed to create epoll, error: {source}"))]
+    CreateEpoll { source: nix::Error },
+
+    #[snafu(display("Failed to add file descriptor to epoll, error: {source}"))]
+    AddEpollFd { source: nix::Error },
+
+    #[snafu(display("Failed to read from pipe, error: {source}"))]
+    PipeRead { source: std::io::Error },
 }
