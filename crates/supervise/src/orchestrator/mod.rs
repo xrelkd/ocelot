@@ -70,7 +70,10 @@ mod tests {
 
     use crate::{
         orchestrator::config::Config,
-        supervisor::config::{Config as SupervisorConfig, RestartPolicy},
+        supervisor::{
+            LogDestination, LogStreamConfig,
+            config::{Config as SupervisorConfig, RestartPolicy},
+        },
     };
 
     #[test]
@@ -94,6 +97,8 @@ mod tests {
             restart_policy: RestartPolicy::Never,
             shutdown_signal: None,
             termination_grace_period: Duration::from_secs(30),
+            log_stdout: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
+            log_stderr: LogStreamConfig { destination: LogDestination::Inherit, rotation: None },
         };
 
         let config = Config {

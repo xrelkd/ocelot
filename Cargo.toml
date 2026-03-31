@@ -35,9 +35,10 @@ members = [
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-serde      = { version = "1", features = ["derive"] }
-serde_with = { version = "3", features = ["macros"] }
-serde_yaml = "0.9"
+humantime-serde = "1"
+serde           = { version = "1", features = ["derive"] }
+serde_with      = { version = "3", features = ["macros"] }
+serde_yaml      = "0.9"
 
 futures = "0.3"
 tokio = { version = "1", features = [
@@ -56,6 +57,7 @@ tokio-util = { version = "0.7" }
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 exitcode = "1"
+flate2 = { version = "1", features = ["rust_backend"] }
 nix = { version = "0.31", features = [
   "event",
   "fs",
@@ -69,8 +71,9 @@ nix = { version = "0.31", features = [
 petgraph = "0.8"
 procfs = "0.18"
 resolve-path = "0.1"
-shadow-rs = "1.7"
+shadow-rs = "1"
 snafu = "0.9"
+tempfile = "3"
 
 ocelot-entry      = { path = "./crates/entry" }
 ocelot-idle       = { path = "./crates/idle" }

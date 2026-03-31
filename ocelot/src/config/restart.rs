@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
@@ -6,20 +8,22 @@ pub enum RestartPolicyConfig {
     #[default]
     Never,
     Always {
-        #[serde(default, rename = "backoffSecs")]
-        backoff_secs: Option<u64>,
+        #[serde(default, with = "humantime_serde")]
+        backoff: Option<Duration>,
     },
     OnFailure {
         #[serde(default, rename = "maxRetries")]
         max_retries: Option<u32>,
 
-        #[serde(default, rename = "backoffSecs")]
-        backoff_secs: Option<u64>,
+        #[serde(default, with = "humantime_serde")]
+        backoff: Option<Duration>,
     },
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use crate::config::restart::RestartPolicyConfig;
 
     #[test]
@@ -35,10 +39,10 @@ type: Never
     fn test_restart_policy_always_with_backoff() {
         let yaml = r"
 type: Always
-backoffSecs: 5
+backoff: 5s
 ";
-        let config: RestartPolicyConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config, RestartPolicyConfig::Always { backoff_secs: Some(5) });
+        let policy: RestartPolicyConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(policy, RestartPolicyConfig::Always { backoff: Some(Duration::from_secs(5)) });
     }
 
     #[test]
@@ -47,7 +51,7 @@ backoffSecs: 5
 type: Always
 ";
         let config: RestartPolicyConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config, RestartPolicyConfig::Always { backoff_secs: None });
+        assert_eq!(config, RestartPolicyConfig::Always { backoff: None });
     }
 
     #[test]
@@ -55,12 +59,15 @@ type: Always
         let yaml = r"
 type: OnFailure
 maxRetries: 10
-backoffSecs: 3
+backoff: 3s
 ";
-        let config: RestartPolicyConfig = serde_yaml::from_str(yaml).unwrap();
+        let policy: RestartPolicyConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(
-            config,
-            RestartPolicyConfig::OnFailure { max_retries: Some(10), backoff_secs: Some(3) }
+            policy,
+            RestartPolicyConfig::OnFailure {
+                max_retries: Some(10),
+                backoff: Some(Duration::from_secs(3))
+            }
         );
     }
 
@@ -70,10 +77,7 @@ backoffSecs: 3
 type: OnFailure
 ";
         let config: RestartPolicyConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(
-            config,
-            RestartPolicyConfig::OnFailure { max_retries: None, backoff_secs: None }
-        );
+        assert_eq!(config, RestartPolicyConfig::OnFailure { max_retries: None, backoff: None });
     }
 
     #[test]
