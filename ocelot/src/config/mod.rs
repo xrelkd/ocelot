@@ -25,7 +25,9 @@ pub use self::{
     process::ProcessConfig,
     restart::RestartPolicyConfig,
 };
-use crate::config::process::{LogCompression, LogConfig, LogDestination, LogStreamConfig};
+use crate::config::process::{
+    LogCompression, LogConfig, LogDestination, LogRotationConfig, LogStreamConfig,
+};
 
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -235,25 +237,7 @@ impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
         // Map log configuration
         let (log_stdout, log_stderr) = match config.log {
             Some(LogConfig { stdout, stderr }) => {
-                let convert = |s: LogStreamConfig| -> SupLogStreamConfig {
-                    let dest = match s.destination {
-                        LogDestination::Null => SupLogDestination::Null,
-                        LogDestination::Inherit => SupLogDestination::Inherit,
-                        LogDestination::File { path } => SupLogDestination::File { path },
-                    };
-                    let rotation = s.rotation.map(|r| SupLogRotationConfig {
-                        max_size_bytes: r.max_size_bytes.map(|s| s.as_u64()),
-                        rotation_interval_secs: r.rotation_interval.map(|d| d.as_secs()),
-                        max_files: r.max_files,
-                        max_age_days: r.max_age_days,
-                        mode: r.mode.and_then(|m| u32::from_str_radix(&m, 8).ok()),
-                        compression: r.compression.map(|c| match c {
-                            LogCompression::Gzip => SupLogCompression::Gzip,
-                        }),
-                    });
-                    SupLogStreamConfig { destination: dest, rotation }
-                };
-                (convert(stdout), convert(stderr))
+                (SupLogStreamConfig::from(stdout), SupLogStreamConfig::from(stderr))
             }
             None => (
                 SupLogStreamConfig { destination: SupLogDestination::Inherit, rotation: None },
@@ -326,6 +310,48 @@ impl From<RestartPolicyConfig> for supervisor_config::RestartPolicy {
                 max_retries: max_retries.unwrap_or(u32::MAX),
                 backoff: backoff.unwrap_or(Duration::from_secs(2)),
             },
+        }
+    }
+}
+
+impl From<LogStreamConfig> for SupLogStreamConfig {
+    fn from(config: LogStreamConfig) -> Self {
+        Self {
+            destination: SupLogDestination::from(config.destination),
+            rotation: config.rotation.map(SupLogRotationConfig::from),
+        }
+    }
+}
+
+impl From<LogDestination> for SupLogDestination {
+    fn from(dest: LogDestination) -> Self {
+        match dest {
+            LogDestination::Null => Self::Null,
+            LogDestination::Inherit => Self::Inherit,
+            LogDestination::File { path } => Self::File { path },
+        }
+    }
+}
+
+impl From<LogRotationConfig> for SupLogRotationConfig {
+    fn from(config: LogRotationConfig) -> Self {
+        Self {
+            max_size_bytes: config.max_size_bytes.map(|s| s.as_u64()),
+            rotation_interval_secs: config.rotation_interval.map(|d| d.as_secs()),
+            max_files: config.max_files,
+            max_age_days: config.max_age_days,
+            mode: config.mode.and_then(|m| u32::from_str_radix(&m, 8).ok()),
+            compression: SupLogCompression::from(config.compression),
+        }
+    }
+}
+
+impl From<LogCompression> for SupLogCompression {
+    fn from(compression: LogCompression) -> Self {
+        match compression {
+            LogCompression::None => Self::None,
+            LogCompression::Lz4 => Self::Lz4,
+            LogCompression::Gzip => Self::Gzip,
         }
     }
 }

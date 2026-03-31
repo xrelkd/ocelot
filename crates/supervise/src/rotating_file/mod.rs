@@ -1,8 +1,9 @@
+mod compress;
+
 #[cfg(test)]
 mod tests;
 
 use std::{
-    io::Write as _,
     os::unix::fs::OpenOptionsExt,
     path::PathBuf,
     pin::Pin,
@@ -10,7 +11,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use flate2::{Compression, write::GzEncoder};
 use nix::unistd::fsync;
 use tokio::{fs::File, io, io::AsyncWrite};
 
@@ -136,19 +136,23 @@ impl RotatingFile {
             let timestamp =
                 SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
 
-            let rotated_path = if self.rotation.compression == Some(LogCompression::Gzip) {
-                format!("{}.{}.gz", self.base_path.display(), timestamp)
-            } else {
-                format!("{}.{}", self.base_path.display(), timestamp)
-            };
-
-            if self.rotation.compression == Some(LogCompression::Gzip) {
-                let source_data = std::fs::read(&self.base_path)?;
-                let compressed = compress_gzip(&source_data)?;
-                std::fs::write(&rotated_path, compressed)?;
-                std::fs::remove_file(&self.base_path)?;
-            } else {
-                std::fs::rename(&self.base_path, &rotated_path)?;
+            match self.rotation.compression {
+                LogCompression::None => {
+                    let rotated_path = format!("{}.{}", self.base_path.display(), timestamp);
+                    std::fs::rename(&self.base_path, &rotated_path)?;
+                }
+                LogCompression::Lz4 => {
+                    let rotated_path = format!("{}.{timestamp}.lz4", self.base_path.display());
+                    let mut source = std::fs::File::open(&self.base_path)?;
+                    let mut destination = std::fs::File::create(rotated_path)?;
+                    compress::compress_lz4(&mut source, &mut destination)?;
+                }
+                LogCompression::Gzip => {
+                    let rotated_path = format!("{}.{timestamp}.gz", self.base_path.display());
+                    let mut source = std::fs::File::open(&self.base_path)?;
+                    let mut destination = std::fs::File::create(rotated_path)?;
+                    compress::compress_gzip(&mut source, &mut destination)?;
+                }
             }
         }
 
@@ -250,12 +254,4 @@ impl AsyncWrite for RotatingFile {
             pin.poll_shutdown(cx)
         })
     }
-}
-
-fn compress_gzip(data: &[u8]) -> io::Result<Vec<u8>> {
-    let mut writer = std::io::BufWriter::new(Vec::new());
-    let mut encoder = GzEncoder::new(&mut writer, Compression::default());
-    encoder.write_all(data)?;
-    let _unused = encoder.finish()?;
-    Ok(writer.into_inner()?)
 }
