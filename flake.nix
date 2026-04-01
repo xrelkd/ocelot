@@ -87,6 +87,7 @@
           };
 
           packages = rec {
+            default = ocelot;
             ocelot = pkgs.callPackage ./devshell/package.nix {
               inherit (cargoToml.workspace.metadata.crane) name;
               inherit (cargoToml.workspace.package) version;
@@ -97,7 +98,7 @@
               inherit (cargoToml.workspace.package) version;
               inherit ocelot;
             };
-            default = ocelot;
+            check-format = pkgs.callPackage ./devshell/format.nix { };
           };
         };
     };
