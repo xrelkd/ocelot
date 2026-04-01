@@ -19,23 +19,23 @@ pub enum Error {
     RegisterFd { source: std::io::Error },
 
     #[snafu(display("Failed to execute child process"))]
-    ChildExecute,
-
-    #[snafu(display("Failed to read from Pipe, error: {source}"))]
-    ReadPipe { source: nix::Error },
+    ExecuteChild,
 
     #[snafu(display("Failed to receive dependency: {source}"))]
     ReceiveDependency { source: tokio::sync::broadcast::error::RecvError },
 
-    #[snafu(display("Failed to build splice relay, error: {source}"))]
-    BuildSpliceRelay { source: crate::splice_relay::Error },
+    #[snafu(display("Failed to create eventfd, error: {source}"))]
+    CreateEventfd { source: nix::Error },
 
-    #[snafu(display("Failed to create epoll, error: {source}"))]
+    #[snafu(display("Failed to create epoll instance, error: {source}"))]
     CreateEpoll { source: nix::Error },
 
     #[snafu(display("Failed to add file descriptor to epoll, error: {source}"))]
     AddEpollFd { source: nix::Error },
 
+    #[snafu(display("Failed to delete file descriptor from epoll: {source}"))]
+    DeleteEpollFd { source: nix::Error },
+
     #[snafu(display("Failed to read from pipe, error: {source}"))]
-    PipeRead { source: std::io::Error },
+    ReadPipe { source: std::io::Error },
 }
