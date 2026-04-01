@@ -1,3 +1,4 @@
+mod bootstrap;
 mod supervise;
 mod zombie_finder;
 
@@ -76,6 +77,21 @@ pub enum Commands {
     },
 
     #[clap(
+        visible_aliases = ["boot"],
+        about = "Run as initramfs init - mount rootfs and exec supervise",
+        long_about = "Acts as an initramfs init system for QEMU VMs. Loads kernel modules, mounts \
+                      the root filesystem, performs switch_root, and executes the supervise \
+                      orchestrator to manage application processes."
+    )]
+    Bootstrap {
+        #[clap(short, long)]
+        file: Option<PathBuf>,
+
+        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
+        log_level: tracing::Level,
+    },
+
+    #[clap(
         about = "Creates zombie processes by forking child processes that immediately exit, while \
                  the parent process sleeps. This is useful for testing how systems handle zombie \
                  processes.",
@@ -146,6 +162,11 @@ impl Cli {
             }
             Some(Commands::Supervise { command, file, log_level }) => {
                 return supervise::run(command, file, log_level);
+            }
+            Some(Commands::Bootstrap { file, log_level }) => {
+                init_tracing_subscriber(log_level);
+                let path = file.unwrap_or_else(|| PathBuf::from("/etc/ocelot/bootstrap.yaml"));
+                return bootstrap::run(&path);
             }
             Some(Commands::Zombie { log_level, interval_ms, count }) => {
                 init_tracing_subscriber(log_level);

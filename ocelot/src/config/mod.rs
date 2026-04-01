@@ -1,3 +1,4 @@
+mod bootstrap;
 mod dependency;
 mod error;
 mod probe;
@@ -10,5 +11,6 @@ mod utils;
 mod tests;
 
 pub use self::{
-    error::Error, probe::ProbeHandlerConfig, process::ProcessConfig, supervise::SuperviseConfig,
+    bootstrap::BootstrapConfig, error::Error, probe::ProbeHandlerConfig, process::ProcessConfig,
+    supervise::SuperviseConfig,
 };

@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-bootstrap"
-version = "0.4.0"
+version = "0.4.2"
 dependencies = [
  "nix",
  "ocelot-supervise",

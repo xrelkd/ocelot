@@ -35,6 +35,7 @@ resolve-path  = { workspace = true }
 shadow-rs     = { workspace = true }
 snafu         = { workspace = true }
 
+ocelot-bootstrap = { workspace = true }
 ocelot-entry     = { workspace = true }
 ocelot-idle      = { workspace = true }
 ocelot-zombie    = { workspace = true }
