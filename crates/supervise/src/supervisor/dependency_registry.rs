@@ -75,6 +75,7 @@ impl DependencyWaiter {
         Ok(())
     }
 
+    #[inline]
     fn handle_event(&mut self, event: DependencyEvent) -> bool {
         match event {
             DependencyEvent::Started { name } => {
