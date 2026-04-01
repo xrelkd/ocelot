@@ -164,11 +164,6 @@ impl Executor {
                         );
                     }
                 }
-                (Event::ForwardSignal { signal }, Phase::Running) => {
-                    if let Some(pid) = state.process_id() {
-                        forward_signal(pid, signal);
-                    }
-                }
                 (Event::GetStatus { resp }, _) => {
                     let _ = resp.send(state.to_status());
                 }
