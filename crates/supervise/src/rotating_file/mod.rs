@@ -138,7 +138,7 @@ impl RotatingFile {
 
             match self.rotation.compression {
                 LogCompression::None => {
-                    let rotated_path = format!("{}.{}", self.base_path.display(), timestamp);
+                    let rotated_path = format!("{}.{timestamp}", self.base_path.display());
                     std::fs::rename(&self.base_path, &rotated_path)?;
                 }
                 LogCompression::Lz4 => {
