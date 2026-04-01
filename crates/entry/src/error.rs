@@ -33,7 +33,7 @@ pub enum Error {
     /// `execvp()` fails to replace the process image. The original error from
     /// `execvp` is logged but not returned directly.
     #[snafu(display("Failed to execute child process"))]
-    ChildExecute,
+    ExecuteChild,
 
     /// Failed to read from a pipe.
     ///

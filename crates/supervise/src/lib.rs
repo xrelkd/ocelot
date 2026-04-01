@@ -15,8 +15,8 @@ pub use self::{
     orchestrator::OrchestratorConfig,
     reaper::{ReapedProcess, Reaper, ReaperExecutor},
     splice_relay::{
-        Builder as SpliceRelayBuilder, Config as SpliceRelayConfig, Error as SpliceRelayError,
-        RelayEntry, SpliceRelay, Status as RelayStatus,
+        Builder as SpliceRelayBuilder, Config as SpliceRelayConfig, RelayEntry, SpliceRelay,
+        Status as RelayStatus,
     },
     supervisor::{
         DependencyRegistry, LogCompression, LogDestination, LogRotationConfig, LogStreamConfig,

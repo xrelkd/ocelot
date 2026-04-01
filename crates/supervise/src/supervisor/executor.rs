@@ -217,7 +217,12 @@ impl ProcessSpawnContext<'_> {
 
         // Handle stdout logging based on config
         if let Some(stdout_fd) = stdout_fd {
-            match config.log_stdout.destination {
+            match &config.log_stdout.destination {
+                LogDestination::Null => {
+                    // Should not happen: stdout_fd exists but destination Null means it should be
+                    // discarded.
+                    tracing::warn!("stdout_fd present but log destination is Null; ignoring");
+                }
                 LogDestination::Inherit => {
                     tasks.register_splice_relay(
                         cancel_token.clone(),
@@ -227,28 +232,26 @@ impl ProcessSpawnContext<'_> {
                         Destination::Stdout,
                     );
                 }
-                LogDestination::File { path: _ } => {
-                    if let LogDestination::File { path } = &config.log_stdout.destination {
-                        tasks.register_file_logging(
-                            cancel_token.clone(),
-                            event_sender,
-                            stdout_fd,
-                            path,
-                            config.log_stdout.rotation.clone(),
-                        );
-                    }
-                }
-                LogDestination::Null => {
-                    // Should not happen: stdout_fd exists but destination Null means it should be
-                    // discarded.
-                    tracing::warn!("stdout_fd present but log destination is Null; ignoring");
+                LogDestination::File { path } => {
+                    tasks.register_file_logging(
+                        cancel_token.clone(),
+                        event_sender,
+                        stdout_fd,
+                        path,
+                        config.log_stdout.rotation.clone().unwrap_or_default(),
+                    );
                 }
             }
         }
 
         // Handle stderr logging based on config
         if let Some(stderr_fd) = stderr_fd {
-            match config.log_stderr.destination {
+            match &config.log_stderr.destination {
+                LogDestination::Null => {
+                    // Should not happen: stderr_fd exists but destination Null means it should be
+                    // discarded.
+                    tracing::warn!("stderr_fd present but log destination is Null; ignoring");
+                }
                 LogDestination::Inherit => {
                     tasks.register_splice_relay(
                         cancel_token.clone(),
@@ -258,19 +261,14 @@ impl ProcessSpawnContext<'_> {
                         Destination::Stderr,
                     );
                 }
-                LogDestination::File { path: _ } => {
-                    if let LogDestination::File { path } = &config.log_stderr.destination {
-                        tasks.register_file_logging(
-                            cancel_token.clone(),
-                            event_sender,
-                            stderr_fd,
-                            path,
-                            config.log_stderr.rotation.clone(),
-                        );
-                    }
-                }
-                LogDestination::Null => {
-                    tracing::warn!("stderr_fd present but log destination is Null; ignoring");
+                LogDestination::File { path } => {
+                    tasks.register_file_logging(
+                        cancel_token.clone(),
+                        event_sender,
+                        stderr_fd,
+                        path,
+                        config.log_stderr.rotation.clone().unwrap_or_default(),
+                    );
                 }
             }
         }

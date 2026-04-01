@@ -40,7 +40,7 @@ pub trait TaskRunner {
         event_sender: &mpsc::UnboundedSender<Event>,
         source_fd: OwnedFd,
         file_path: impl AsRef<Path> + Send,
-        rotation: Option<LogRotationConfig>,
+        rotation: LogRotationConfig,
     );
 
     fn check_readiness(
@@ -123,11 +123,10 @@ impl TaskRunner for JoinSet<()> {
         event_sender: &mpsc::UnboundedSender<Event>,
         source_fd: OwnedFd,
         file_path: impl AsRef<Path> + Send,
-        rotation: Option<LogRotationConfig>,
+        rotation_config: LogRotationConfig,
     ) {
         let event_sender = event_sender.clone();
         let file_path = file_path.as_ref().to_path_buf();
-        let rotation_config = rotation.unwrap_or_default();
         let fut = async move {
             let mut ready = false;
 
