@@ -55,10 +55,13 @@ impl CommandExt for Command {
                 drop(stderr_writer);
 
                 let err_reader = AsyncFd::new(err_reader).context(error::RegisterFdSnafu)?;
-                let _guard = err_reader.readable().await.context(error::PipeReadSnafu)?;
+                let _guard = err_reader.readable().await.context(error::ReadPipeSnafu)?;
 
                 let mut buf = [0u8; 4];
-                match unistd::read(err_reader.as_fd(), &mut buf).context(error::ReadPipeSnafu)? {
+                match unistd::read(err_reader.as_fd(), &mut buf)
+                    .map_err(std::io::Error::from)
+                    .context(error::ReadPipeSnafu)?
+                {
                     0 => Ok(SpawnedProcess {
                         pid: child,
                         stdout_fd: stdout_reader,
@@ -66,9 +69,9 @@ impl CommandExt for Command {
                     }),
                     4 => {
                         let _errno = i32::from_ne_bytes(buf);
-                        Err(Error::ChildExecute)
+                        Err(Error::ExecuteChild)
                     }
-                    _ => Err(Error::ChildExecute),
+                    _ => Err(Error::ExecuteChild),
                 }
             }
             ForkResult::Child => {

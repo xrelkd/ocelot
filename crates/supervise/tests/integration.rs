@@ -2,9 +2,9 @@ use std::{collections::HashMap, fs, path::PathBuf, time::Duration};
 
 use nix::sys::signal::{self, Signal};
 use ocelot_supervise::{
-    DependencyRegistry, LogDestination, LogRotationConfig, LogStreamConfig, OrchestratorConfig,
-    Phase, Reaper, RestartPolicy, SpliceRelayBuilder, Supervisor, SupervisorConfig,
-    supervisor_config, supervisor_probe,
+    DependencyRegistry, LogCompression, LogDestination, LogRotationConfig, LogStreamConfig,
+    OrchestratorConfig, Phase, Reaper, RestartPolicy, SpliceRelayBuilder, Supervisor,
+    SupervisorConfig, supervisor_config, supervisor_probe,
 };
 use ocelot_test_utils::{find_zombie_processes, run_in_namespace, supports_user_namespace};
 use tempfile::tempdir;
@@ -790,7 +790,7 @@ fn test_stdout_file_size_rotation() -> Result<(), Box<dyn std::error::Error>> {
                     max_files: None,
                     max_age_days: None,
                     mode: None,
-                    compression: None,
+                    compression: LogCompression::None,
                 }),
             },
             log_stderr: LogStreamConfig { destination: LogDestination::Null, rotation: None },
@@ -871,7 +871,7 @@ fn test_stderr_file_rotation_with_max_files() -> Result<(), Box<dyn std::error::
                     max_files: Some(2),
                     max_age_days: None,
                     mode: None,
-                    compression: None,
+                    compression: LogCompression::None,
                 }),
             },
         };
@@ -954,7 +954,7 @@ fn test_time_based_rotation() -> Result<(), Box<dyn std::error::Error>> {
                     max_files: None,
                     max_age_days: None,
                     mode: None,
-                    compression: None,
+                    compression: LogCompression::None,
                 }),
             },
             log_stderr: LogStreamConfig { destination: LogDestination::Null, rotation: None },

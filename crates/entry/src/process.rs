@@ -137,9 +137,9 @@ impl Process {
                     // This means exec() failed and the child wrote the errno.
                     4 => {
                         let _errno = i32::from_ne_bytes(buf);
-                        Err(Error::ChildExecute)
+                        Err(Error::ExecuteChild)
                     }
-                    _ => Err(Error::ChildExecute),
+                    _ => Err(Error::ExecuteChild),
                 }
             }
             ForkResult::Child => {

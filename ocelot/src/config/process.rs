@@ -2,6 +2,11 @@ use std::{collections::HashMap, path::PathBuf, str::FromStr, time::Duration};
 
 use bytesize::ByteSize;
 use nix::sys::signal::Signal;
+use ocelot_supervise::{
+    LogCompression as SupLogCompression, LogDestination as SupLogDestination,
+    LogRotationConfig as SupLogRotationConfig, LogStreamConfig as SupLogStreamConfig,
+    supervisor_config, supervisor_probe,
+};
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{MapAccess, Visitor},
@@ -326,7 +331,7 @@ pub struct LogRotationConfig {
     pub mode: Option<String>,
     /// Compression algorithm for rotated log files.
     #[serde(default)]
-    pub compression: Option<LogCompression>,
+    pub compression: LogCompression,
 }
 
 /// Configuration for a single log stream (stdout or stderr).
@@ -346,10 +351,106 @@ impl Default for LogStreamConfig {
 }
 
 /// Compression algorithm for rotated log files.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogCompression {
+    #[default]
+    None,
     Gzip,
+    Lz4,
+}
+
+impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
+    fn from(config: ProcessConfig) -> Self {
+        let termination_grace_period = config.termination_grace_period;
+
+        let shutdown_signal = config.shutdown_signal.map(|s| s.to_signal());
+
+        let depends_on = config
+            .depends_on
+            .into_iter()
+            .map(|(name, dep)| {
+                let condition = dep.condition.map(supervisor_config::DependencyCondition::from);
+                (name, supervisor_config::ProcessDependency { condition })
+            })
+            .collect();
+
+        // Convert environment_variables from Vec<(String, String)> to HashMap<String,
+        // String>
+        let environment_variables =
+            config.environment_variables.into_iter().collect::<HashMap<_, _>>();
+
+        // Map log configuration
+        let (log_stdout, log_stderr) = match config.log {
+            Some(LogConfig { stdout, stderr }) => {
+                (SupLogStreamConfig::from(stdout), SupLogStreamConfig::from(stderr))
+            }
+            None => (
+                SupLogStreamConfig { destination: SupLogDestination::Inherit, rotation: None },
+                SupLogStreamConfig { destination: SupLogDestination::Inherit, rotation: None },
+            ),
+        };
+
+        Self {
+            name: String::new(),
+            program: PathBuf::from(config.program),
+            arguments: config.arguments,
+            environment_variables,
+            working_directory: config.working_directory.map(PathBuf::from),
+            depends_on,
+            readiness_probe: config.readiness_probe.map(supervisor_probe::Probe::from),
+            liveness_probe: config.liveness_probe.map(supervisor_probe::Probe::from),
+            restart_policy: supervisor_config::RestartPolicy::from(
+                config.restart_policy.unwrap_or_default(),
+            ),
+            shutdown_signal,
+            termination_grace_period,
+            log_stdout,
+            log_stderr,
+        }
+    }
+}
+
+impl From<LogStreamConfig> for SupLogStreamConfig {
+    fn from(config: LogStreamConfig) -> Self {
+        Self {
+            destination: SupLogDestination::from(config.destination),
+            rotation: config.rotation.map(SupLogRotationConfig::from),
+        }
+    }
+}
+
+impl From<LogDestination> for SupLogDestination {
+    fn from(dest: LogDestination) -> Self {
+        match dest {
+            LogDestination::Null => Self::Null,
+            LogDestination::Inherit => Self::Inherit,
+            LogDestination::File { path } => Self::File { path },
+        }
+    }
+}
+
+impl From<LogRotationConfig> for SupLogRotationConfig {
+    fn from(config: LogRotationConfig) -> Self {
+        Self {
+            max_size_bytes: config.max_size_bytes.map(|s| s.as_u64()),
+            rotation_interval_secs: config.rotation_interval.map(|d| d.as_secs()),
+            max_files: config.max_files,
+            max_age_days: config.max_age_days,
+            mode: config.mode.and_then(|m| u32::from_str_radix(&m, 8).ok()),
+            compression: SupLogCompression::from(config.compression),
+        }
+    }
+}
+
+impl From<LogCompression> for SupLogCompression {
+    fn from(compression: LogCompression) -> Self {
+        match compression {
+            LogCompression::None => Self::None,
+            LogCompression::Lz4 => Self::Lz4,
+            LogCompression::Gzip => Self::Gzip,
+        }
+    }
 }
 
 #[cfg(test)]

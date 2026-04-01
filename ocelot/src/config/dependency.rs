@@ -1,3 +1,4 @@
+use ocelot_supervise::supervisor_config;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
@@ -16,6 +17,18 @@ pub enum DependencyCondition {
     Completed,
     CompletedSuccessfully,
     LogReady,
+}
+
+impl From<DependencyCondition> for supervisor_config::DependencyCondition {
+    fn from(condition: DependencyCondition) -> Self {
+        match condition {
+            DependencyCondition::Started => Self::Started,
+            DependencyCondition::Healthy => Self::Healthy,
+            DependencyCondition::Completed => Self::Completed,
+            DependencyCondition::CompletedSuccessfully => Self::CompletedSuccessfully,
+            DependencyCondition::LogReady => Self::LogReady,
+        }
+    }
 }
 
 #[cfg(test)]

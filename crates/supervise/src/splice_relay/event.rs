@@ -9,7 +9,7 @@ pub enum Event {
     Register {
         source: OwnedFd,
         destination: Destination,
-        sender: oneshot::Sender<Option<u64>>,
+        id_sender: oneshot::Sender<Option<u64>>,
         start_notification: Option<oneshot::Sender<()>>,
     },
     RemoveRelay {

@@ -1,4 +1,8 @@
-use std::{collections::HashMap, os::unix::io::OwnedFd, sync::mpsc};
+use std::{
+    collections::HashMap,
+    os::{fd::AsFd, unix::io::OwnedFd},
+    sync::mpsc,
+};
 
 use nix::{
     fcntl,
@@ -125,9 +129,9 @@ impl ThreadWorker {
 
         while let Ok(event) = self.event_sender.try_recv() {
             match event {
-                Event::Register { source, destination, sender, start_notification } => {
+                Event::Register { source, destination, id_sender, start_notification } => {
                     let result = self.register(source, destination, start_notification);
-                    let _unused = sender.send(result.ok());
+                    let _unused = id_sender.send(result.ok());
                 }
                 Event::RemoveRelay { id } => {
                     self.remove(id);
@@ -151,7 +155,7 @@ impl ThreadWorker {
         // Determine if we need to remove this token, and possibly send notification.
         let remove_id = {
             if let Some(entry) = self.relays.get_mut(&token) {
-                let dst_fd: &dyn std::os::unix::io::AsFd = match &entry.destination {
+                let dst_fd: &dyn AsFd = match &entry.destination {
                     Destination::Stdout => &std::io::stdout(),
                     Destination::Stderr => &std::io::stderr(),
                     Destination::OwnedFd { fd } => fd,
@@ -220,7 +224,7 @@ mod tests {
 
     use nix::{fcntl::OFlag, unistd::pipe2};
 
-    use crate::splice_relay::{Destination, RelayEntry, RelayInfo, Status, config::Config};
+    use crate::splice_relay::{Destination, RelayEntry, Status, config::Config};
 
     fn create_pipe() -> (OwnedFd, OwnedFd) {
         let (r, w) = pipe2(OFlag::O_NONBLOCK).expect("pipe2 failed");
@@ -267,11 +271,5 @@ mod tests {
         let (src, dst) = create_pipe();
         let entry = RelayEntry::new(42, src, Destination::OwnedFd { fd: dst }, None);
         assert_eq!(entry.id, 42);
-    }
-
-    #[test]
-    fn test_relay_info_new() {
-        let info = RelayInfo { id: 42 };
-        assert_eq!(info.id, 42);
     }
 }

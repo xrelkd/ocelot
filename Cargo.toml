@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 authors = ["xrelkd <46590321+xrelkd@users.noreply.github.com>"]
 homepage = "https://github.com/xrelkd/ocelot"
 repository = "https://github.com/xrelkd/ocelot"
@@ -57,10 +57,12 @@ tokio = { version = "1", features = [
 ] }
 tokio-util = { version = "0.7" }
 
+flate2   = { version = "1", features = ["rust_backend"] }
+lz4_flex = "0.13"
+
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 exitcode = "1"
-flate2 = { version = "1", features = ["rust_backend"] }
 nix = { version = "0.31", features = [
   "event",
   "fs",
@@ -234,7 +236,10 @@ nursery  = "deny"
 pedantic = "deny"
 
 [profile.release]
-opt-level = 3
+opt-level     = "z"
+lto           = "fat"
+codegen-units = 1
+strip         = "symbols"
 
 [profile.dev]
 opt-level = 0

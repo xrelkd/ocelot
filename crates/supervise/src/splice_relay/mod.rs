@@ -1,6 +1,5 @@
 mod config;
 mod destination;
-mod error;
 mod event;
 mod executor;
 mod relay_entry;
@@ -16,10 +15,11 @@ use std::{os::unix::io::OwnedFd, sync::mpsc};
 use tokio::sync::oneshot;
 
 pub use self::{
-    config::Config, destination::Destination, error::Error, event::Event, relay_entry::RelayEntry,
+    config::Config, destination::Destination, event::Event, relay_entry::RelayEntry,
     relay_info::RelayInfo, status::Status,
 };
 use self::{executor::Executor, waker::Waker};
+use crate::{error, error::Error};
 
 pub struct Builder {
     config: Config,
@@ -87,7 +87,7 @@ impl SpliceRelay {
         if let Err(err) = self.event_sender.send(Event::Register {
             source,
             destination,
-            sender: id_sender,
+            id_sender,
             start_notification: Some(notify_sender),
         }) {
             tracing::warn!("{err}");

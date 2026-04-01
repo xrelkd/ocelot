@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use ocelot_supervise::supervisor_probe;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
@@ -39,6 +40,28 @@ impl Default for ProbeHandlerConfig {
 pub enum ProbeHandlerConfig {
     HttpGet { host: Option<String>, path: String, port: u16 },
     TcpSocket { host: Option<String>, port: u16 },
+}
+
+impl From<ProbeConfig> for supervisor_probe::Probe {
+    fn from(config: ProbeConfig) -> Self {
+        let handler = match config.handler {
+            ProbeHandlerConfig::HttpGet { host, path, port } => {
+                supervisor_probe::ProbeHandler::HttpGet { host, path, port }
+            }
+            ProbeHandlerConfig::TcpSocket { host, port } => {
+                supervisor_probe::ProbeHandler::TcpSocket { host, port }
+            }
+        };
+
+        Self {
+            handler,
+            initial_delay: config.initial_delay,
+            period: config.period,
+            timeout: config.timeout,
+            failure_threshold: config.failure_threshold,
+            success_threshold: config.success_threshold,
+        }
+    }
 }
 
 #[cfg(test)]

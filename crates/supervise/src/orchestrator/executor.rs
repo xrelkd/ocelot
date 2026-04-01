@@ -48,8 +48,7 @@ impl Executor {
             shutdown_timeout,
         } = self;
 
-        let (splice_relay, splice_relay_executor) =
-            SpliceRelayBuilder::new().build().context(error::BuildSpliceRelaySnafu)?;
+        let (splice_relay, splice_relay_executor) = SpliceRelayBuilder::new().build()?;
         let (reaper, reaper_executor) = Reaper::new();
         let cancel_token = CancellationToken::new();
         let dependency_registry = DependencyRegistry::new(1024);

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use ocelot_supervise::supervisor_config;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
@@ -18,6 +19,21 @@ pub enum RestartPolicyConfig {
         #[serde(default, with = "humantime_serde")]
         backoff: Option<Duration>,
     },
+}
+
+impl From<RestartPolicyConfig> for supervisor_config::RestartPolicy {
+    fn from(policy: RestartPolicyConfig) -> Self {
+        match policy {
+            RestartPolicyConfig::Never => Self::Never,
+            RestartPolicyConfig::Always { backoff } => {
+                Self::Always { backoff: backoff.unwrap_or(Duration::from_secs(2)) }
+            }
+            RestartPolicyConfig::OnFailure { max_retries, backoff } => Self::OnFailure {
+                max_retries: max_retries.unwrap_or(u32::MAX),
+                backoff: backoff.unwrap_or(Duration::from_secs(2)),
+            },
+        }
+    }
 }
 
 #[cfg(test)]
