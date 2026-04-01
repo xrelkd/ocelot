@@ -10,8 +10,5 @@ mod utils;
 mod tests;
 
 pub use self::{
-    error::{Error, ValidationError},
-    probe::ProbeHandlerConfig,
-    process::ProcessConfig,
-    supervise::SuperviseConfig,
+    error::Error, probe::ProbeHandlerConfig, process::ProcessConfig, supervise::SuperviseConfig,
 };

@@ -116,7 +116,7 @@ fn test_idle_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
         if zombie_count > 1 {
             eprintln!("Zombies still present: {zombies:?}");
         }
-        assert!(zombie_count <= 1, "Found {} zombie processes", zombies.len());
+        assert!(zombie_count <= 1, "Found {zombie_count} zombie processes");
         Ok(if zombie_count <= 1 { 0 } else { -1 })
     })?;
     assert_eq!(exit_code, 0);

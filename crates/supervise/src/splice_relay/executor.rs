@@ -104,7 +104,7 @@ impl ThreadWorker {
             let num_events = match self.epoll.wait(&mut events, timeout) {
                 Ok(n) => n,
                 Err(e) => {
-                    tracing::warn!("Epoll wait error: {:?}", e);
+                    tracing::warn!("Epoll wait error: {e:?}");
                     continue;
                 }
             };

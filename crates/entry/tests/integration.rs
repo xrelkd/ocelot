@@ -50,9 +50,11 @@ fn test_execute_timeout_kill() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(0);
             }
             Ok(ForkResult::Parent { child }) => {
+                #[expect(
+                    unsafe_code,
+                    reason = "Resetting SIGTERM to default handler in forked child process"
+                )]
                 unsafe {
-                    // Reset `SIGTERM` to its default handler (Default), otherwise PID 1 will ignore
-                    // it.
                     let _ = signal::signal(Signal::SIGTERM, SigHandler::SigDfl)?;
                 }
 

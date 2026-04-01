@@ -158,7 +158,7 @@ impl Executor {
         .await;
 
         if shutdown_result.is_err() {
-            tracing::warn!("Shutdown timeout of {:?} exceeded, forcing exit", shutdown_timeout);
+            tracing::warn!("Shutdown timeout of {shutdown_timeout:?} exceeded, forcing exit");
         }
 
         tracing::info!("Orchestrator shutdown complete");
