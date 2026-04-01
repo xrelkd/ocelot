@@ -2,10 +2,16 @@ use std::{
     collections::HashMap,
     ffi::{CString, OsStr, OsString},
     os::unix::ffi::OsStrExt,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
-use nix::unistd;
+use nix::{
+    sys::{
+        signal,
+        signal::{SaFlags, SigAction, SigHandler, SigSet, SigmaskHow, Signal},
+    },
+    unistd,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Command {
@@ -69,7 +75,7 @@ impl Command {
     }
 
     #[must_use]
-    pub fn current_dir(mut self, dir: impl AsRef<std::path::Path>) -> Self {
+    pub fn current_dir(mut self, dir: impl AsRef<Path>) -> Self {
         self.working_directory = Some(dir.as_ref().to_path_buf());
         self
     }
@@ -100,11 +106,15 @@ impl Command {
     /// Panics if the program path cannot be converted to a `CString`.
     #[must_use]
     pub fn exec(&self) -> std::io::Error {
+        if let Err(err) = reset_signal_handling() {
+            return err;
+        }
+
         // Change to working directory if specified
         if let Some(ref dir) = self.working_directory
-            && let Err(e) = unistd::chdir(dir)
+            && let Err(err) = unistd::chdir(dir)
         {
-            return std::io::Error::from(e);
+            return std::io::Error::from(err);
         }
 
         let path_c =
@@ -133,6 +143,30 @@ impl Command {
             Err(error) => std::io::Error::from(error),
         }
     }
+}
+
+fn reset_signal_handling() -> Result<(), std::io::Error> {
+    let empty_set = SigSet::empty();
+    signal::sigprocmask(SigmaskHow::SIG_SETMASK, Some(&empty_set), None)?;
+
+    let default_handler = SigAction::new(SigHandler::SigDfl, SaFlags::empty(), SigSet::empty());
+
+    // Reset all signals to default handlers.
+    // NOTE: SIGKILL and SIGSTOP cannot be caught or modified, so we skip them.
+    // We ignore any errors from sigaction for other signals as they may not be
+    // available on all platforms.
+    let signals =
+        Signal::iterator().filter(|&sig| sig != Signal::SIGSTOP && sig != Signal::SIGKILL);
+    for signal in signals {
+        #[expect(
+            unsafe_code,
+            reason = "Calling sigaction to reset signal handlers to default is safe in \
+                      single-threaded context after fork"
+        )]
+        let _ = unsafe { signal::sigaction(signal, &default_handler) };
+    }
+
+    Ok(())
 }
 
 /// Turns a slice of `OsString` into a Vec of `CString`, suitable for execve
