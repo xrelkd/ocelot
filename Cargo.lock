@@ -924,6 +924,7 @@ dependencies = [
  "clap_complete",
  "humantime-serde",
  "nix",
+ "ocelot-bootstrap",
  "ocelot-entry",
  "ocelot-idle",
  "ocelot-supervise",
@@ -941,6 +942,16 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "ocelot-bootstrap"
+version = "0.4.0"
+dependencies = [
+ "nix",
+ "ocelot-supervise",
+ "snafu",
+ "tracing",
 ]
 
 [[package]]

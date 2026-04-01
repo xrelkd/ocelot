@@ -1,0 +1,24 @@
+[package]
+name                   = "ocelot-bootstrap"
+description            = "Bootstrap init system for ocelot"
+version.workspace      = true
+authors.workspace      = true
+homepage.workspace     = true
+readme.workspace       = true
+repository.workspace   = true
+license.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+categories.workspace   = true
+keywords.workspace     = true
+
+[dependencies]
+tracing = { workspace = true }
+
+nix   = { workspace = true, features = ["kmod"] }
+snafu = { workspace = true }
+
+ocelot-supervise = { workspace = true }
+
+[lints]
+workspace = true

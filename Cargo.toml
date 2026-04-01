@@ -24,6 +24,7 @@ name = "ocelot"
 resolver = "2"
 members = [
   "ocelot",
+  "crates/bootstrap",
   "crates/entry",
   "crates/idle",
   "crates/supervise",
@@ -80,6 +81,7 @@ shadow-rs = "1"
 snafu = "0.9"
 tempfile = "3"
 
+ocelot-bootstrap  = { path = "./crates/bootstrap" }
 ocelot-entry      = { path = "./crates/entry" }
 ocelot-idle       = { path = "./crates/idle" }
 ocelot-supervise  = { path = "./crates/supervise" }
