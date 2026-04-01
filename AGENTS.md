@@ -1,8 +1,15 @@
 # AGENTS.md
 
-This file provides guidance for agentic coding assistants working in the Ocelot repository.
+## Before Making Any Changes
 
-> **Note**: For detailed coding conventions, see [conventions.md](conventions.md). This file contains comprehensive Rust conventions covering project structure, import ordering, attribute ordering, error handling, async patterns, testing, and more.
+Always read these files before starting work:
+
+- **[conventions.md](conventions.md)** — Rust coding standards (imports, attributes, error handling, async patterns, testing)
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — Development workflow, git conventions, commit message format
+
+---
+
+This file provides guidance for agentic coding assistants working in the Ocelot repository.
 
 ## Build, Lint, and Test Commands
 

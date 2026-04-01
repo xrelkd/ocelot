@@ -683,7 +683,10 @@ processes:
 
 ## Contributing
 
-Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) for details on the development workflow, commit message conventions, and how to submit pull requests.
+Contributions are welcome! Before you start, please read:
+
+- **[Contributing Guide](CONTRIBUTING.md)** — Development workflow, git conventions, commit message format, and PR process
+- **[Coding Conventions](conventions.md)** — Rust coding standards covering imports, attributes, error handling, async patterns, and testing
 
 Quick start:
 
