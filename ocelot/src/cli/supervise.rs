@@ -45,7 +45,7 @@ pub fn run(
     match command {
         Some(Commands::ConfigTemplate) => {
             std::io::stdout()
-                .write_all(config::SupervisorConfig::template_basic().as_slice())
+                .write_all(config::SuperviseConfig::template_basic().as_slice())
                 .context(error::WriteStdoutSnafu)?;
             Ok(0)
         }
@@ -61,7 +61,7 @@ pub fn run(
 }
 
 fn run_supervisor(file: impl AsRef<Path>, log_level: Option<tracing::Level>) -> Result<i32, Error> {
-    let config = config::SupervisorConfig::load(file)?;
+    let config = config::SuperviseConfig::load(file)?;
     let log_level = log_level.unwrap_or(config.log_level);
     init_tracing_subscriber(log_level);
     config.validate()?;
@@ -76,7 +76,7 @@ fn run_supervisor(file: impl AsRef<Path>, log_level: Option<tracing::Level>) -> 
 
 fn validate_config(file: &PathBuf, output: OutputFormat) -> i32 {
     // Load config
-    let cfg = match config::SupervisorConfig::load(file) {
+    let cfg = match config::SuperviseConfig::load(file) {
         Ok(cfg) => cfg,
         Err(e) => {
             print_error(&e, output);
