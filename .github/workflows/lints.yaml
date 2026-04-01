@@ -23,38 +23,12 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
 
-      - name: Install treefmt
-        run: nix profile add 'nixpkgs#treefmt'
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+        with:
+          use-gha-cache: false
 
-      - name: Install prettier
-        run: nix profile add 'nixpkgs#prettier'
-
-      - name: Install nixfmt
-        run: nix profile add 'nixpkgs#nixpkgs-fmt'
-
-      - name: Install hclfmt
-        run: nix profile add 'nixpkgs#hclfmt'
-
-      - name: Install taplo
-        run: nix profile add 'nixpkgs#taplo'
-
-      - name: Install shfmt
-        run: nix profile add 'nixpkgs#shfmt'
-
-      - name: Install shellcheck
-        run: nix profile add 'nixpkgs#shellcheck'
-
-      - name: Run treefmt
-        run: |
-          treefmt \
-            --allow-missing-formatter \
-            --fail-on-change \
-            --no-cache \
-            --formatters prettier \
-            --formatters nix \
-            --formatters shell \
-            --formatters hcl \
-            --formatters toml
+      - name: Check format
+        run: nix build .#check-format
 
   commit:
     name: Lint commit
