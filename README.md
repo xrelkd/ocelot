@@ -64,6 +64,7 @@ graph TD
   - [Shell Completions](#shell-completions)
 - [Running in Docker](#-running-in-docker)
 - [Configuration Reference](#-configuration-reference)
+- [Contributing](#contributing)
 - [License](#license)
 
 ---
@@ -676,6 +677,26 @@ processes:
     restartPolicy:
       type: Always
       backoff: 1s
+```
+
+---
+
+## Contributing
+
+Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) for details on the development workflow, commit message conventions, and how to submit pull requests.
+
+Quick start:
+
+```bash
+# Enter the development environment (requires Nix)
+nix develop
+
+# Or use direnv for automatic environment loading
+direnv allow
+
+# Build and test
+cargo build
+cargo nextest run
 ```
 
 ---
