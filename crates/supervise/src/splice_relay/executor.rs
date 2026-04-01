@@ -129,9 +129,9 @@ impl ThreadWorker {
 
         while let Ok(event) = self.event_sender.try_recv() {
             match event {
-                Event::Register { source, destination, sender, start_notification } => {
+                Event::Register { source, destination, id_sender, start_notification } => {
                     let result = self.register(source, destination, start_notification);
-                    let _unused = sender.send(result.ok());
+                    let _unused = id_sender.send(result.ok());
                 }
                 Event::RemoveRelay { id } => {
                     self.remove(id);

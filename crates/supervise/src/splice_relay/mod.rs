@@ -87,7 +87,7 @@ impl SpliceRelay {
         if let Err(err) = self.event_sender.send(Event::Register {
             source,
             destination,
-            sender: id_sender,
+            id_sender,
             start_notification: Some(notify_sender),
         }) {
             tracing::warn!("{err}");
