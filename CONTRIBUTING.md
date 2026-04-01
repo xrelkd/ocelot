@@ -140,7 +140,7 @@ Supported prefixes: `feat/*`, `feature/*`, `fix/*`, `hotfix/*`, `release/*`, `ci
 7. Keep commits clean, concise, and follow the commit message convention
 
 > [!TIP]
-> See [AGENTS.md](AGENTS.md) for detailed coding assistant guidelines and additional commands.
+> See [AGENTS.md](AGENTS.md) for detailed coding assistant guidelines and [conventions.md](conventions.md) for comprehensive Rust coding conventions.
 
 ---
 

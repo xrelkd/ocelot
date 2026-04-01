@@ -2,6 +2,8 @@
 
 This file provides guidance for agentic coding assistants working in the Ocelot repository.
 
+> **Note**: For detailed coding conventions, see [conventions.md](conventions.md). This file contains comprehensive Rust conventions covering project structure, import ordering, attribute ordering, error handling, async patterns, testing, and more.
+
 ## Build, Lint, and Test Commands
 
 ### Using Nix (recommended)
