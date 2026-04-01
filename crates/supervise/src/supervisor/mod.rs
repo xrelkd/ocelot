@@ -2,7 +2,6 @@ pub mod config;
 pub mod dependency_registry;
 mod event;
 mod executor;
-mod log_config;
 pub mod probe;
 mod spawned_process;
 mod state;
@@ -13,10 +12,12 @@ use tokio::sync::{mpsc, oneshot};
 
 use self::event::Event;
 pub use self::{
-    config::{Config as SupervisorConfig, RestartPolicy},
+    config::{
+        Config as SupervisorConfig, LogCompression, LogDestination, LogRotationConfig,
+        LogStreamConfig, RestartPolicy,
+    },
     dependency_registry::DependencyRegistry,
     executor::Executor as SupervisorExecutor,
-    log_config::{LogCompression, LogDestination, LogRotationConfig, LogStreamConfig},
 };
 use crate::{Reaper, SpliceRelay};
 
