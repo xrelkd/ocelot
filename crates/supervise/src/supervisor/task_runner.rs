@@ -12,7 +12,7 @@ use crate::{
     reaper::ReapedProcess,
     rotating_file::RotatingFile,
     splice_relay::{Destination, RelayRegistration, SpliceRelay},
-    supervisor::{event::Event, log_config::LogRotationConfig, probe::Probe},
+    supervisor::{LogRotationConfig, event::Event, probe::Probe},
 };
 
 pub trait TaskRunner {

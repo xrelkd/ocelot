@@ -7,7 +7,6 @@ pub enum Event {
     Start,
     Shutdown,
     ProcessReaped { exit_code: i32 },
-    ForwardSignal { signal: nix::sys::signal::Signal },
     CheckReadiness,
     CheckLiveness,
     ReadinessChecked { ready: bool },

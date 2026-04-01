@@ -2,21 +2,21 @@ pub mod config;
 pub mod dependency_registry;
 mod event;
 mod executor;
-mod log_config;
 pub mod probe;
 mod spawned_process;
 mod state;
 mod task_runner;
 
-use nix::sys::signal::Signal;
 use tokio::sync::{mpsc, oneshot};
 
 use self::event::Event;
 pub use self::{
-    config::{Config as SupervisorConfig, RestartPolicy},
+    config::{
+        Config as SupervisorConfig, LogCompression, LogDestination, LogRotationConfig,
+        LogStreamConfig, RestartPolicy,
+    },
     dependency_registry::DependencyRegistry,
     executor::Executor as SupervisorExecutor,
-    log_config::{LogCompression, LogDestination, LogRotationConfig, LogStreamConfig},
 };
 use crate::{Reaper, SpliceRelay};
 
@@ -73,11 +73,6 @@ impl Supervisor {
 
     #[tracing::instrument(name = "Supervisor::start", skip_all)]
     pub fn start(&self) { drop(self.event_sender.send(Event::Start)); }
-
-    #[tracing::instrument(name = "Supervisor::forward_signal", skip_all)]
-    pub fn forward_signal(&self, signal: Signal) {
-        drop(self.event_sender.send(Event::ForwardSignal { signal }));
-    }
 
     #[tracing::instrument(name = "Supervisor::shutdown", skip_all)]
     pub fn shutdown(self) { drop(self.event_sender.send(Event::Shutdown)); }
