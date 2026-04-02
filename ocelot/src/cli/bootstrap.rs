@@ -10,7 +10,7 @@ use crate::{config::BootstrapConfig, error::Error};
 /// Runs the bootstrap subcommand.
 ///
 /// Loads the bootstrap configuration file, converts it to the appropriate
-/// types, and executes the bootstrap flow.
+/// types, and executes the bootstrap flow in either shell or supervise mode.
 ///
 /// # Arguments
 /// * `path` - Path to the bootstrap YAML configuration file
@@ -21,7 +21,18 @@ use crate::{config::BootstrapConfig, error::Error};
 pub fn run(path: impl AsRef<Path>) -> Result<i32, Error> {
     let config = BootstrapConfig::load(path)?;
     let bootstrap_config = config.to_bootstrap_config();
-    let orchestrator = config.to_orchestrator_config();
-    ocelot_bootstrap::execute(&bootstrap_config, orchestrator)?;
+
+    if let Some(shell_config) = config.to_shell_config() {
+        // Shell mode for debugging
+        ocelot_bootstrap::execute_shell(&bootstrap_config, &shell_config)?;
+    } else if let Some(orchestrator) = config.to_orchestrator_config() {
+        // Supervise mode (normal operation)
+        ocelot_bootstrap::execute_supervise(&bootstrap_config, orchestrator)?;
+    } else {
+        return Err(Error::InvalidConfig {
+            message: "Configuration must specify either shell mode or supervise mode".to_string(),
+        });
+    }
+
     Ok(0)
 }

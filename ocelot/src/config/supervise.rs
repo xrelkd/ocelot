@@ -8,8 +8,7 @@ use serde_with::{DisplayFromStr, serde_as};
 use snafu::ResultExt;
 use tracing::Level;
 
-use super::{Error, ProcessConfig};
-use crate::config::{error, utils};
+use crate::config::{error, error::Error, process::ProcessConfig, utils};
 
 const fn default_shutdown_timeout_secs() -> u64 { 60 }
 

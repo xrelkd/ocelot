@@ -3,13 +3,13 @@ use std::{collections::HashMap, path::Path, time::Duration};
 use serde::Deserialize;
 use snafu::ResultExt;
 
-use crate::config::{Error, ProcessConfig, SuperviseConfig, error};
+use crate::config::{Error, ProcessConfig, SuperviseConfig, error, shell::ShellConfig};
 
 /// Bootstrap configuration file structure.
 ///
 /// This represents the YAML configuration for the bootstrap subcommand,
-/// which combines bootstrap-specific options with supervise process
-/// definitions.
+/// which combines bootstrap-specific options with either shell or supervise
+/// execution mode.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BootstrapConfig {
@@ -27,9 +27,50 @@ pub struct BootstrapConfig {
     /// Shutdown timeout in seconds (default: 30).
     #[serde(default = "default_shutdown_timeout")]
     pub shutdown_timeout_secs: u64,
-    /// Process definitions for supervise.
-    #[serde(default)]
-    pub processes: HashMap<String, ProcessConfig>,
+    /// Execution mode: shell for debugging, or supervise for normal operation.
+    #[serde(flatten)]
+    pub mode: ExecutionMode,
+}
+
+/// Execution mode for bootstrap, mutually exclusive.
+///
+/// Either shell mode (for debugging) or supervise mode (normal operation).
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(tag = "mode")]
+pub enum ExecutionMode {
+    /// Shell execution mode for debugging.
+    Shell {
+        /// Shell configuration.
+        #[serde(flatten)]
+        config: ShellConfig,
+    },
+    /// Supervise mode with process definitions.
+    Supervise {
+        /// Process definitions for supervise.
+        #[serde(default)]
+        processes: HashMap<String, ProcessConfig>,
+    },
+}
+
+impl ExecutionMode {
+    /// Returns the shell config if in shell mode, None otherwise.
+    #[must_use]
+    pub const fn shell_config(&self) -> Option<&ShellConfig> {
+        match self {
+            Self::Shell { config } => Some(config),
+            Self::Supervise { .. } => None,
+        }
+    }
+
+    /// Returns the processes if in supervise mode, None otherwise.
+    #[must_use]
+    pub const fn processes(&self) -> Option<&HashMap<String, ProcessConfig>> {
+        match self {
+            Self::Shell { .. } => None,
+            Self::Supervise { processes } => Some(processes),
+        }
+    }
 }
 
 impl BootstrapConfig {
@@ -56,19 +97,32 @@ impl BootstrapConfig {
         }
     }
 
+    /// Converts shell config to `ocelot_bootstrap::ShellConfig`.
+    ///
+    /// Returns `None` if not in shell mode.
+    #[must_use]
+    pub fn to_shell_config(&self) -> Option<ocelot_bootstrap::ShellConfig> {
+        self.mode.shell_config().map(|c| c.clone().into())
+    }
+
     /// Converts to `ocelot_supervise::OrchestratorConfig`.
-    pub fn to_orchestrator_config(&self) -> ocelot_supervise::OrchestratorConfig {
+    ///
+    /// Returns `None` if in shell mode.
+    #[must_use]
+    pub fn to_orchestrator_config(&self) -> Option<ocelot_supervise::OrchestratorConfig> {
+        let processes = self.mode.processes()?;
+
         let supervisor_config = SuperviseConfig {
             version: "1.0".to_string(),
             log_level: tracing::Level::INFO,
-            processes: self.processes.clone(),
+            processes: processes.clone(),
             shutdown_timeout_secs: self.shutdown_timeout_secs,
         };
 
-        ocelot_supervise::OrchestratorConfig {
+        Some(ocelot_supervise::OrchestratorConfig {
             supervisors: supervisor_config.to_supervisors(),
             shutdown_timeout: Duration::from_secs(self.shutdown_timeout_secs),
-        }
+        })
     }
 }
 

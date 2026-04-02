@@ -4,6 +4,7 @@ mod error;
 mod probe;
 mod process;
 mod restart;
+mod shell;
 mod supervise;
 mod utils;
 

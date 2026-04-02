@@ -28,6 +28,9 @@ pub enum Error {
 
     #[snafu(display("Failed to write to stdout, error: {source}"))]
     WriteStdout { source: io::Error },
+
+    #[snafu(display("Invalid configuration: {message}"))]
+    InvalidConfig { message: String },
 }
 
 impl From<ocelot_idle::Error> for Error {
