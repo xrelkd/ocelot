@@ -11,4 +11,7 @@ pub enum Error {
 
     #[snafu(display("Failed to switch root: {source}"))]
     SwitchRoot { source: nix::Error },
+
+    #[snafu(display("Failed to shut down system: {source}"))]
+    Shutdown { source: nix::Error },
 }

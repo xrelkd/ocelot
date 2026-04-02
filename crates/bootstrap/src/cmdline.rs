@@ -1,7 +1,7 @@
 use std::io;
 
 /// Reads the kernel command line from `/proc/cmdline`.
-#[allow(dead_code)]
+#[expect(dead_code, reason = "Public API for kernel command line access; kept for future use")]
 pub fn read_cmdline() -> Result<String, io::Error> {
     let content = std::fs::read_to_string("/proc/cmdline")?;
     Ok(content.trim().to_string())
@@ -14,7 +14,7 @@ pub fn read_cmdline() -> Result<String, io::Error> {
 /// - `ocelot.root.device=<device>`
 /// - `ocelot.console=<device>`
 /// - `ocelot.log.level=<level>`
-#[allow(dead_code)]
+#[allow(dead_code)] // Public API for kernel command parsing; used in tests
 pub fn parse_cmdline(cmdline: &str) -> CmdlineParams {
     let mut params = CmdlineParams::default();
 
@@ -34,6 +34,7 @@ pub fn parse_cmdline(cmdline: &str) -> CmdlineParams {
 }
 
 #[derive(Debug, Default)]
+#[allow(dead_code)] // Return type for parse_cmdline; fields accessed in tests
 pub struct CmdlineParams {
     pub console: Option<String>,
     pub log_level: Option<String>,

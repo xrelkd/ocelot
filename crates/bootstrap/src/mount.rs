@@ -1,9 +1,4 @@
-use std::{
-    fs::{self},
-    path::Path,
-    thread,
-    time::Duration,
-};
+use std::{fs, path::Path, thread, time::Duration};
 
 use nix::mount::{MsFlags, mount};
 
@@ -40,23 +35,30 @@ pub fn mount_root(config: &RootConfig) -> Result<(), nix::Error> {
 }
 
 /// Sets up overlayfs on top of the mounted root filesystem.
-pub fn mount_overlay(_config: &RootConfig) -> Result<(), nix::Error> {
-    let upper = "/run/overlay/upper";
-    let work = "/run/overlay/work";
+///
+/// Uses isolated directories per mount source under `/run/overlayfs/{source}/`.
+pub fn mount_overlay(config: &RootConfig) -> Result<(), nix::Error> {
+    let source = config.source();
+    let base = overlay_base(source);
+    let upper = format!("{base}/upper");
+    let work = format!("{base}/work");
 
-    ensure_dir(upper)?;
-    ensure_dir(work)?;
+    ensure_dir(&upper)?;
+    ensure_dir(&work)?;
 
-    mount(
-        Some("overlay"),
-        "/newroot",
-        Some("overlay"),
-        MsFlags::empty(),
-        Some("lowerdir=/newroot,upperdir=/run/overlay/upper,workdir=/run/overlay/work"),
-    )?;
+    let opts = format!("lowerdir=/newroot,upperdir={upper},workdir={work}");
+    mount(Some("overlay"), "/newroot", Some("overlay"), MsFlags::empty(), Some(opts.as_str()))?;
 
-    tracing::info!("Mounted overlayfs on /newroot");
+    tracing::info!("Mounted overlayfs on /newroot (source: {source})");
     Ok(())
+}
+
+/// Returns the base directory for overlay files for a given mount source.
+///
+/// Sanitizes the source name to prevent path traversal.
+fn overlay_base(source: &str) -> String {
+    let safe_name = source.replace('/', "_");
+    format!("/run/overlayfs/{safe_name}")
 }
 
 /// Moves virtual filesystems from the old root to /newroot.
@@ -110,4 +112,25 @@ pub fn umount_old_root() {
     use nix::mount::umount;
     let _ = umount("/oldroot");
     drop(fs::remove_dir("/oldroot"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::overlay_base;
+
+    #[test]
+    fn test_overlay_base_simple_tag() {
+        assert_eq!(overlay_base("myshare"), "/run/overlayfs/myshare");
+    }
+
+    #[test]
+    fn test_overlay_base_device_path() {
+        // Slashes in device paths are replaced with underscores
+        assert_eq!(overlay_base("/dev/vda2"), "/run/overlayfs/_dev_vda2");
+    }
+
+    #[test]
+    fn test_overlay_base_complex_path() {
+        assert_eq!(overlay_base("virtiofs/my-tag"), "/run/overlayfs/virtiofs_my-tag");
+    }
 }

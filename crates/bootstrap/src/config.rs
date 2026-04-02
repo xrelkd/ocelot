@@ -81,3 +81,14 @@ pub struct ModuleConfig {
 pub struct OnFailureConfig {
     pub shell: Option<String>,
 }
+
+/// Configuration for shell execution mode.
+///
+/// When configured, bootstrap spawns an interactive shell after `switch_root`
+/// instead of executing the supervise orchestrator. This mode is mutually
+/// exclusive with supervise mode.
+#[derive(Clone, Debug)]
+pub struct ShellConfig {
+    pub program: String,
+    pub args: Vec<String>,
+}
