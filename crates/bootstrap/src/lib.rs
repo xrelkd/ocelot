@@ -11,6 +11,7 @@ use nix::unistd;
 use snafu::ResultExt;
 
 pub use self::{
+    cmdline::get_config_path,
     config::{Config, ModuleConfig, OnFailureConfig, RootConfig, ShellConfig},
     error::Error,
     shutdown::shutdown,

@@ -1,72 +1,49 @@
 use std::io;
 
 /// Reads the kernel command line from `/proc/cmdline`.
-#[expect(dead_code, reason = "Public API for kernel command line access; kept for future use")]
-pub fn read_cmdline() -> Result<String, io::Error> {
+fn read_cmdline() -> Result<String, io::Error> {
     let content = std::fs::read_to_string("/proc/cmdline")?;
     Ok(content.trim().to_string())
 }
 
-/// Parses ocelot-specific parameters from the kernel command line.
-///
-/// Supports parameters like:
-/// - `ocelot.root.type=<type>`
-/// - `ocelot.root.device=<device>`
-/// - `ocelot.console=<device>`
-/// - `ocelot.log.level=<level>`
-#[allow(dead_code)] // Public API for kernel command parsing; used in tests
-pub fn parse_cmdline(cmdline: &str) -> CmdlineParams {
-    let mut params = CmdlineParams::default();
-
+/// Parses the `ocelot.config` parameter from the kernel command line.
+fn parse_config_param(cmdline: &str) -> Option<String> {
     for param in cmdline.split_whitespace() {
-        if let Some(rest) = param.strip_prefix("ocelot.console=") {
-            params.console = Some(rest.to_string());
-        } else if let Some(rest) = param.strip_prefix("ocelot.log.level=") {
-            params.log_level = Some(rest.to_string());
-        } else if let Some(rest) = param.strip_prefix("ocelot.root.type=") {
-            params.root_type = Some(rest.to_string());
-        } else if let Some(rest) = param.strip_prefix("ocelot.root.device=") {
-            params.root_device = Some(rest.to_string());
+        if let Some(rest) = param.strip_prefix("ocelot.config=") {
+            return Some(rest.to_string());
         }
     }
-
-    params
+    None
 }
 
-#[derive(Debug, Default)]
-#[allow(dead_code)] // Return type for parse_cmdline; fields accessed in tests
-pub struct CmdlineParams {
-    pub console: Option<String>,
-    pub log_level: Option<String>,
-    pub root_type: Option<String>,
-    pub root_device: Option<String>,
+/// Reads the config file path from kernel command line.
+///
+/// Returns the value of `ocelot.config=<path>` parameter if present,
+/// or `None` if not found or if cmdline cannot be read.
+#[must_use]
+pub fn get_config_path() -> Option<String> {
+    let cmdline = read_cmdline().ok()?;
+    parse_config_param(&cmdline)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_cmdline;
+    use super::parse_config_param;
 
     #[test]
-    fn test_parse_cmdline_basic() {
-        let cmdline = "console=ttyS0 ocelot.console=ttyS1 ocelot.log.level=debug";
-        let params = parse_cmdline(cmdline);
-        assert_eq!(params.console, Some("ttyS1".to_string()));
-        assert_eq!(params.log_level, Some("debug".to_string()));
-        assert_eq!(params.root_type, None);
+    fn test_parse_config_param() {
+        let cmdline = "console=ttyS0 ocelot.config=/path/to/config.yaml";
+        assert_eq!(parse_config_param(cmdline), Some("/path/to/config.yaml".to_string()));
     }
 
     #[test]
-    fn test_parse_cmdline_root() {
-        let cmdline = "ocelot.root.type=block ocelot.root.device=/dev/vda2";
-        let params = parse_cmdline(cmdline);
-        assert_eq!(params.root_type, Some("block".to_string()));
-        assert_eq!(params.root_device, Some("/dev/vda2".to_string()));
+    fn test_parse_config_param_not_present() {
+        let cmdline = "console=ttyS0 ocelot.log.level=debug";
+        assert_eq!(parse_config_param(cmdline), None);
     }
 
     #[test]
-    fn test_parse_cmdline_empty() {
-        let params = parse_cmdline("");
-        assert_eq!(params.console, None);
-        assert_eq!(params.log_level, None);
+    fn test_parse_config_param_empty() {
+        assert_eq!(parse_config_param(""), None);
     }
 }
