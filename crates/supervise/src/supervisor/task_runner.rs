@@ -1,5 +1,6 @@
 use std::{os::fd::OwnedFd, path::Path, time::Duration};
 
+use nix::{sys::signal::Signal, unistd::Pid};
 use tokio::{
     io::{self, AsyncWriteExt, unix::AsyncFd},
     sync::mpsc,
@@ -21,7 +22,7 @@ pub trait TaskRunner {
         cancel_token: CancellationToken,
         event_sender: &mpsc::UnboundedSender<Event>,
         reaper: &Reaper,
-        pid: nix::unistd::Pid,
+        pid: Pid,
         termination_grace_period: Duration,
     );
 
@@ -64,6 +65,13 @@ pub trait TaskRunner {
         timeout: Duration,
         event: Event,
     );
+
+    fn schedule_sigkill_timeout(
+        &mut self,
+        cancel_token: CancellationToken,
+        group_id: Pid,
+        grace_period: Duration,
+    );
 }
 
 impl TaskRunner for JoinSet<()> {
@@ -72,7 +80,7 @@ impl TaskRunner for JoinSet<()> {
         cancel_token: CancellationToken,
         event_sender: &mpsc::UnboundedSender<Event>,
         reaper: &Reaper,
-        pid: nix::unistd::Pid,
+        pid: Pid,
         termination_grace_period: Duration,
     ) {
         let receiver = reaper.register(pid, termination_grace_period);
@@ -238,6 +246,27 @@ impl TaskRunner for JoinSet<()> {
         let _unused = self.spawn(async move {
             if tokio::time::timeout(timeout, cancel_token.cancelled()).await.is_err() {
                 drop(event_sender.send(event));
+            }
+        });
+    }
+
+    fn schedule_sigkill_timeout(
+        &mut self,
+        cancel_token: CancellationToken,
+        group_id: Pid,
+        grace_period: Duration,
+    ) {
+        let _unused = self.spawn(async move {
+            // Wait for the grace period; if cancelled (process exited early), do nothing.
+            if tokio::time::timeout(grace_period, cancel_token.cancelled()).await.is_ok() {
+                return;
+            }
+
+            // Grace period expired — escalate to SIGKILL for the entire process group.
+            tracing::warn!("Grace period exceeded, sending SIGKILL to process group {group_id}");
+            let group_id = Pid::from_raw(-group_id.as_raw());
+            if let Err(err) = nix::sys::signal::kill(group_id, Signal::SIGKILL) {
+                tracing::warn!("Failed to SIGKILL process group: {err}");
             }
         });
     }
