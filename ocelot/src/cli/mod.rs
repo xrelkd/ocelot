@@ -86,9 +86,6 @@ pub enum Commands {
     Bootstrap {
         #[clap(short, long)]
         file: Option<PathBuf>,
-
-        #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL", default_value = "info")]
-        log_level: tracing::Level,
     },
 
     #[clap(
@@ -163,9 +160,12 @@ impl Cli {
             Some(Commands::Supervise { command, file, log_level }) => {
                 return supervise::run(command, file, log_level);
             }
-            Some(Commands::Bootstrap { file, log_level }) => {
-                init_tracing_subscriber(log_level);
-                let path = file.unwrap_or_else(|| PathBuf::from("/etc/ocelot/bootstrap.yaml"));
+            Some(Commands::Bootstrap { file }) => {
+                // Check kernel cmdline for config path if --file not provided
+                let path = file.unwrap_or_else(|| {
+                    ocelot_bootstrap::get_config_path()
+                        .map_or_else(|| PathBuf::from("/etc/ocelot/bootstrap.yaml"), PathBuf::from)
+                });
                 return bootstrap::run(&path);
             }
             Some(Commands::Zombie { log_level, interval_ms, count }) => {

@@ -1,7 +1,9 @@
 use std::{collections::HashMap, path::Path, time::Duration};
 
 use serde::Deserialize;
+use serde_with::{DisplayFromStr, serde_as};
 use snafu::ResultExt;
+use tracing::Level;
 
 use crate::config::{Error, ProcessConfig, SuperviseConfig, error, shell::ShellConfig};
 
@@ -10,6 +12,7 @@ use crate::config::{Error, ProcessConfig, SuperviseConfig, error, shell::ShellCo
 /// This represents the YAML configuration for the bootstrap subcommand,
 /// which combines bootstrap-specific options with either shell or supervise
 /// execution mode.
+#[serde_as]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BootstrapConfig {
@@ -21,6 +24,10 @@ pub struct BootstrapConfig {
     /// Console device to use (default: "console").
     #[serde(default = "default_console")]
     pub console: String,
+    /// Log level for supervise mode (default: "info").
+    #[serde(default = "default_log_level")]
+    #[serde_as(as = "DisplayFromStr")]
+    pub log_level: Level,
     /// Optional failure recovery configuration.
     #[serde(default)]
     pub on_failure: Option<OnFailureConfig>,
@@ -114,7 +121,7 @@ impl BootstrapConfig {
 
         let supervisor_config = SuperviseConfig {
             version: "1.0".to_string(),
-            log_level: tracing::Level::INFO,
+            log_level: Level::INFO,
             processes: processes.clone(),
             shutdown_timeout_secs: self.shutdown_timeout_secs,
         };
@@ -216,5 +223,7 @@ pub struct OnFailureConfig {
 }
 
 fn default_console() -> String { "console".to_string() }
+
+const fn default_log_level() -> Level { Level::INFO }
 
 const fn default_shutdown_timeout() -> u64 { 30 }
