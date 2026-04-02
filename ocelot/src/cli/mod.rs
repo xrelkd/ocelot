@@ -68,8 +68,8 @@ pub enum Commands {
         #[clap(subcommand)]
         command: Option<supervise::Commands>,
 
-        #[clap(short, long)]
-        file: Option<PathBuf>,
+        #[clap(short, long, default_value = "ocelot.yaml")]
+        file: PathBuf,
 
         #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL")]
         log_level: Option<tracing::Level>,
