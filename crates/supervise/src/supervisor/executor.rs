@@ -105,7 +105,12 @@ impl Executor {
                 (Event::ProcessReaped { exit_code }, _) => {
                     state.set_exited(exit_code);
                     if let Some(interval) = state.next_interval(&config.restart_policy) {
-                        tasks.schedule(cancel_token.clone(), &event_sender, interval, Event::Start);
+                        tasks.schedule_emit_event(
+                            cancel_token.clone(),
+                            &event_sender,
+                            interval,
+                            Event::Start,
+                        );
                     }
                 }
                 (Event::LogReady, Phase::Running) => {
@@ -141,7 +146,7 @@ impl Executor {
                 (Event::ReadinessChecked { ready }, _) => {
                     state.set_ready(ready);
                     if let Some(probe) = &config.readiness_probe {
-                        tasks.schedule(
+                        tasks.schedule_emit_event(
                             cancel_token.clone(),
                             &event_sender,
                             probe.period,
@@ -161,7 +166,7 @@ impl Executor {
                         forward_signal_group(pgid, Signal::SIGKILL);
                         state.set_failed(-1);
                     } else if let Some(probe) = &config.liveness_probe {
-                        tasks.schedule(
+                        tasks.schedule_emit_event(
                             cancel_token.clone(),
                             &event_sender,
                             probe.period,

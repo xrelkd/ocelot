@@ -58,7 +58,7 @@ pub trait TaskRunner {
         probe: Probe,
     );
 
-    fn schedule(
+    fn schedule_emit_event(
         &mut self,
         cancel_token: CancellationToken,
         event_sender: &mpsc::UnboundedSender<Event>,
@@ -235,7 +235,7 @@ impl TaskRunner for JoinSet<()> {
         });
     }
 
-    fn schedule(
+    fn schedule_emit_event(
         &mut self,
         cancel_token: CancellationToken,
         event_sender: &mpsc::UnboundedSender<Event>,
