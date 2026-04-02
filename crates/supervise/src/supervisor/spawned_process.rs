@@ -13,6 +13,7 @@ use crate::{Error, command::Command, error};
 #[derive(Debug)]
 pub struct SpawnedProcess {
     pub pid: Pid,
+    pub pgid: Pid,
     pub stdout_fd: Option<OwnedFd>,
     pub stderr_fd: Option<OwnedFd>,
 }
@@ -64,6 +65,7 @@ impl CommandExt for Command {
                 {
                     0 => Ok(SpawnedProcess {
                         pid: child,
+                        pgid: child,
                         stdout_fd: stdout_reader,
                         stderr_fd: stderr_reader,
                     }),
@@ -78,6 +80,16 @@ impl CommandExt for Command {
                 drop(err_reader);
                 drop(stdout_reader);
                 drop(stderr_reader);
+
+                // Place this process in its own process group so that shutdown signals
+                // can be sent to the entire group (including any child processes spawned
+                // by the supervised process, e.g., sshd sessions).
+                if let Err(err) = unistd::setpgid(Pid::from_raw(0), Pid::from_raw(0)) {
+                    // If setpgid fails, we still proceed — the process will share the
+                    // parent's process group but shutdown will still work (just less
+                    // thorough for multi-process children).
+                    eprintln!("Failed to set process group: {err}");
+                }
 
                 // Handle stdout: redirect to pipe writer or /dev/null
                 if let Some(writer) = stdout_writer {
@@ -147,6 +159,7 @@ mod tests {
         assert!(result.is_ok());
         let spawned = result.unwrap();
         assert!(spawned.pid.as_raw() > 0);
+        assert_eq!(spawned.pgid, spawned.pid);
     }
 
     #[tokio::test]

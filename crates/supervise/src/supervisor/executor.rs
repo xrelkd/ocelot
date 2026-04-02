@@ -79,16 +79,21 @@ impl Executor {
 
             match (event, state.phase()) {
                 (Event::Shutdown, Phase::Running) => {
-                    if let Some(pid) = state.process_id() {
+                    if let Some(pgid) = state.process_group_id() {
                         let signal = config.shutdown_signal.unwrap_or(Signal::SIGTERM);
-                        forward_signal(pid, signal);
-                        state.set_shutting_down(config.termination_grace_period);
+                        forward_signal_group(pgid, signal);
+
+                        // Spawn a grace-period timer that escalates to SIGKILL
+                        // if the process has not been reaped in time.
+                        let grace_period = config.termination_grace_period;
+                        tasks.schedule_sigkill_timeout(cancel_token.clone(), pgid, grace_period);
                     }
+                    state.set_shutting_down(config.termination_grace_period);
                     break;
                 }
                 (Event::Shutdown, Phase::ShuttingDown) => {
-                    if let Some(pid) = state.process_id() {
-                        forward_signal(pid, Signal::SIGKILL);
+                    if let Some(pgid) = state.process_group_id() {
+                        forward_signal_group(pgid, Signal::SIGKILL);
                     }
                     break;
                 }
@@ -100,7 +105,12 @@ impl Executor {
                 (Event::ProcessReaped { exit_code }, _) => {
                     state.set_exited(exit_code);
                     if let Some(interval) = state.next_interval(&config.restart_policy) {
-                        tasks.schedule(cancel_token.clone(), &event_sender, interval, Event::Start);
+                        tasks.schedule_emit_event(
+                            cancel_token.clone(),
+                            &event_sender,
+                            interval,
+                            Event::Start,
+                        );
                     }
                 }
                 (Event::LogReady, Phase::Running) => {
@@ -136,7 +146,7 @@ impl Executor {
                 (Event::ReadinessChecked { ready }, _) => {
                     state.set_ready(ready);
                     if let Some(probe) = &config.readiness_probe {
-                        tasks.schedule(
+                        tasks.schedule_emit_event(
                             cancel_token.clone(),
                             &event_sender,
                             probe.period,
@@ -150,13 +160,13 @@ impl Executor {
                     }
                 }
                 (Event::LivenessChecked { should_kill }, _) => {
-                    if should_kill && let Some(pid) = state.process_id() {
+                    if should_kill && let Some(pgid) = state.process_group_id() {
                         // Send `SIGKILL` to kill the process and the process will be restarted
                         // while handling `Event::ProcessReaped`.
-                        forward_signal(pid, Signal::SIGKILL);
+                        forward_signal_group(pgid, Signal::SIGKILL);
                         state.set_failed(-1);
                     } else if let Some(probe) = &config.liveness_probe {
-                        tasks.schedule(
+                        tasks.schedule_emit_event(
                             cancel_token.clone(),
                             &event_sender,
                             probe.period,
@@ -168,14 +178,6 @@ impl Executor {
                     let _ = resp.send(state.to_status());
                 }
                 _ => {}
-            }
-
-            if matches!(state.phase(), Phase::ShuttingDown) && state.shutdown_deadline_exceeded() {
-                if let Some(pid) = state.process_id() {
-                    forward_signal(pid, Signal::SIGKILL);
-                    tracing::warn!("Grace period exceeded, sending SIGKILL to process {pid}");
-                }
-                break;
             }
 
             while tasks.try_join_next().is_some() {}
@@ -209,11 +211,11 @@ impl ProcessSpawnContext<'_> {
             splice_relay,
             reaper,
             tasks,
-            spawned_process: SpawnedProcess { pid, stdout_fd, stderr_fd },
+            spawned_process: SpawnedProcess { pid, pgid, stdout_fd, stderr_fd },
         } = self;
 
-        tracing::info!("Started process `{}` with PID `{pid}`", config.name());
-        state.set_running(pid);
+        tracing::info!("Started process `{}` with PID `{pid}` PGID `{pgid}`", config.name());
+        state.set_running(pid, pgid);
 
         // Handle stdout logging based on config
         if let Some(stdout_fd) = stdout_fd {
@@ -289,9 +291,16 @@ impl ProcessSpawnContext<'_> {
     }
 }
 
-fn forward_signal(pid: Pid, signal: Signal) {
-    tracing::info!("Sending signal {signal:?} to process {pid}");
-    if let Err(err) = nix::sys::signal::kill(pid, signal) {
-        tracing::warn!("Failed to send signal to process: {err}");
+/// Sends a signal to an entire process group.
+///
+/// Using a negative PID signals all processes in the group (POSIX semantics).
+/// This ensures that child processes spawned by the supervised process
+/// (e.g., sshd sessions) also receive the signal.
+fn forward_signal_group(pgid: Pid, signal: Signal) {
+    tracing::info!("Sending signal {signal:?} to process group {pgid}");
+    // kill(-pgid, signal) targets the entire process group
+    let group_pid = Pid::from_raw(-pgid.as_raw());
+    if let Err(err) = nix::sys::signal::kill(group_pid, signal) {
+        tracing::warn!("Failed to send signal to process group: {err}");
     }
 }
