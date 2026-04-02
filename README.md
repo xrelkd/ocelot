@@ -64,6 +64,7 @@ graph TD
   - [Shell Completions](#shell-completions)
 - [Running in Docker](#-running-in-docker)
 - [Configuration Reference](#-configuration-reference)
+- [Contributing](#contributing)
 - [License](#license)
 
 ---
@@ -676,6 +677,29 @@ processes:
     restartPolicy:
       type: Always
       backoff: 1s
+```
+
+---
+
+## Contributing
+
+Contributions are welcome! Before you start, please read:
+
+- **[Contributing Guide](CONTRIBUTING.md)** — Development workflow, git conventions, commit message format, and PR process
+- **[Coding Conventions](conventions.md)** — Rust coding standards covering imports, attributes, error handling, async patterns, and testing
+
+Quick start:
+
+```bash
+# Enter the development environment (requires Nix)
+nix develop
+
+# Or use direnv for automatic environment loading
+direnv allow
+
+# Build and test
+cargo build
+cargo nextest run
 ```
 
 ---

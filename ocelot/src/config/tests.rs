@@ -4,8 +4,9 @@ use nix::sys::signal::Signal;
 use ocelot_supervise::{LogDestination, supervisor_config::DependencyCondition};
 
 use crate::config::{
-    Error, ProcessConfig, SuperviseConfig, ValidationError,
+    Error, ProcessConfig, SuperviseConfig,
     dependency::DependencyConfig,
+    error::ValidationError,
     probe::{ProbeConfig, ProbeHandlerConfig},
     process::ShutdownSignalConfig,
     restart::RestartPolicyConfig,

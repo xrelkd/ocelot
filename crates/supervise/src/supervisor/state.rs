@@ -8,6 +8,7 @@ use crate::supervisor::{
 
 pub struct State {
     spawned: Option<Pid>,
+    group_id: Option<Pid>,
     phase: Phase,
     ready: bool,
     restart_count: u32,
@@ -20,6 +21,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             spawned: None,
+            group_id: None,
             phase: Phase::Pending,
             ready: false,
             restart_count: 0,
@@ -34,6 +36,7 @@ impl State {
     pub const fn new(dependency_notifier: DependencyNotifier) -> Self {
         Self {
             spawned: None,
+            group_id: None,
             phase: Phase::Pending,
             ready: false,
             restart_count: 0,
@@ -58,8 +61,9 @@ impl State {
         self.shutdown_deadline = Some(Instant::now() + grace_period);
     }
 
-    pub fn set_running(&mut self, spawned: Pid) {
+    pub fn set_running(&mut self, spawned: Pid, group_id: Pid) {
         self.spawned = Some(spawned);
+        self.group_id = Some(group_id);
         self.phase = Phase::Running;
         self.last_exit_code = None;
         self.restart_count = 0;
@@ -68,6 +72,7 @@ impl State {
 
     pub fn set_exited(&mut self, exit_code: i32) {
         self.spawned = None;
+        self.group_id = None;
         self.last_exit_code = Some(exit_code);
         self.ready = false;
         let _ = self.dependency_notifier.as_ref().inspect(|n| n.notify_completed(exit_code));
@@ -81,6 +86,7 @@ impl State {
 
     pub fn set_failed(&mut self, exit_code: i32) {
         self.spawned = None;
+        self.group_id = None;
         self.last_exit_code = Some(exit_code);
         self.phase = Phase::Failed { exit_code };
         self.ready = false;
@@ -91,13 +97,17 @@ impl State {
         let _ = self.dependency_notifier.as_ref().inspect(|n| n.notify_log_ready());
     }
 
+    #[cfg(test)]
     pub const fn process_id(&self) -> Option<Pid> { self.spawned }
+
+    pub const fn process_group_id(&self) -> Option<Pid> { self.group_id }
 
     pub const fn phase(&self) -> Phase { self.phase }
 
     #[cfg(test)]
     pub const fn ready(&self) -> bool { self.ready }
 
+    #[cfg(test)]
     pub fn shutdown_deadline_exceeded(&self) -> bool {
         self.shutdown_deadline.is_some_and(|deadline| Instant::now() >= deadline)
     }

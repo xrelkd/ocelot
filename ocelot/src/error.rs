@@ -23,9 +23,6 @@ pub enum Error {
     #[snafu(display("Failed to read processes, error: {source}"))]
     ReadProcesses { source: procfs::ProcError },
 
-    #[snafu(display("{message}"))]
-    InvalidArgument { message: String },
-
     #[snafu(display("Failed to write to stdout, error: {source}"))]
     WriteStdout { source: io::Error },
 }

@@ -16,7 +16,12 @@ pub enum Error {
     Validate { source: ValidationError },
 }
 
+impl From<ValidationError> for Error {
+    fn from(source: ValidationError) -> Self { Self::Validate { source } }
+}
+
 #[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
 pub enum ValidationError {
     #[snafu(display("Cyclic dependency detected: {}",
         cycle.join(" → ")))]

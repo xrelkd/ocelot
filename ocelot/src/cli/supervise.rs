@@ -39,7 +39,7 @@ pub enum Commands {
 
 pub fn run(
     command: Option<Commands>,
-    file: Option<PathBuf>,
+    file: PathBuf,
     log_level: Option<tracing::Level>,
 ) -> Result<i32, Error> {
     match command {
@@ -51,12 +51,7 @@ pub fn run(
         }
         Some(Commands::Validate { file, output }) => Ok(validate_config(&file, output)),
         Some(Commands::Run { file, log_level }) => run_supervisor(file, log_level),
-        None => {
-            let file = file.ok_or_else(|| Error::InvalidArgument {
-                message: "missing required argument: --file <FILE>".to_owned(),
-            })?;
-            run_supervisor(file, log_level)
-        }
+        None => run_supervisor(file, log_level),
     }
 }
 

@@ -1,6 +1,7 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr, time::Duration};
 
 use bytesize::ByteSize;
+use error::Error;
 use nix::sys::signal::Signal;
 use ocelot_supervise::{
     LogCompression as SupLogCompression, LogDestination as SupLogDestination,
@@ -14,8 +15,7 @@ use serde::{
 };
 
 use crate::config::{
-    ValidationError, dependency::DependencyConfig, error::Error, probe::ProbeConfig,
-    restart::RestartPolicyConfig,
+    dependency::DependencyConfig, error, probe::ProbeConfig, restart::RestartPolicyConfig,
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
@@ -96,22 +96,20 @@ impl ProcessConfig {
     }
 
     fn validate_program(&self, name: &str) -> Result<(), Error> {
-        if self.program.is_empty() {
-            return Err(Error::Validate {
-                source: ValidationError::MissingProcessProgram { process: name.to_string() },
-            });
-        }
+        snafu::ensure!(
+            !self.program.is_empty(),
+            error::MissingProcessProgramSnafu { process: name.to_string() }
+        );
         Ok(())
     }
 
-    const fn validate_termination_grace_period(&self) -> Result<(), Error> {
-        if self.termination_grace_period.is_zero() {
-            return Err(Error::Validate {
-                source: ValidationError::InvalidTerminationGracePeriod {
-                    value: self.termination_grace_period.as_secs(),
-                },
-            });
-        }
+    fn validate_termination_grace_period(&self) -> Result<(), Error> {
+        snafu::ensure!(
+            !self.termination_grace_period.is_zero(),
+            error::InvalidTerminationGracePeriodSnafu {
+                value: self.termination_grace_period.as_secs()
+            }
+        );
         Ok(())
     }
 
@@ -134,25 +132,23 @@ impl ProcessConfig {
                 ];
 
                 for (value, field) in checks {
-                    if value == Some(0) {
-                        return Err(Error::Validate {
-                            source: ValidationError::InvalidLogRotation { field, value: 0 },
-                        });
-                    }
+                    snafu::ensure!(
+                        value != Some(0),
+                        error::InvalidLogRotationSnafu { field, value: 0 }
+                    );
                 }
 
                 let has_size = rotation.max_size_bytes.is_some_and(|s| s.as_u64() > 0);
                 let has_interval = rotation.rotation_interval.is_some_and(|d| d.as_secs() > 0);
-                if !has_size && !has_interval {
-                    return Err(Error::Validate {
-                        source: ValidationError::InvalidRotationConfiguration {
-                            reason: format!(
-                                "{stream_name}: at least one of maxSizeBytes or rotationInterval \
-                                 must be > 0"
-                            ),
-                        },
-                    });
-                }
+                snafu::ensure!(
+                    has_size || has_interval,
+                    error::InvalidRotationConfigurationSnafu {
+                        reason: format!(
+                            "{stream_name}: at least one of maxSizeBytes or rotationInterval must \
+                             be > 0"
+                        )
+                    }
+                );
 
                 match stream_config.destination {
                     LogDestination::Null | LogDestination::Inherit => {
@@ -175,43 +171,35 @@ impl ProcessConfig {
 
             let timeout_secs = p.timeout.as_secs();
             let period_secs = p.period.as_secs();
-            if timeout_secs > period_secs {
-                return Err(Error::Validate {
-                    source: ValidationError::InvalidProbeTimeout {
-                        timeout: timeout_secs,
-                        period: period_secs,
-                    },
-                });
-            }
+            snafu::ensure!(
+                timeout_secs <= period_secs,
+                error::InvalidProbeTimeoutSnafu { timeout: timeout_secs, period: period_secs }
+            );
 
             match &p.handler {
                 crate::config::ProbeHandlerConfig::HttpGet { port, .. }
                 | crate::config::ProbeHandlerConfig::TcpSocket { port, .. } => {
-                    if !(1..=65535).contains(port) {
-                        return Err(Error::Validate {
-                            source: ValidationError::InvalidProbePort { port: *port },
-                        });
-                    }
+                    snafu::ensure!(
+                        (1..=65535).contains(port),
+                        error::InvalidProbePortSnafu { port: *port }
+                    );
                 }
             }
         }
         Ok(())
     }
 
-    const fn validate_restart_backoff(&self) -> Result<(), Error> {
+    fn validate_restart_backoff(&self) -> Result<(), Error> {
         let Some(restart_policy) = &self.restart_policy else { return Ok(()) };
 
         match restart_policy {
             RestartPolicyConfig::Always { backoff }
             | RestartPolicyConfig::OnFailure { backoff, .. } => {
-                if let Some(backoff) = backoff
-                    && backoff.is_zero()
-                {
-                    return Err(Error::Validate {
-                        source: ValidationError::InvalidRestartBackoff {
-                            backoff: backoff.as_secs(),
-                        },
-                    });
+                if let Some(backoff) = backoff {
+                    snafu::ensure!(
+                        !backoff.is_zero(),
+                        error::InvalidRestartBackoffSnafu { backoff: backoff.as_secs() }
+                    );
                 }
             }
             RestartPolicyConfig::Never => {}
@@ -229,14 +217,13 @@ impl ProcessConfig {
                 (seen, dups)
             },
         );
-        if !duplicates.is_empty() {
-            return Err(Error::Validate {
-                source: ValidationError::DuplicateEnvironmentVariables {
-                    process: name.to_string(),
-                    variables: duplicates,
-                },
-            });
-        }
+        snafu::ensure!(
+            duplicates.is_empty(),
+            error::DuplicateEnvironmentVariablesSnafu {
+                process: name.to_string(),
+                variables: duplicates
+            }
+        );
         Ok(())
     }
 }

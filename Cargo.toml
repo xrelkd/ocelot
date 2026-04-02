@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.4.1"
+version = "0.4.2"
 authors = ["xrelkd <46590321+xrelkd@users.noreply.github.com>"]
 homepage = "https://github.com/xrelkd/ocelot"
 repository = "https://github.com/xrelkd/ocelot"

@@ -8,8 +8,8 @@ use serde_with::{DisplayFromStr, serde_as};
 use snafu::ResultExt;
 use tracing::Level;
 
-use super::{Error, ProcessConfig, ValidationError};
-use crate::config::utils;
+use super::{Error, ProcessConfig};
+use crate::config::{error, utils};
 
 const fn default_shutdown_timeout_secs() -> u64 { 60 }
 
@@ -39,12 +39,11 @@ impl SuperviseConfig {
         let orig_path = path.as_ref();
         let path_buf = orig_path.to_owned();
         let Ok(resolved_path) = path_buf.try_resolve() else {
-            return Err(Error::ResolveFilePath { file_path: orig_path.to_path_buf() });
+            return error::ResolveFilePathSnafu { file_path: orig_path.to_path_buf() }.fail();
         };
         let data = std::fs::read(&resolved_path)
-            .with_context(|_| super::error::OpenConfigSnafu { filename: resolved_path.clone() })?;
-        serde_yaml::from_slice(&data)
-            .context(super::error::ParseConfigSnafu { filename: resolved_path })
+            .with_context(|_| error::OpenConfigSnafu { filename: resolved_path.clone() })?;
+        serde_yaml::from_slice(&data).context(error::ParseConfigSnafu { filename: resolved_path })
     }
 
     /// Converts the `SuperviseConfig` into a vector of
@@ -110,11 +109,10 @@ impl SuperviseConfig {
 
     /// Checks that the config version is supported.
     fn check_version(&self) -> Result<(), Error> {
-        if self.version != Self::SUPPORTED_VERSION {
-            return Err(Error::Validate {
-                source: ValidationError::InvalidVersion { version: self.version.clone() },
-            });
-        }
+        snafu::ensure!(
+            self.version == Self::SUPPORTED_VERSION,
+            error::InvalidVersionSnafu { version: self.version.clone() }
+        );
         Ok(())
     }
 
@@ -133,14 +131,13 @@ impl SuperviseConfig {
     fn check_missing_dependencies(&self) -> Result<(), Error> {
         for (name, config) in &self.processes {
             for dep_name in config.depends_on.keys() {
-                if !self.processes.contains_key(dep_name) {
-                    return Err(Error::Validate {
-                        source: ValidationError::MissingDependency {
-                            process: name.clone(),
-                            depends_on: dep_name.clone(),
-                        },
-                    });
-                }
+                snafu::ensure!(
+                    self.processes.contains_key(dep_name),
+                    error::MissingDependencySnafu {
+                        process: name.clone(),
+                        depends_on: dep_name.clone()
+                    }
+                );
             }
         }
         Ok(())
@@ -170,27 +167,24 @@ impl SuperviseConfig {
 
         if let Err(cycle) = petgraph::algo::toposort(&graph, None) {
             let node = cycle.node_id();
-            // Get strongly connected components
             let sccs = petgraph::algo::kosaraju_scc(&graph);
             let node_name = graph[node].clone();
-            // Find the SCC containing the failing node
             let scc_opt = sccs.iter().find(|scc| scc.contains(&node)).cloned();
             let Some(scc) = scc_opt else {
-                // Should not happen: toposort failed, node must be in a cycle SCC
-                return Err(Error::Validate {
-                    source: ValidationError::CyclicDependency { cycle: vec![node_name] },
-                });
+                return error::CyclicDependencySnafu { cycle: vec![node_name] }
+                    .fail()
+                    .map_err(Error::from);
             };
-            // Extract a cycle from this SCC using DFS
             utils::find_cycle_in_scc(&graph, &scc, node).map_or_else(
                 || {
-                    Err(Error::Validate {
-                        source: ValidationError::CyclicDependency { cycle: vec![node_name] },
-                    })
+                    error::CyclicDependencySnafu { cycle: vec![node_name] }
+                        .fail()
+                        .map_err(Error::from)
                 },
                 |cycle_nodes| {
-                    let cycle = cycle_nodes.into_iter().map(|idx| graph[idx].clone()).collect();
-                    Err(Error::Validate { source: ValidationError::CyclicDependency { cycle } })
+                    let cycle: Vec<String> =
+                        cycle_nodes.into_iter().map(|idx| graph[idx].clone()).collect();
+                    error::CyclicDependencySnafu { cycle }.fail().map_err(Error::from)
                 },
             )
         } else {

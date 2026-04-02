@@ -353,12 +353,9 @@ fn test_restart_policies() -> Result<(), Box<dyn std::error::Error>> {
         rt.block_on(async { tokio::time::sleep(Duration::from_millis(1000)).await });
 
         let status = rt.block_on(supervisor.get_status());
+        let restart_count = status.restart_count;
         eprintln!("Always policy status after 1000ms: {status:?}");
-        assert!(
-            status.restart_count >= 1,
-            "Expected at least 1 restart, got {}",
-            status.restart_count
-        );
+        assert!(restart_count >= 1, "Expected at least 1 restart, got {restart_count}");
         assert!(matches!(status.phase, Phase::Running | Phase::CrashLoopBackOff));
 
         cancel_token.cancel();

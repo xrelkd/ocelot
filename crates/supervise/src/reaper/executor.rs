@@ -1,4 +1,7 @@
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use nix::{
     sys::{
@@ -15,8 +18,6 @@ use crate::{
     Error, error,
     reaper::{ReapedProcess, RegisteredProcess, event::Event},
 };
-
-const DEFAULT_TERMINATION_GRACE_PERIOD: Duration = Duration::from_millis(200);
 
 pub struct Executor {
     registered_processes: HashMap<Pid, RegisteredProcess>,
@@ -68,28 +69,71 @@ impl Executor {
             }
         }
 
+        // Shutdown phase: actively kill processes that exceed their individual
+        // grace periods, rather than passively waiting for the maximum.
         if !registered_processes.is_empty() {
-            let deadline = {
-                let timeout = registered_processes
-                    .values()
-                    .map(|p| p.termination_grace_period)
-                    .max()
-                    .unwrap_or(DEFAULT_TERMINATION_GRACE_PERIOD);
-                tokio::time::Instant::now() + timeout
+            // Map each PID to its kill deadline (registration_time + grace_period).
+            let mut deadlines = {
+                let now = Instant::now();
+                registered_processes
+                    .iter()
+                    .map(|(&pid, process)| (pid, now + process.termination_grace_period))
+                    .collect::<HashMap<Pid, Instant>>()
             };
+
             loop {
+                // Find the earliest deadline among still-active processes.
+                let earliest = deadlines.values().min().copied();
+
+                let Some(deadline) = earliest else {
+                    // No more processes to wait for.
+                    break;
+                };
+
+                // Compute the interval to sleep, with a reasonable minimum.
+                let sleep_duration = deadline
+                    .checked_duration_since(Instant::now())
+                    .unwrap_or(Duration::from_millis(10));
+
                 tokio::select! {
-                    () = tokio::time::sleep_until(deadline) => break,
+                    () = tokio::time::sleep(sleep_duration) => {},
                     _ = signals.recv() => {}
                 }
 
-                for process in reap_processes() {
-                    let ReapedProcess { pid, .. } = process;
+                // Reap any processes that have already exited.
+                for process @ ReapedProcess { pid, .. } in reap_processes() {
                     if let Some(RegisteredProcess { sender, .. }) =
                         registered_processes.remove(&pid)
                     {
+                        let _unused = deadlines.remove(&pid);
                         let _ = sender.send(process);
                     }
+                }
+
+                if registered_processes.is_empty() {
+                    break;
+                }
+
+                // Kill processes whose deadlines have elapsed.
+                let overdue = {
+                    let now = Instant::now();
+                    deadlines
+                        .iter()
+                        .filter_map(
+                            |(&pid, &deadline)| if now >= deadline { Some(pid) } else { None },
+                        )
+                        .collect::<Vec<Pid>>()
+                };
+
+                for pid in overdue {
+                    tracing::warn!("Grace period exceeded for process {pid}, sending SIGKILL");
+                    if let Err(err) = nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL)
+                    {
+                        tracing::warn!("Failed to SIGKILL process {pid}: {err}");
+                    }
+                    // Remove from tracking; we won't wait further for this process.
+                    let _unused = registered_processes.remove(&pid);
+                    let _unused = deadlines.remove(&pid);
                 }
 
                 if registered_processes.is_empty() {
