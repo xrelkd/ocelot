@@ -25,9 +25,11 @@ pub fn run(path: impl AsRef<Path>) -> Result<i32, Error> {
     if let Some(shell_config) = config.to_shell_config() {
         // Shell mode for debugging
         ocelot_bootstrap::execute_shell(&bootstrap_config, &shell_config)?;
+        ocelot_bootstrap::shutdown()?;
     } else if let Some(orchestrator) = config.to_orchestrator_config() {
         // Supervise mode (normal operation)
         ocelot_bootstrap::execute_supervise(&bootstrap_config, orchestrator)?;
+        ocelot_bootstrap::shutdown()?;
     } else {
         return Err(Error::InvalidConfig {
             message: "Configuration must specify either shell mode or supervise mode".to_string(),
