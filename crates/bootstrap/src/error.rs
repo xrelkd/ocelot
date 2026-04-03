@@ -3,7 +3,7 @@ use snafu::Snafu;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display("Failed to open console device '{}': {source}", path))]
+    #[snafu(display("Failed to open console device '{path}': {source}"))]
     OpenConsole { path: String, source: std::io::Error },
 
     #[snafu(display("Failed to setup console: {source}"))]

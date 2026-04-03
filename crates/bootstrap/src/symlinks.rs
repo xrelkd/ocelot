@@ -39,7 +39,7 @@ pub fn create_symlink(SymlinkSpec { source, target }: &SymlinkSpec) -> Result<()
     }
 
     if !Path::new(&source).exists() {
-        tracing::warn!("Symlink target '{}' does not exist, creating symlink anyway", source);
+        tracing::warn!("Symlink target '{source}' does not exist, creating symlink anyway");
     }
 
     symlink(source, target).with_context(|_| error::CreateSymlinkSnafu {
@@ -47,7 +47,7 @@ pub fn create_symlink(SymlinkSpec { source, target }: &SymlinkSpec) -> Result<()
         target: target.clone(),
     })?;
 
-    tracing::info!("Created symlink {} -> {}", target, source);
+    tracing::info!("Created symlink {target} -> {source}");
     Ok(())
 }
 

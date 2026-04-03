@@ -8,12 +8,10 @@ fn read_cmdline() -> Result<String, io::Error> {
 
 /// Parses the `ocelot.config` parameter from the kernel command line.
 fn parse_config_param(cmdline: &str) -> Option<String> {
-    for param in cmdline.split_whitespace() {
-        if let Some(rest) = param.strip_prefix("ocelot.config=") {
-            return Some(rest.to_string());
-        }
-    }
-    None
+    cmdline
+        .split_whitespace()
+        .find_map(|param| param.strip_prefix("ocelot.config="))
+        .map(str::to_string)
 }
 
 /// Reads the config file path from kernel command line.

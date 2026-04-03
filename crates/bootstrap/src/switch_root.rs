@@ -44,8 +44,9 @@ pub fn switch_root_shell(console: &str, shell_config: &ShellConfig) -> Result<()
     unistd::chroot(".").context(error::SwitchRootSnafu)?;
     unistd::chdir("/").context(error::SwitchRootSnafu)?;
 
-    let args = shell_config.args.iter().map(String::as_str).collect::<Vec<&str>>();
-    let exit_code = ocelot_entry::execute_interactive(console, &shell_config.program, &args, None)
+    let ShellConfig { program, args } = shell_config;
+    let args = args.iter().map(String::as_str).collect::<Vec<&str>>();
+    let exit_code = ocelot_entry::execute_interactive(console, program, &args, None)
         .context(error::ExecuteShellSnafu)?;
 
     tracing::info!("Shell exited with code: {exit_code}");

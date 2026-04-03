@@ -32,60 +32,52 @@ pub fn check_virtiofs_support() -> Result<(), Error> {
 /// setting up overlayfs.
 pub fn mount_extra_virtiofs(mounts: &[VirtiofsMount]) {
     for mount_spec in mounts {
+        let VirtiofsMount { tag, with_overlay, .. } = mount_spec;
         if let Err(source) = mount_virtiofs_share(mount_spec) {
-            tracing::warn!("Failed to mount virtiofs share '{}': {source}", mount_spec.tag);
+            tracing::warn!("Failed to mount virtiofs share '{tag}': {source}");
             continue;
         }
 
-        if mount_spec.with_overlay
-            && let Err(source) = mount_overlay_for_share(mount_spec)
-        {
-            tracing::warn!(
-                "Failed to set up overlay for virtiofs share '{}': {source}",
-                mount_spec.tag
-            );
+        if *with_overlay && let Err(source) = mount_overlay_for_share(mount_spec) {
+            tracing::warn!("Failed to set up overlay for virtiofs share '{tag}': {source}");
         }
     }
 }
 
 /// Mounts a single virtiofs share.
-pub fn mount_virtiofs_share(spec: &VirtiofsMount) -> Result<(), Error> {
-    ensure_dir_all(&spec.path)?;
+pub fn mount_virtiofs_share(
+    VirtiofsMount { tag, path, options, .. }: &VirtiofsMount,
+) -> Result<(), Error> {
+    ensure_dir_all(path)?;
 
-    let data = spec.options.as_deref();
-    mount(Some(spec.tag.as_str()), spec.path.as_str(), Some("virtiofs"), MsFlags::empty(), data)
-        .with_context(|_| error::MountSnafu {
-            operation: format!("virtiofs '{}' at {}", spec.tag, spec.path),
-        })?;
+    let data = options.as_deref();
+    mount(Some(tag.as_str()), path.as_str(), Some("virtiofs"), MsFlags::empty(), data)
+        .with_context(|_| error::MountSnafu { operation: format!("virtiofs '{tag}' at {path}") })?;
 
-    tracing::info!("Mounted virtiofs '{}' at {}", spec.tag, spec.path);
+    tracing::info!("Mounted virtiofs '{tag}' at {path}");
     Ok(())
 }
 
 /// Sets up overlayfs on top of a mounted virtiofs share.
 ///
 /// Uses isolated directories under `/run/overlayfs/{tag}/`.
-pub fn mount_overlay_for_share(spec: &VirtiofsMount) -> Result<(), Error> {
-    let base = overlay_share_base(&spec.tag);
+pub fn mount_overlay_for_share(
+    VirtiofsMount { tag, path, .. }: &VirtiofsMount,
+) -> Result<(), Error> {
+    let base = overlay_share_base(tag);
     let upper = format!("{base}/upper");
     let work = format!("{base}/work");
 
     ensure_dir_all(&upper)?;
     ensure_dir_all(&work)?;
 
-    let opts = format!("lowerdir={},upperdir={upper},workdir={work}", spec.path);
-    mount(
-        Some("overlay"),
-        spec.path.as_str(),
-        Some("overlay"),
-        MsFlags::empty(),
-        Some(opts.as_str()),
-    )
-    .with_context(|_| error::MountSnafu {
-        operation: format!("overlayfs on {} (tag: {})", spec.path, spec.tag),
+    let opts = format!("lowerdir={path},upperdir={upper},workdir={work}");
+    mount(Some("overlay"), path.as_str(), Some("overlay"), MsFlags::empty(), Some(opts.as_str()))
+        .with_context(|_| error::MountSnafu {
+        operation: format!("overlayfs on {path} (tag: {tag})"),
     })?;
 
-    tracing::info!("Mounted overlayfs on {} (tag: {})", spec.path, spec.tag);
+    tracing::info!("Mounted overlayfs on {path} (tag: {tag})");
     Ok(())
 }
 
