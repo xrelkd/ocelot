@@ -1,8 +1,9 @@
 use std::{ffi::CString, fs::File, path::Path};
 
 use nix::{kmod, kmod::ModuleInitFlags};
+use snafu::ResultExt;
 
-use crate::config::ModulesConfig;
+use crate::{config::ModulesConfig, error, error::Error};
 
 /// Loads kernel modules based on the configuration.
 ///
@@ -66,7 +67,7 @@ fn scan_and_load_modules(dir: &str) {
         total += 1;
         tracing::info!("Loading kernel module: {file_name}");
 
-        match load_module_from_path(path.to_str().unwrap()) {
+        match load_module_from_path(path.to_str().expect("file path should be valid utf-8")) {
             Ok(()) => {
                 tracing::info!("Successfully loaded module: {file_name}");
                 loaded += 1;
@@ -81,10 +82,12 @@ fn scan_and_load_modules(dir: &str) {
     tracing::info!("Module scan complete: {loaded} loaded, {failed} failed, {total} total");
 }
 
-fn load_module_from_path(path: &str) -> Result<(), nix::Error> {
-    let file = File::open(path).map_err(|_| nix::Error::ENOENT)?;
+fn load_module_from_path(path: &str) -> Result<(), Error> {
+    let file =
+        File::open(path).with_context(|_| error::OpenModuleSnafu { path: path.to_string() })?;
     let params = CString::new("").expect("empty string is valid CStr");
     kmod::finit_module(&file, &params, ModuleInitFlags::empty())
+        .with_context(|_| error::MountSnafu { operation: format!("kernel module '{path}'") })
 }
 
 #[cfg(test)]

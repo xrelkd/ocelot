@@ -15,8 +15,7 @@ use crate::{ShellConfig, error, mount, shutdown};
 pub fn switch_root(
     orchestrator_config: ocelot_supervise::OrchestratorConfig,
 ) -> Result<(), error::Error> {
-    mount::mount_move_special()
-        .with_context(|_| error::MountSnafu { operation: "special filesystems".to_string() })?;
+    mount::mount_move_special()?;
 
     unistd::chdir("/newroot").context(error::SwitchRootSnafu)?;
     unistd::chroot(".").context(error::SwitchRootSnafu)?;
@@ -39,8 +38,7 @@ pub fn switch_root(
 /// Returns an error if mount operations fail, chroot fails,
 /// or the shell execution fails.
 pub fn switch_root_shell(console: &str, shell_config: &ShellConfig) -> Result<(), error::Error> {
-    mount::mount_move_special()
-        .with_context(|_| error::MountSnafu { operation: "special filesystems".to_string() })?;
+    mount::mount_move_special()?;
 
     unistd::chdir("/newroot").context(error::SwitchRootSnafu)?;
     unistd::chroot(".").context(error::SwitchRootSnafu)?;

@@ -55,11 +55,10 @@ pub fn execute_supervise(
     }
 
     tracing::info!("Setting up console");
-    console::setup(&config.console).context(error::ConsoleSetupSnafu)?;
+    console::setup(&config.console)?;
 
     tracing::info!("Mounting virtual filesystems");
-    mount::mount_virtual_filesystems()
-        .context(error::MountSnafu { operation: "virtual filesystems" })?;
+    mount::mount_virtual_filesystems()?;
 
     tracing::info!("Loading kernel modules");
     if let Some(modules_config) = &config.modules {
@@ -67,12 +66,11 @@ pub fn execute_supervise(
     }
 
     tracing::info!("Mounting root filesystem");
-    mount::mount_root(&config.root).context(error::MountSnafu { operation: "root filesystem" })?;
+    mount::mount_root(&config.root)?;
 
     if config.root.overlay() {
         tracing::info!("Setting up overlay filesystem");
-        mount::mount_overlay(&config.root)
-            .context(error::MountSnafu { operation: "overlay filesystem" })?;
+        mount::mount_overlay(&config.root)?;
     }
 
     if !config.extra_virtiofs_mounts.is_empty() {
@@ -85,12 +83,11 @@ pub fn execute_supervise(
 
     if !config.symlinks.is_empty() {
         tracing::info!("Creating symlinks");
-        symlinks::create_symlinks(&config.symlinks)
-            .context(error::MountSnafu { operation: "symlinks" })?;
+        symlinks::create_symlinks(&config.symlinks)?;
     }
 
     for (key, value) in &config.environment_variables {
-        tracing::debug!("Setting environment variable: {}={}", key, value);
+        tracing::debug!("Setting environment variable: {key}={value}");
         #[expect(unsafe_code, reason = "Safe in PID 1 single-threaded context")]
         unsafe {
             std::env::set_var(key, value);
@@ -98,9 +95,9 @@ pub fn execute_supervise(
     }
 
     if let Some(dir) = &config.working_directory {
-        tracing::info!("Changing working directory to: {}", dir);
+        tracing::info!("Changing working directory to: {dir}");
         std::env::set_current_dir(dir)
-            .context(error::FailedToChangeWorkingDirectorySnafu { path: dir })?;
+            .with_context(|_| error::FailedToChangeWorkingDirectorySnafu { path: dir.clone() })?;
     }
 
     tracing::info!("Switching root and handing off to supervise");
@@ -143,11 +140,10 @@ pub fn execute_shell(config: &Config, shell_config: &ShellConfig) -> Result<(), 
     }
 
     tracing::info!("Setting up console");
-    console::setup(&config.console).context(error::ConsoleSetupSnafu)?;
+    console::setup(&config.console)?;
 
     tracing::info!("Mounting virtual filesystems");
-    mount::mount_virtual_filesystems()
-        .context(error::MountSnafu { operation: "virtual filesystems" })?;
+    mount::mount_virtual_filesystems()?;
 
     tracing::info!("Loading kernel modules");
     if let Some(modules_config) = &config.modules {
@@ -155,12 +151,11 @@ pub fn execute_shell(config: &Config, shell_config: &ShellConfig) -> Result<(), 
     }
 
     tracing::info!("Mounting root filesystem");
-    mount::mount_root(&config.root).context(error::MountSnafu { operation: "root filesystem" })?;
+    mount::mount_root(&config.root)?;
 
     if config.root.overlay() {
         tracing::info!("Setting up overlay filesystem");
-        mount::mount_overlay(&config.root)
-            .context(error::MountSnafu { operation: "overlay filesystem" })?;
+        mount::mount_overlay(&config.root)?;
     }
 
     if !config.extra_virtiofs_mounts.is_empty() {
@@ -173,12 +168,11 @@ pub fn execute_shell(config: &Config, shell_config: &ShellConfig) -> Result<(), 
 
     if !config.symlinks.is_empty() {
         tracing::info!("Creating symlinks");
-        symlinks::create_symlinks(&config.symlinks)
-            .context(error::MountSnafu { operation: "symlinks" })?;
+        symlinks::create_symlinks(&config.symlinks)?;
     }
 
     for (key, value) in &config.environment_variables {
-        tracing::debug!("Setting environment variable: {}={}", key, value);
+        tracing::debug!("Setting environment variable: {key}={value}");
         #[expect(unsafe_code, reason = "Safe in PID 1 single-threaded context")]
         unsafe {
             std::env::set_var(key, value);
@@ -186,9 +180,9 @@ pub fn execute_shell(config: &Config, shell_config: &ShellConfig) -> Result<(), 
     }
 
     if let Some(dir) = &config.working_directory {
-        tracing::info!("Changing working directory to: {}", dir);
+        tracing::info!("Changing working directory to: {dir}");
         std::env::set_current_dir(dir)
-            .context(error::FailedToChangeWorkingDirectorySnafu { path: dir })?;
+            .with_context(|_| error::FailedToChangeWorkingDirectorySnafu { path: dir.clone() })?;
     }
 
     tracing::info!("Switching root and spawning shell: {}", shell_config.program);

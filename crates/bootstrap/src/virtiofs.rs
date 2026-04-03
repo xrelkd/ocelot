@@ -1,8 +1,12 @@
 use std::fs;
 
 use nix::mount::{MsFlags, mount};
+use snafu::ResultExt;
 
-use crate::{config::VirtiofsMount, error::Error};
+use crate::{
+    config::VirtiofsMount,
+    error::{self, Error},
+};
 
 /// Checks if the kernel supports virtiofs by reading `/proc/filesystems`.
 ///
@@ -12,16 +16,13 @@ use crate::{config::VirtiofsMount, error::Error};
 /// cannot be read.
 pub fn check_virtiofs_support() -> Result<(), Error> {
     let contents =
-        fs::read_to_string("/proc/filesystems").map_err(|source| Error::VirtiofsNotSupported {
-            message: format!("Failed to read /proc/filesystems: {source}"),
-        })?;
+        fs::read_to_string("/proc/filesystems").with_context(|_| error::ReadFilesystemsSnafu)?;
 
-    if contents.lines().any(|line| line.contains("virtiofs")) {
+    if contents.lines().any(|line: &str| line.contains("virtiofs")) {
         Ok(())
     } else {
-        Err(Error::VirtiofsNotSupported {
-            message: "Kernel does not support virtiofs filesystem".to_string(),
-        })
+        error::VirtiofsNotSupportedSnafu { message: "Kernel does not support virtiofs filesystem" }
+            .fail()
     }
 }
 
@@ -48,11 +49,14 @@ pub fn mount_extra_virtiofs(mounts: &[VirtiofsMount]) {
 }
 
 /// Mounts a single virtiofs share.
-pub fn mount_virtiofs_share(spec: &VirtiofsMount) -> Result<(), nix::Error> {
+pub fn mount_virtiofs_share(spec: &VirtiofsMount) -> Result<(), Error> {
     ensure_dir_all(&spec.path)?;
 
     let data = spec.options.as_deref();
-    mount(Some(spec.tag.as_str()), spec.path.as_str(), Some("virtiofs"), MsFlags::empty(), data)?;
+    mount(Some(spec.tag.as_str()), spec.path.as_str(), Some("virtiofs"), MsFlags::empty(), data)
+        .with_context(|_| error::MountSnafu {
+            operation: format!("virtiofs '{}' at {}", spec.tag, spec.path),
+        })?;
 
     tracing::info!("Mounted virtiofs '{}' at {}", spec.tag, spec.path);
     Ok(())
@@ -61,7 +65,7 @@ pub fn mount_virtiofs_share(spec: &VirtiofsMount) -> Result<(), nix::Error> {
 /// Sets up overlayfs on top of a mounted virtiofs share.
 ///
 /// Uses isolated directories under `/run/overlayfs/{tag}/`.
-pub fn mount_overlay_for_share(spec: &VirtiofsMount) -> Result<(), nix::Error> {
+pub fn mount_overlay_for_share(spec: &VirtiofsMount) -> Result<(), Error> {
     let base = overlay_share_base(&spec.tag);
     let upper = format!("{base}/upper");
     let work = format!("{base}/work");
@@ -76,7 +80,10 @@ pub fn mount_overlay_for_share(spec: &VirtiofsMount) -> Result<(), nix::Error> {
         Some("overlay"),
         MsFlags::empty(),
         Some(opts.as_str()),
-    )?;
+    )
+    .with_context(|_| error::MountSnafu {
+        operation: format!("overlayfs on {} (tag: {})", spec.path, spec.tag),
+    })?;
 
     tracing::info!("Mounted overlayfs on {} (tag: {})", spec.path, spec.tag);
     Ok(())
@@ -89,8 +96,9 @@ fn overlay_share_base(tag: &str) -> String {
 }
 
 /// Recursively creates a directory and all parent directories with mode 0755.
-pub fn ensure_dir_all(path: &str) -> Result<(), nix::Error> {
-    fs::create_dir_all(path).map_err(|_| nix::Error::EIO)
+fn ensure_dir_all(path: &str) -> Result<(), Error> {
+    fs::create_dir_all(path)
+        .with_context(|_| error::CreateDirectorySnafu { path: path.to_string() })
 }
 
 #[cfg(test)]
