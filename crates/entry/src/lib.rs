@@ -245,7 +245,7 @@ pub fn execute_interactive(
         .read(true)
         .write(true)
         .open(&console_path)
-        .map_err(|_| Error::CreatePipe { source: nix::Error::ENOENT })?;
+        .with_context(|_| error::OpenConsoleSnafu { path: console_path.clone() })?;
 
     let mut state = {
         let pid = Process::spawn_with_console(

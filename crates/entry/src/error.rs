@@ -14,6 +14,13 @@ pub enum Error {
     #[snafu(display("Invalid input: {input} contains null bytes"))]
     InvalidInput { input: String, source: std::ffi::NulError },
 
+    /// Failed to open console device.
+    ///
+    /// This error occurs when the console device file cannot be opened
+    /// for reading and writing.
+    #[snafu(display("Failed to open console device '{path}': {source}"))]
+    OpenConsole { path: String, source: std::io::Error },
+
     // Child process errors
     /// Failed to fork the child process.
     ///
