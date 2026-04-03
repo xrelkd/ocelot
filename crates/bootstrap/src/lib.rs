@@ -65,6 +65,20 @@ pub fn execute_supervise(
             .context(error::MountSnafu { operation: "overlay filesystem" })?;
     }
 
+    for (key, value) in &config.environment_variables {
+        tracing::debug!("Setting environment variable: {}={}", key, value);
+        #[expect(unsafe_code, reason = "Safe in PID 1 single-threaded context")]
+        unsafe {
+            std::env::set_var(key, value);
+        }
+    }
+
+    if let Some(dir) = &config.working_directory {
+        tracing::info!("Changing working directory to: {}", dir);
+        std::env::set_current_dir(dir)
+            .context(error::FailedToChangeWorkingDirectorySnafu { path: dir })?;
+    }
+
     tracing::info!("Switching root and handing off to supervise");
     switch_root::switch_root(orchestrator).context(error::SwitchRootSnafu)?;
 
@@ -114,6 +128,20 @@ pub fn execute_shell(config: &Config, shell_config: &ShellConfig) -> Result<(), 
         tracing::info!("Setting up overlay filesystem");
         mount::mount_overlay(&config.root)
             .context(error::MountSnafu { operation: "overlay filesystem" })?;
+    }
+
+    for (key, value) in &config.environment_variables {
+        tracing::debug!("Setting environment variable: {}={}", key, value);
+        #[expect(unsafe_code, reason = "Safe in PID 1 single-threaded context")]
+        unsafe {
+            std::env::set_var(key, value);
+        }
+    }
+
+    if let Some(dir) = &config.working_directory {
+        tracing::info!("Changing working directory to: {}", dir);
+        std::env::set_current_dir(dir)
+            .context(error::FailedToChangeWorkingDirectorySnafu { path: dir })?;
     }
 
     tracing::info!("Switching root and spawning shell: {}", shell_config.program);

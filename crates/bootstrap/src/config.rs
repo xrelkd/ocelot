@@ -13,6 +13,8 @@ pub struct Config {
     pub console: String,
     pub on_failure: Option<OnFailureConfig>,
     pub shutdown_timeout: Duration,
+    pub environment_variables: Vec<(String, String)>,
+    pub working_directory: Option<String>,
 }
 
 impl Default for Config {
@@ -23,6 +25,8 @@ impl Default for Config {
             console: "console".to_string(),
             on_failure: None,
             shutdown_timeout: Duration::from_secs(30),
+            environment_variables: Vec::new(),
+            working_directory: None,
         }
     }
 }

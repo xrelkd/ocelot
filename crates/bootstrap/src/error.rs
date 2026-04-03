@@ -14,4 +14,7 @@ pub enum Error {
 
     #[snafu(display("Failed to shut down system: {source}"))]
     Shutdown { source: nix::Error },
+
+    #[snafu(display("Failed to change working directory to '{path}': {source}"))]
+    FailedToChangeWorkingDirectory { path: String, source: std::io::Error },
 }
