@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use ocelot_supervise::supervisor_config;
 use petgraph::{Direction, graph::DiGraph, stable_graph::StableDiGraph};
@@ -34,7 +34,7 @@ pub struct SuperviseConfig {
 impl SuperviseConfig {
     const SUPPORTED_VERSION: &'static str = "1.0";
 
-    pub fn load(path: impl AsRef<std::path::Path>) -> Result<Self, Error> {
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
         let orig_path = path.as_ref();
         let path_buf = orig_path.to_owned();
         let Ok(resolved_path) = path_buf.try_resolve() else {

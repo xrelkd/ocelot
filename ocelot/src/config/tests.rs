@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 use nix::sys::signal::Signal;
 use ocelot_supervise::{LogDestination, supervisor_config::DependencyCondition};
@@ -86,7 +86,7 @@ terminationGracePeriod: 30s
 ";
     let config: ProcessConfig = serde_yaml::from_slice(yaml).unwrap();
     let supervisor_config: ocelot_supervise::SupervisorConfig = config.into();
-    assert_eq!(supervisor_config.program, std::path::PathBuf::from("/usr/bin/test"));
+    assert_eq!(supervisor_config.program, PathBuf::from("/usr/bin/test"));
     assert_eq!(supervisor_config.termination_grace_period.as_secs(), 30);
 }
 
