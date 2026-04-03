@@ -17,4 +17,16 @@ pub enum Error {
 
     #[snafu(display("Failed to change working directory to '{path}': {source}"))]
     FailedToChangeWorkingDirectory { path: String, source: std::io::Error },
+
+    #[snafu(display("Virtiofs not supported: {message}"))]
+    VirtiofsNotSupported { message: String },
+
+    #[snafu(display("Failed to execute boot script: {source}"))]
+    BootScript { source: ocelot_entry::Error },
+
+    #[snafu(display("Failed to execute supervise orchestrator: {source}"))]
+    ExecuteSupervise { source: ocelot_supervise::Error },
+
+    #[snafu(display("Failed to execute interactive shell: {source}"))]
+    ExecuteShell { source: ocelot_entry::Error },
 }

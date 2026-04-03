@@ -4,15 +4,21 @@ mod console;
 mod error;
 mod modules;
 mod mount;
+mod script;
 mod shutdown;
 mod switch_root;
+mod symlinks;
+mod virtiofs;
 
 use nix::unistd;
 use snafu::ResultExt;
 
 pub use self::{
     cmdline::get_config_path,
-    config::{Config, ModuleConfig, OnFailureConfig, RootConfig, ShellConfig},
+    config::{
+        BootScriptConfig, Config, ModuleConfig, ModulesConfig, OnFailureConfig, OnFailurePolicy,
+        RootConfig, ShellConfig, SymlinkSpec, VirtiofsMount,
+    },
     error::Error,
     shutdown::shutdown,
 };
@@ -25,7 +31,11 @@ pub use self::{
 /// 3. Loads kernel modules
 /// 4. Mounts root filesystem
 /// 5. Sets up overlay if configured
-/// 6. Switches root and hands off to supervise
+/// 6. Mounts extra virtiofs shares
+/// 7. Creates symlinks
+/// 8. Sets environment variables and working directory
+/// 9. Switches root and executes boot script
+/// 10. Hands off to supervise
 ///
 /// This function never returns on success — after `switch_root` it execs
 /// into the supervise orchestrator.
@@ -65,6 +75,20 @@ pub fn execute_supervise(
             .context(error::MountSnafu { operation: "overlay filesystem" })?;
     }
 
+    if !config.extra_virtiofs_mounts.is_empty() {
+        tracing::info!("Checking virtiofs support");
+        virtiofs::check_virtiofs_support()?;
+
+        tracing::info!("Mounting extra virtiofs shares");
+        virtiofs::mount_extra_virtiofs(&config.extra_virtiofs_mounts);
+    }
+
+    if !config.symlinks.is_empty() {
+        tracing::info!("Creating symlinks");
+        symlinks::create_symlinks(&config.symlinks)
+            .context(error::MountSnafu { operation: "symlinks" })?;
+    }
+
     for (key, value) in &config.environment_variables {
         tracing::debug!("Setting environment variable: {}={}", key, value);
         #[expect(unsafe_code, reason = "Safe in PID 1 single-threaded context")]
@@ -80,7 +104,12 @@ pub fn execute_supervise(
     }
 
     tracing::info!("Switching root and handing off to supervise");
-    switch_root::switch_root(orchestrator).context(error::SwitchRootSnafu)?;
+    switch_root::switch_root(orchestrator)?;
+
+    if let Some(boot_script) = &config.boot_script {
+        tracing::info!("Executing boot script");
+        script::execute_boot_script(boot_script)?;
+    }
 
     Ok(())
 }
@@ -93,7 +122,11 @@ pub fn execute_supervise(
 /// 3. Loads kernel modules
 /// 4. Mounts root filesystem
 /// 5. Sets up overlay if configured
-/// 6. Switches root and spawns an interactive shell
+/// 6. Mounts extra virtiofs shares
+/// 7. Creates symlinks
+/// 8. Sets environment variables and working directory
+/// 9. Switches root and executes boot script
+/// 10. Spawns an interactive shell
 ///
 /// This function never returns on success — after `switch_root` it execs
 /// into the specified shell.
@@ -130,6 +163,20 @@ pub fn execute_shell(config: &Config, shell_config: &ShellConfig) -> Result<(), 
             .context(error::MountSnafu { operation: "overlay filesystem" })?;
     }
 
+    if !config.extra_virtiofs_mounts.is_empty() {
+        tracing::info!("Checking virtiofs support");
+        virtiofs::check_virtiofs_support()?;
+
+        tracing::info!("Mounting extra virtiofs shares");
+        virtiofs::mount_extra_virtiofs(&config.extra_virtiofs_mounts);
+    }
+
+    if !config.symlinks.is_empty() {
+        tracing::info!("Creating symlinks");
+        symlinks::create_symlinks(&config.symlinks)
+            .context(error::MountSnafu { operation: "symlinks" })?;
+    }
+
     for (key, value) in &config.environment_variables {
         tracing::debug!("Setting environment variable: {}={}", key, value);
         #[expect(unsafe_code, reason = "Safe in PID 1 single-threaded context")]
@@ -145,8 +192,12 @@ pub fn execute_shell(config: &Config, shell_config: &ShellConfig) -> Result<(), 
     }
 
     tracing::info!("Switching root and spawning shell: {}", shell_config.program);
-    switch_root::switch_root_shell(&config.console, shell_config)
-        .context(error::SwitchRootSnafu)?;
+    switch_root::switch_root_shell(&config.console, shell_config)?;
+
+    if let Some(boot_script) = &config.boot_script {
+        tracing::info!("Executing boot script");
+        script::execute_boot_script(boot_script)?;
+    }
 
     Ok(())
 }
