@@ -4,10 +4,9 @@ mod executor;
 
 use std::collections::HashMap;
 
-pub use config::Config as OrchestratorConfig;
 use tokio::sync::{mpsc, oneshot};
 
-pub use self::executor::Executor as OrchestratorExecutor;
+pub use self::{config::Config as OrchestratorConfig, executor::Executor as OrchestratorExecutor};
 use crate::supervisor::ProcessStatus;
 
 #[derive(Clone)]
@@ -66,7 +65,7 @@ impl Orchestrator {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{collections::HashMap, path::PathBuf, time::Duration};
 
     use crate::{
         orchestrator::config::Config,
@@ -87,11 +86,11 @@ mod tests {
     fn test_orchestrator_config_with_supervisors() {
         let supervisor_config = SupervisorConfig {
             name: "test".to_string(),
-            program: std::path::PathBuf::from("/bin/sleep"),
+            program: PathBuf::from("/bin/sleep"),
             arguments: vec!["3600".to_string()],
-            environment_variables: std::collections::HashMap::new(),
+            environment_variables: HashMap::new(),
             working_directory: None,
-            depends_on: std::collections::HashMap::new(),
+            depends_on: HashMap::new(),
             readiness_probe: None,
             liveness_probe: None,
             restart_policy: RestartPolicy::Never,
