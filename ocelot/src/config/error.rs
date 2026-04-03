@@ -55,6 +55,10 @@ pub enum ValidationError {
         variables.iter().map(String::as_str).collect::<Vec<_>>().join(", ")))]
     DuplicateEnvironmentVariables { process: String, variables: Vec<String> },
 
+    #[snafu(display("Bootstrap configuration has duplicate environment variables: {}",
+        variables.iter().map(String::as_str).collect::<Vec<_>>().join(", ")))]
+    BootstrapDuplicateEnvironmentVariables { variables: Vec<String> },
+
     #[snafu(display("Invalid rotation configuration: {reason}"))]
     InvalidRotationConfiguration { reason: String },
 }

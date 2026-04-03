@@ -4,7 +4,7 @@ use nix::sys::signal::Signal;
 use ocelot_supervise::{LogDestination, supervisor_config::DependencyCondition};
 
 use crate::config::{
-    Error, ProcessConfig, SuperviseConfig,
+    BootstrapConfig, Error, ProcessConfig, SuperviseConfig,
     dependency::DependencyConfig,
     error::ValidationError,
     probe::{ProbeConfig, ProbeHandlerConfig},
@@ -725,4 +725,76 @@ fn test_validate_successful_config() {
         "#;
     let config: SuperviseConfig = serde_yaml::from_str(yaml).unwrap();
     assert!(config.validate().is_ok());
+}
+
+#[test]
+fn test_bootstrap_config_deserialization_with_env_vars() {
+    let yaml = r"
+root:
+  type: virtiofs
+  tag: myfs
+  overlay: true
+console: ttyS0
+mode: shell
+program: /bin/sh
+environmentVariables:
+  - [PATH, /usr/bin:/bin]
+  - [LANG, en_US.UTF-8]
+";
+    let config: BootstrapConfig = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(config.environment_variables.len(), 2);
+    assert_eq!(config.environment_variables[0], ("PATH".to_string(), "/usr/bin:/bin".to_string()));
+    assert_eq!(config.environment_variables[1], ("LANG".to_string(), "en_US.UTF-8".to_string()));
+}
+
+#[test]
+fn test_bootstrap_config_deserialization_with_working_directory() {
+    let yaml = r"
+root:
+  type: virtiofs
+  tag: myfs
+console: ttyS0
+mode: shell
+program: /bin/sh
+workingDirectory: /srv/app
+";
+    let config: BootstrapConfig = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(config.working_directory, Some("/srv/app".to_string()));
+}
+
+#[test]
+fn test_bootstrap_config_default_values() {
+    let yaml = r"
+root:
+  type: virtiofs
+  tag: myfs
+console: ttyS0
+mode: shell
+program: /bin/sh
+";
+    let config: BootstrapConfig = serde_yaml::from_str(yaml).unwrap();
+    assert!(config.environment_variables.is_empty());
+    assert_eq!(config.working_directory, None);
+}
+
+#[test]
+fn test_bootstrap_config_duplicate_env_vars_fails() {
+    let yaml = r"
+root:
+  type: virtiofs
+  tag: myfs
+console: ttyS0
+mode: shell
+program: /bin/sh
+environmentVariables:
+  - [PATH, /usr/bin]
+  - [PATH, /bin]
+";
+    let config: BootstrapConfig = serde_yaml::from_str(yaml).unwrap();
+    let result = config.validate();
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("Bootstrap configuration has duplicate environment variables")
+    );
 }

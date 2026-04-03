@@ -5,7 +5,9 @@ use serde_with::{DisplayFromStr, serde_as};
 use snafu::ResultExt;
 use tracing::Level;
 
-use crate::config::{Error, ProcessConfig, SuperviseConfig, error, shell::ShellConfig};
+use crate::config::{
+    Error, ProcessConfig, SuperviseConfig, error, error::ValidationError, shell::ShellConfig,
+};
 
 /// Bootstrap configuration file structure.
 ///
@@ -34,6 +36,12 @@ pub struct BootstrapConfig {
     /// Shutdown timeout in seconds (default: 30).
     #[serde(default = "default_shutdown_timeout")]
     pub shutdown_timeout_secs: u64,
+    /// Environment variables to set before executing shell or supervise.
+    #[serde(default)]
+    pub environment_variables: Vec<(String, String)>,
+    /// Working directory to change to before executing shell or supervise.
+    #[serde(default)]
+    pub working_directory: Option<String>,
     /// Execution mode: shell for debugging, or supervise for normal operation.
     #[serde(flatten)]
     pub mode: ExecutionMode,
@@ -86,8 +94,33 @@ impl BootstrapConfig {
         let path = path.as_ref();
         let data = std::fs::read(path)
             .with_context(|_| error::OpenConfigSnafu { filename: path.to_path_buf() })?;
-        serde_yaml::from_slice(&data)
-            .with_context(|_| error::ParseConfigSnafu { filename: path.to_path_buf() })
+        let config: Self = serde_yaml::from_slice(&data)
+            .with_context(|_| error::ParseConfigSnafu { filename: path.to_path_buf() })?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        self.validate_environment_variables()?;
+        Ok(())
+    }
+
+    fn validate_environment_variables(&self) -> Result<(), ValidationError> {
+        let (_seen, duplicates): (_, Vec<_>) = self.environment_variables.iter().fold(
+            (std::collections::HashSet::new(), Vec::new()),
+            |(mut seen, mut dups), (key, _)| {
+                if !seen.insert(key) {
+                    dups.push(key.clone());
+                }
+                (seen, dups)
+            },
+        );
+        if !duplicates.is_empty() {
+            return Err(ValidationError::BootstrapDuplicateEnvironmentVariables {
+                variables: duplicates,
+            });
+        }
+        Ok(())
     }
 
     /// Converts to `ocelot_bootstrap::Config`.
@@ -101,6 +134,8 @@ impl BootstrapConfig {
             console: self.console.clone(),
             on_failure,
             shutdown_timeout: Duration::from_secs(self.shutdown_timeout_secs),
+            environment_variables: self.environment_variables.clone(),
+            working_directory: self.working_directory.clone(),
         }
     }
 
