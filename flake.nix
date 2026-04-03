@@ -60,12 +60,29 @@
               stable.clippy
               stable.rust-src
               stable.rust-std
+              targets.x86_64-unknown-linux-musl.stable.rust-std
               default.rustfmt
+            ];
+
+          rustToolchainMusl =
+            with fenix.packages.${system};
+            combine [
+              stable.rustc
+              stable.cargo
+              stable.clippy
+              stable.rust-src
+              stable.rust-std
+              targets.x86_64-unknown-linux-musl.stable.rust-std
             ];
 
           rustPlatform = pkgs.makeRustPlatform {
             cargo = rustToolchain;
             rustc = rustToolchain;
+          };
+
+          rustPlatformMusl = pkgs.pkgsStatic.makeRustPlatform {
+            cargo = rustToolchainMusl;
+            rustc = rustToolchainMusl;
           };
 
           cargoArgs = [
@@ -83,7 +100,12 @@
           formatter = pkgs.treefmt;
 
           devShells.default = pkgs.callPackage ./devshell {
-            inherit rustToolchain cargoArgs unitTestArgs;
+            inherit
+              rustToolchain
+              rustToolchainMusl
+              cargoArgs
+              unitTestArgs
+              ;
           };
 
           packages = rec {
@@ -92,6 +114,11 @@
               inherit (cargoToml.workspace.metadata.crane) name;
               inherit (cargoToml.workspace.package) version;
               inherit rustPlatform;
+            };
+            ocelot-static = pkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
+              inherit (cargoToml.workspace.metadata.crane) name;
+              inherit (cargoToml.workspace.package) version;
+              rustPlatform = rustPlatformMusl;
             };
             container = pkgs.callPackage ./devshell/container.nix {
               inherit (cargoToml.workspace.metadata.crane) name;
