@@ -59,10 +59,8 @@ impl Executor {
                 Event::ReapProcess => {
                     for process in reap_processes() {
                         let ReapedProcess { pid, .. } = process;
-                        if let Some(RegisteredProcess { sender, .. }) =
-                            registered_processes.remove(&pid)
-                        {
-                            let _ = sender.send(process);
+                        if let Some(registered) = registered_processes.remove(&pid) {
+                            let _ = registered.sender.send(process);
                         }
                     }
                 }
@@ -102,11 +100,9 @@ impl Executor {
 
                 // Reap any processes that have already exited.
                 for process @ ReapedProcess { pid, .. } in reap_processes() {
-                    if let Some(RegisteredProcess { sender, .. }) =
-                        registered_processes.remove(&pid)
-                    {
+                    if let Some(registered) = registered_processes.remove(&pid) {
                         let _unused = deadlines.remove(&pid);
-                        let _ = sender.send(process);
+                        let _ = registered.sender.send(process);
                     }
                 }
 

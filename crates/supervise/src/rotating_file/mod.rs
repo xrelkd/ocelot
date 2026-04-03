@@ -57,11 +57,15 @@ impl RotatingFile {
     /// Returns an error if the file cannot be opened or metadata cannot be
     /// read.
     pub async fn new(base_path: PathBuf, rotation: LogRotationConfig) -> io::Result<Self> {
-        let mut opts_base = tokio::fs::OpenOptions::new();
         let file = if let Some(mode) = rotation.mode {
-            opts_base.append(true).create(true).mode(mode).open(&base_path).await?
+            tokio::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .mode(mode)
+                .open(&base_path)
+                .await?
         } else {
-            opts_base.append(true).create(true).open(&base_path).await?
+            tokio::fs::OpenOptions::new().append(true).create(true).open(&base_path).await?
         };
         let metadata = file.metadata().await?;
         let current_size = metadata.len();
@@ -185,11 +189,10 @@ impl RotatingFile {
                 }
             }
             rotated_files.sort_by_key(|(time, _path)| *time);
-            if rotated_files.len() > max_files {
-                let excess = rotated_files.len() - max_files;
-                for (_, path) in rotated_files.iter().take(excess) {
-                    let _unused = std::fs::remove_file(path);
-                }
+            for (_, path) in
+                rotated_files.iter().take(rotated_files.len().saturating_sub(max_files))
+            {
+                let _unused = std::fs::remove_file(path);
             }
         }
 

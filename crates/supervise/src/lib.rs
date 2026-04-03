@@ -6,7 +6,6 @@ mod rotating_file;
 mod splice_relay;
 mod supervisor;
 
-use nix::unistd;
 use snafu::ResultExt;
 
 pub use self::{
@@ -51,8 +50,7 @@ use crate::orchestrator::Orchestrator;
 ///
 /// This function should not panic under normal operation.
 pub fn execute(config: OrchestratorConfig) -> Result<i32, Error> {
-    let pid = unistd::getpid();
-
+    let pid = nix::unistd::getpid();
     if pid.as_raw() == 1 {
         tracing::info!("Start with PID 1");
     } else {

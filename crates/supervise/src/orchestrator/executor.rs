@@ -69,19 +69,19 @@ impl Executor {
 
         let mut tasks = JoinSet::<()>::new();
 
-        let _unused = tasks.spawn({
+        drop(tasks.spawn({
             let cancel_token = cancel_token.clone();
             async move {
                 drop(reaper_executor.serve(cancel_token).await);
             }
-        });
-        let _unused = tasks.spawn({
+        }));
+        drop(tasks.spawn({
             let cancel_token = cancel_token.clone();
             async move {
                 drop(splice_relay_executor.serve(cancel_token).await);
             }
-        });
-        let _unused = tasks.spawn({
+        }));
+        drop(tasks.spawn({
             let mut sigterm =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
                     .context(error::CreateSignalHandlerSnafu)?;
@@ -92,7 +92,9 @@ impl Executor {
             let cancel_token = cancel_token.clone();
             async move {
                 tokio::select! {
-                    () = cancel_token.cancelled() => {},
+                    () = cancel_token.cancelled() => {
+                        // Cancelled, nothing to do
+                    },
                     _ = sigint.recv() => {
                         tracing::info!("Received SIGINT, initiating shutdown");
                         drop(event_sender.send(Event::Shutdown));
@@ -103,13 +105,13 @@ impl Executor {
                     },
                 }
             }
-        });
+        }));
 
         for executor in supervisor_executors {
             let cancel_token = cancel_token.clone();
-            let _unused = tasks.spawn(async move {
+            drop(tasks.spawn(async move {
                 drop(executor.run(cancel_token).await);
-            });
+            }));
         }
 
         while let Some(event) = event_receiver.recv().await {
@@ -132,11 +134,14 @@ impl Executor {
                     }
                 }
                 Event::GetAllStatuses { resp } => {
-                    let mut statuses = HashMap::new();
-                    for (name, supervisor) in &supervisors {
-                        let status = supervisor.get_status().await;
-                        let _unused_status = statuses.insert(name.clone(), status);
-                    }
+                    let statuses = futures::future::join_all(supervisors.iter().map(
+                        |(name, supervisor)| async move {
+                            (name.clone(), supervisor.get_status().await)
+                        },
+                    ))
+                    .await
+                    .into_iter()
+                    .collect::<HashMap<_, _>>();
                     drop(resp.send(statuses));
                 }
             }
