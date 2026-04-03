@@ -949,6 +949,7 @@ name = "ocelot-bootstrap"
 version = "0.4.2"
 dependencies = [
  "nix",
+ "ocelot-entry",
  "ocelot-supervise",
  "snafu",
  "tracing",

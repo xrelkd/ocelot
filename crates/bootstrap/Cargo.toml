@@ -18,6 +18,7 @@ tracing = { workspace = true }
 nix   = { workspace = true, features = ["kmod"] }
 snafu = { workspace = true }
 
+ocelot-entry     = { workspace = true }
 ocelot-supervise = { workspace = true }
 
 [lints]
