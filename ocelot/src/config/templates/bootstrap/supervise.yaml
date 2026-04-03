@@ -1,0 +1,15 @@
+root:
+  type: virtiofs
+  tag: rootfs
+console: console
+shutdownTimeoutSecs: 30
+environmentVariables: []
+workingDirectory: null
+supervise:
+  processes:
+    sh:
+      program: /bin/sh
+      arguments:
+        - -c
+        - while true; do sleep 1; done
+

@@ -6,7 +6,7 @@ use serde::Deserialize;
 /// instead of executing the supervise orchestrator.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ShellConfig {
+pub struct BootstrapShellConfig {
     /// Path to the shell program to execute.
     pub program: String,
     /// Arguments to pass to the shell program.
@@ -14,6 +14,8 @@ pub struct ShellConfig {
     pub args: Vec<String>,
 }
 
-impl From<ShellConfig> for ocelot_bootstrap::ShellConfig {
-    fn from(config: ShellConfig) -> Self { Self { program: config.program, args: config.args } }
+impl From<BootstrapShellConfig> for ocelot_bootstrap::ShellConfig {
+    fn from(config: BootstrapShellConfig) -> Self {
+        Self { program: config.program, args: config.args }
+    }
 }

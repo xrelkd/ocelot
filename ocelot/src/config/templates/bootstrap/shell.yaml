@@ -1,0 +1,10 @@
+root:
+  type: virtiofs
+  tag: rootfs
+console: console
+shutdownTimeoutSecs: 30
+environmentVariables: []
+workingDirectory: null
+shell:
+  program: /bin/sh
+  args: ["-l"]

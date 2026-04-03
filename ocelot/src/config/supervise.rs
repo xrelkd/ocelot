@@ -191,5 +191,11 @@ impl SuperviseConfig {
         }
     }
 
-    pub fn template_basic() -> Vec<u8> { include_bytes!("templates/basic.yaml").to_vec() }
+    pub fn template_minimal() -> Vec<u8> {
+        include_bytes!("templates/supervise/minimal.yaml").to_vec()
+    }
+
+    pub fn template_basic() -> Vec<u8> { include_bytes!("templates/supervise/basic.yaml").to_vec() }
+
+    pub fn template_full() -> Vec<u8> { include_bytes!("templates/supervise/full.yaml").to_vec() }
 }

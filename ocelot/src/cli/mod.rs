@@ -81,9 +81,13 @@ pub enum Commands {
         about = "Run as initramfs init - mount rootfs and exec supervise",
         long_about = "Acts as an initramfs init system for QEMU VMs. Loads kernel modules, mounts \
                       the root filesystem, performs switch_root, and executes the supervise \
-                      orchestrator to manage application processes."
+                      orchestrator to manage application processes. If no subcommand is provided, \
+                      runs the bootstrap."
     )]
     Bootstrap {
+        #[clap(subcommand)]
+        command: Option<bootstrap::Commands>,
+
         #[clap(short, long)]
         file: Option<PathBuf>,
     },
@@ -160,13 +164,8 @@ impl Cli {
             Some(Commands::Supervise { command, file, log_level }) => {
                 return supervise::run(command, file, log_level);
             }
-            Some(Commands::Bootstrap { file }) => {
-                // Check kernel cmdline for config path if --file not provided
-                let path = file.unwrap_or_else(|| {
-                    ocelot_bootstrap::get_config_path()
-                        .map_or_else(|| PathBuf::from("/etc/ocelot/bootstrap.yaml"), PathBuf::from)
-                });
-                return bootstrap::run(&path);
+            Some(Commands::Bootstrap { command, file }) => {
+                return bootstrap::run(command, file);
             }
             Some(Commands::Zombie { log_level, interval_ms, count }) => {
                 init_tracing_subscriber(log_level);

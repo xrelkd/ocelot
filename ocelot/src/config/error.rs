@@ -14,6 +14,9 @@ pub enum Error {
 
     #[snafu(display("Configuration validation failed: {source}"))]
     Validate { source: ValidationError },
+
+    #[snafu(display("Invalid configuration: {message}"))]
+    InvalidConfig { message: String },
 }
 
 impl From<ValidationError> for Error {

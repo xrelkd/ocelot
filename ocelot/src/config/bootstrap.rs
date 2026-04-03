@@ -6,7 +6,8 @@ use snafu::ResultExt;
 use tracing::Level;
 
 use crate::config::{
-    Error, ProcessConfig, SuperviseConfig, error, error::ValidationError, shell::ShellConfig,
+    Error, ProcessConfig, SuperviseConfig, error, error::ValidationError,
+    shell::BootstrapShellConfig,
 };
 
 /// Bootstrap configuration file structure.
@@ -42,50 +43,21 @@ pub struct BootstrapConfig {
     /// Working directory to change to before executing shell or supervise.
     #[serde(default)]
     pub working_directory: Option<String>,
-    /// Execution mode: shell for debugging, or supervise for normal operation.
-    #[serde(flatten)]
-    pub mode: ExecutionMode,
+    /// Shell mode configuration (mutually exclusive with supervise).
+    #[serde(default)]
+    pub shell: Option<BootstrapShellConfig>,
+    /// Supervise mode configuration (mutually exclusive with shell).
+    #[serde(default)]
+    pub supervise: Option<BootstrapSuperviseConfig>,
 }
 
-/// Execution mode for bootstrap, mutually exclusive.
-///
-/// Either shell mode (for debugging) or supervise mode (normal operation).
+/// Bootstrap supervise configuration wrapper.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[serde(tag = "mode")]
-pub enum ExecutionMode {
-    /// Shell execution mode for debugging.
-    Shell {
-        /// Shell configuration.
-        #[serde(flatten)]
-        config: ShellConfig,
-    },
-    /// Supervise mode with process definitions.
-    Supervise {
-        /// Process definitions for supervise.
-        #[serde(default)]
-        processes: HashMap<String, ProcessConfig>,
-    },
-}
-
-impl ExecutionMode {
-    /// Returns the shell config if in shell mode, None otherwise.
-    #[must_use]
-    pub const fn shell_config(&self) -> Option<&ShellConfig> {
-        match self {
-            Self::Shell { config } => Some(config),
-            Self::Supervise { .. } => None,
-        }
-    }
-
-    /// Returns the processes if in supervise mode, None otherwise.
-    #[must_use]
-    pub const fn processes(&self) -> Option<&HashMap<String, ProcessConfig>> {
-        match self {
-            Self::Shell { .. } => None,
-            Self::Supervise { processes } => Some(processes),
-        }
-    }
+pub struct BootstrapSuperviseConfig {
+    /// Process definitions for supervise.
+    #[serde(default)]
+    pub processes: HashMap<String, ProcessConfig>,
 }
 
 impl BootstrapConfig {
@@ -102,6 +74,7 @@ impl BootstrapConfig {
 
     pub(crate) fn validate(&self) -> Result<(), Error> {
         self.validate_environment_variables()?;
+        self.validate_mode_exclusivity()?;
         Ok(())
     }
 
@@ -120,6 +93,27 @@ impl BootstrapConfig {
                 variables: duplicates,
             });
         }
+        Ok(())
+    }
+
+    fn validate_mode_exclusivity(&self) -> Result<(), Error> {
+        let has_shell = self.shell.is_some();
+        let has_supervise = self.supervise.is_some();
+
+        if has_shell && has_supervise {
+            return Err(Error::InvalidConfig {
+                message: "Cannot specify both 'shell' and 'supervise' modes. They are mutually \
+                          exclusive."
+                    .to_string(),
+            });
+        }
+
+        if !has_shell && !has_supervise {
+            return Err(Error::InvalidConfig {
+                message: "Must specify either 'shell' or 'supervise' mode.".to_string(),
+            });
+        }
+
         Ok(())
     }
 
@@ -144,7 +138,7 @@ impl BootstrapConfig {
     /// Returns `None` if not in shell mode.
     #[must_use]
     pub fn to_shell_config(&self) -> Option<ocelot_bootstrap::ShellConfig> {
-        self.mode.shell_config().map(|c| c.clone().into())
+        self.shell.as_ref().map(|c| c.clone().into())
     }
 
     /// Converts to `ocelot_supervise::OrchestratorConfig`.
@@ -152,12 +146,12 @@ impl BootstrapConfig {
     /// Returns `None` if in shell mode.
     #[must_use]
     pub fn to_orchestrator_config(&self) -> Option<ocelot_supervise::OrchestratorConfig> {
-        let processes = self.mode.processes()?;
+        let processes = self.supervise.as_ref()?.processes.clone();
 
         let supervisor_config = SuperviseConfig {
             version: "1.0".to_string(),
             log_level: Level::INFO,
-            processes: processes.clone(),
+            processes,
             shutdown_timeout_secs: self.shutdown_timeout_secs,
         };
 
@@ -165,6 +159,12 @@ impl BootstrapConfig {
             supervisors: supervisor_config.to_supervisors(),
             shutdown_timeout: Duration::from_secs(self.shutdown_timeout_secs),
         })
+    }
+
+    pub fn template_shell() -> Vec<u8> { include_bytes!("templates/bootstrap/shell.yaml").to_vec() }
+
+    pub fn template_supervise() -> Vec<u8> {
+        include_bytes!("templates/bootstrap/supervise.yaml").to_vec()
     }
 }
 
