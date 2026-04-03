@@ -6,6 +6,7 @@ use std::{
 use nix::{
     errno::Errno,
     fcntl::OFlag,
+    libc,
     sys::signal::{self, SaFlags, SigAction, SigHandler, SigSet, SigmaskHow, Signal},
     unistd::{self, ForkResult, Pid},
 };
@@ -78,7 +79,7 @@ impl Process {
     /// Returns [`Error::SpawnChild`] if forking fails.
     /// Returns [`Error::ReadPipe`] if reading from the error pipe fails
     /// (indicates child's exec failure).
-    /// Returns [`Error::ChildExecute`] if the child process fails to execute
+    /// Returns [`Error::ExecuteChild`] if the child process fails to execute
     /// the command.
     ///
     /// # Example
@@ -94,14 +95,7 @@ impl Process {
     where
         Args: IntoIterator<Item = String>,
     {
-        let c_cmd = CString::new(command)
-            .with_context(|_| error::InvalidInputSnafu { input: command.to_string() })?;
-
-        let c_args = std::iter::once(Ok(c_cmd.clone()))
-            .chain(args.into_iter().map(|arg| {
-                CString::new(arg.clone()).with_context(|_| error::InvalidInputSnafu { input: arg })
-            }))
-            .collect::<Result<Vec<_>, Error>>()?;
+        let (c_cmd, c_args) = prepare_exec_args(command, args)?;
 
         tracing::info!("Spawning child process with {c_args:?}");
 
@@ -173,6 +167,97 @@ impl Process {
             }
         }
     }
+
+    /// Spawns a child process with console/terminal setup.
+    ///
+    /// This function forks a child process and sets up the console device
+    /// as the controlling terminal. The child will have its stdin, stdout,
+    /// and stderr redirected to the console device.
+    ///
+    /// # Arguments
+    ///
+    /// * `console_fd` - File descriptor for the console device (e.g.,
+    ///   `/dev/tty1`)
+    /// * `command` - The executable to run
+    /// * `args` - Iterator of arguments
+    ///
+    /// # Returns
+    ///
+    /// Returns the child's process ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::SpawnChild`] if forking fails.
+    pub fn spawn_with_console<Args>(
+        console_fd: impl AsFd,
+        command: &str,
+        args: Args,
+    ) -> Result<Pid, Error>
+    where
+        Args: IntoIterator<Item = String>,
+    {
+        let (c_cmd, c_args) = prepare_exec_args(command, args)?;
+
+        tracing::info!("Spawning child process with console: {c_args:?}");
+
+        // Create a pipe with `O_CLOEXEC`.
+        // The pipe will automatically close on successful `exec()`.
+        let (err_reader, err_writer) =
+            unistd::pipe2(OFlag::O_CLOEXEC).context(error::CreatePipeSnafu)?;
+
+        #[expect(unsafe_code, reason = "Fork is safe in single-threaded context")]
+        let fork_result = unsafe { unistd::fork().context(error::SpawnChildSnafu)? };
+
+        match fork_result {
+            ForkResult::Parent { child } => {
+                drop(err_writer);
+
+                let mut buf = [0u8; 4];
+                match unistd::read(err_reader, &mut buf).context(error::ReadPipeSnafu)? {
+                    // Read 0 bytes (EOF).
+                    // This means the child successfully called exec() and the pipe closed.
+                    0 => Ok(child),
+                    // Read 4 bytes.
+                    // This means exec() failed and the child wrote the errno.
+                    4 => {
+                        let _errno = i32::from_ne_bytes(buf);
+                        Err(Error::ExecuteChild)
+                    }
+                    _ => Err(Error::ExecuteChild),
+                }
+            }
+            ForkResult::Child => {
+                reset_signal_handling()?;
+
+                let _ = unistd::setsid();
+
+                #[expect(unsafe_code, reason = "dup2_raw is safe with valid file descriptor")]
+                unsafe {
+                    let _unused = unistd::dup2_raw(&console_fd, libc::STDIN_FILENO)
+                        .map_err(|err| send_errno_and_exit(&err_writer, err));
+
+                    let _unused = unistd::dup2_raw(&console_fd, libc::STDOUT_FILENO)
+                        .map_err(|err| send_errno_and_exit(&err_writer, err));
+
+                    let _unused = unistd::dup2_raw(&console_fd, libc::STDERR_FILENO)
+                        .map_err(|err| send_errno_and_exit(&err_writer, err));
+                }
+
+                #[expect(unsafe_code, reason = "ioctl TIOCSCTTY is safe after setsid")]
+                unsafe {
+                    let _ = libc::ioctl(libc::STDIN_FILENO, libc::TIOCSCTTY, 0);
+                }
+
+                match unistd::execvp(&c_cmd, &c_args) {
+                    Ok(_) => unreachable!("execv succeeded but should have replaced process"),
+                    Err(err) => {
+                        eprintln!("Failed to exec shell: {err}");
+                        send_errno_and_exit(&err_writer, err);
+                    }
+                }
+            }
+        }
+    }
 }
 
 // Helper function to write errno to the error pipe and exit.
@@ -187,7 +272,7 @@ fn send_errno_and_exit(pipe_fd: &impl AsFd, errno: Errno) -> ! {
                   running destructors."
     )]
     unsafe {
-        nix::libc::_exit(errno);
+        libc::_exit(errno);
     }
 }
 
@@ -214,4 +299,20 @@ fn reset_signal_handling() -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+fn prepare_exec_args<Args>(command: &str, args: Args) -> Result<(CString, Vec<CString>), Error>
+where
+    Args: IntoIterator<Item = String>,
+{
+    let c_cmd = CString::new(command)
+        .with_context(|_| error::InvalidInputSnafu { input: command.to_string() })?;
+
+    let c_args = std::iter::once(Ok(c_cmd.clone()))
+        .chain(args.into_iter().map(|arg| {
+            CString::new(arg.clone()).with_context(|_| error::InvalidInputSnafu { input: arg })
+        }))
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    Ok((c_cmd, c_args))
 }
