@@ -49,6 +49,15 @@ pub struct BootstrapConfig {
     /// Supervise mode configuration (mutually exclusive with shell).
     #[serde(default)]
     pub supervise: Option<BootstrapSuperviseConfig>,
+    /// Extra virtiofs mounts to set up after the root filesystem.
+    #[serde(default)]
+    pub extra_virtiofs_mounts: Vec<VirtiofsMountConfig>,
+    /// Symlinks to create after `switch_root`.
+    #[serde(default)]
+    pub symlinks: Vec<SymlinkConfig>,
+    /// Optional boot script to execute before handoff.
+    #[serde(default)]
+    pub boot_script: Option<BootScriptConfig>,
 }
 
 /// Bootstrap supervise configuration wrapper.
@@ -120,8 +129,17 @@ impl BootstrapConfig {
     /// Converts to `ocelot_bootstrap::Config`.
     pub fn to_bootstrap_config(&self) -> ocelot_bootstrap::Config {
         let root = ocelot_bootstrap::RootConfig::from(self.root.clone());
-        let modules = self.modules.clone().map(ocelot_bootstrap::ModuleConfig::from);
+        let modules = self.modules.clone().map(ocelot_bootstrap::ModulesConfig::from);
         let on_failure = self.on_failure.clone().map(ocelot_bootstrap::OnFailureConfig::from);
+        let extra_virtiofs_mounts = self
+            .extra_virtiofs_mounts
+            .iter()
+            .cloned()
+            .map(ocelot_bootstrap::VirtiofsMount::from)
+            .collect();
+        let symlinks =
+            self.symlinks.iter().cloned().map(ocelot_bootstrap::SymlinkSpec::from).collect();
+        let boot_script = self.boot_script.clone().map(ocelot_bootstrap::BootScriptConfig::from);
         ocelot_bootstrap::Config {
             root,
             modules,
@@ -130,6 +148,9 @@ impl BootstrapConfig {
             shutdown_timeout: Duration::from_secs(self.shutdown_timeout_secs),
             environment_variables: self.environment_variables.clone(),
             working_directory: self.working_directory.clone(),
+            extra_virtiofs_mounts,
+            symlinks,
+            boot_script,
         }
     }
 
@@ -184,12 +205,52 @@ impl From<RootConfig> for ocelot_bootstrap::RootConfig {
     }
 }
 
-impl From<ModulesConfig> for ocelot_bootstrap::ModuleConfig {
-    fn from(config: ModulesConfig) -> Self { Self { dir: config.dir.clone(), list: config.list } }
+impl From<ModulesConfig> for ocelot_bootstrap::ModulesConfig {
+    fn from(config: ModulesConfig) -> Self {
+        match config {
+            ModulesConfig::List { dir, names } => Self::List { dir, names },
+            ModulesConfig::Scan { dir } => Self::Scan { dir },
+        }
+    }
 }
 
 impl From<OnFailureConfig> for ocelot_bootstrap::OnFailureConfig {
     fn from(config: OnFailureConfig) -> Self { Self { shell: config.shell } }
+}
+
+impl From<VirtiofsMountConfig> for ocelot_bootstrap::VirtiofsMount {
+    fn from(config: VirtiofsMountConfig) -> Self {
+        Self {
+            tag: config.tag,
+            path: config.path,
+            with_overlay: config.with_overlay.unwrap_or(false),
+            options: config.options,
+        }
+    }
+}
+
+impl From<SymlinkConfig> for ocelot_bootstrap::SymlinkSpec {
+    fn from(config: SymlinkConfig) -> Self { Self { source: config.source, target: config.target } }
+}
+
+impl From<BootScriptConfig> for ocelot_bootstrap::BootScriptConfig {
+    fn from(config: BootScriptConfig) -> Self {
+        Self {
+            command: config.command,
+            args: config.args,
+            on_failure: config.on_failure.into(),
+            working_directory: config.working_directory,
+        }
+    }
+}
+
+impl From<OnFailurePolicy> for ocelot_bootstrap::OnFailurePolicy {
+    fn from(config: OnFailurePolicy) -> Self {
+        match config {
+            OnFailurePolicy::Warn => Self::Warn,
+            OnFailurePolicy::Abort => Self::Abort,
+        }
+    }
 }
 
 /// Root filesystem backend configuration.
@@ -238,15 +299,22 @@ pub enum RootConfig {
 }
 
 /// Kernel module loading configuration.
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ModulesConfig {
-    /// Directory containing kernel modules.
-    #[serde(default)]
-    pub dir: Option<String>,
-    /// List of module names to load.
-    #[serde(default)]
-    pub list: Vec<String>,
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields, tag = "mode")]
+pub enum ModulesConfig {
+    /// Load specific modules by name.
+    List {
+        /// Directory containing kernel modules (defaults to /lib/modules).
+        #[serde(default)]
+        dir: Option<String>,
+        /// List of module names to load.
+        names: Vec<String>,
+    },
+    /// Scan directory for all .ko/.ko.xz/.ko.gz files and load each.
+    Scan {
+        /// Directory to scan for kernel modules.
+        dir: String,
+    },
 }
 
 /// Failure recovery configuration.
@@ -255,6 +323,62 @@ pub struct ModulesConfig {
 pub struct OnFailureConfig {
     /// Path to debug shell to spawn on failure.
     pub shell: Option<String>,
+}
+
+/// Configuration for an extra virtiofs mount.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VirtiofsMountConfig {
+    /// Tag name for the virtiofs share.
+    pub tag: String,
+    /// Mount point path (relative to new root).
+    pub path: String,
+    /// Whether to set up an overlayfs on top of this mount.
+    #[serde(default)]
+    pub with_overlay: Option<bool>,
+    /// Additional mount options.
+    #[serde(default)]
+    pub options: Option<String>,
+}
+
+/// Configuration for a symlink to create during boot.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SymlinkConfig {
+    /// The target path the symlink should point to.
+    pub source: String,
+    /// The path where the symlink should be created.
+    pub target: String,
+}
+
+/// Configuration for boot script execution.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BootScriptConfig {
+    /// The command to execute.
+    pub command: String,
+    /// Arguments for the command.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Policy for handling non-zero exit codes (default: warn).
+    #[serde(default)]
+    pub on_failure: OnFailurePolicy,
+    /// Working directory for script execution.
+    #[serde(default)]
+    pub working_directory: Option<String>,
+}
+
+/// Policy for handling boot script failures.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OnFailurePolicy {
+    /// Log a warning and continue the boot process.
+    #[serde(rename = "warn")]
+    #[default]
+    Warn,
+    /// Return an error and abort the boot process.
+    #[serde(rename = "abort")]
+    Abort,
 }
 
 fn default_console() -> String { "console".to_string() }

@@ -1,10 +1,33 @@
+# Ocelot Bootstrap Configuration (Supervise Mode)
+#
+# This template demonstrates all available bootstrap configuration options.
+# Supervise mode hands off to the process supervisor after boot.
+
+# Root filesystem configuration (required)
 root:
-  type: virtiofs
+  type: virtiofs # Options: virtiofs, block, 9p
   tag: rootfs
+  # overlay: false  # Set to true to use overlayfs on root
+  # options: ""     # Additional mount options
+
+# Console device (default: "console")
 console: console
+
+# Log level for supervise mode (default: "info")
+logLevel: info
+
+# Shutdown timeout in seconds (default: 30)
 shutdownTimeoutSecs: 30
+
+# Environment variables to set before supervise handoff
 environmentVariables: []
+# - - PATH
+#   - /usr/local/bin:/usr/bin:/bin
+
+# Working directory before supervise handoff
 workingDirectory: null
+
+# Supervise mode configuration (mutually exclusive with shell)
 supervise:
   processes:
     sh:
@@ -12,3 +35,42 @@ supervise:
       arguments:
         - -c
         - while true; do sleep 1; done
+# Kernel module loading (optional)
+# modules:
+#   mode: list
+#   dir: /lib/modules  # Optional, defaults to /lib/modules
+#   names:
+#     - virtio_pci
+#     - virtio_net
+#
+#   # Or use scan mode to auto-discover all .ko files:
+#   # mode: scan
+#   # dir: /lib/modules
+
+# Extra virtiofs mounts (optional)
+# extraVirtiofsMounts:
+#   - tag: data
+#     path: /mnt/data
+#     withOverlay: false  # Set to true for writable overlay
+#     options: ""         # Additional mount options
+#   - tag: config
+#     path: /etc/config
+#     withOverlay: true
+
+# Symlinks to create after switch_root (optional)
+# symlinks:
+#   - source: /usr/bin/bash
+#     target: /bin/bash
+#   - source: /usr/lib
+#     target: /lib
+
+# Boot script execution (optional)
+# bootScript:
+#   command: /usr/local/bin/init.sh
+#   args: []
+#   onFailure: warn  # Options: warn (default), abort
+#   workingDirectory: null
+
+# Failure recovery configuration (optional)
+# onFailure:
+#   shell: /bin/sh  # Debug shell to spawn on failure
