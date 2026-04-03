@@ -348,13 +348,22 @@ pub enum LogCompression {
 }
 
 impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
-    fn from(config: ProcessConfig) -> Self {
-        let termination_grace_period = config.termination_grace_period;
-
-        let shutdown_signal = config.shutdown_signal.map(|s| s.to_signal());
-
-        let depends_on = config
-            .depends_on
+    fn from(
+        ProcessConfig {
+            program,
+            arguments,
+            environment_variables,
+            working_directory,
+            depends_on,
+            readiness_probe,
+            liveness_probe,
+            restart_policy,
+            shutdown_signal,
+            termination_grace_period,
+            log,
+        }: ProcessConfig,
+    ) -> Self {
+        let depends_on = depends_on
             .into_iter()
             .map(|(name, dep)| {
                 let condition = dep.condition.map(supervisor_config::DependencyCondition::from);
@@ -362,13 +371,9 @@ impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
             })
             .collect();
 
-        // Convert environment_variables from Vec<(String, String)> to HashMap<String,
-        // String>
-        let environment_variables =
-            config.environment_variables.into_iter().collect::<HashMap<_, _>>();
+        let environment_variables = environment_variables.into_iter().collect::<HashMap<_, _>>();
 
-        // Map log configuration
-        let (log_stdout, log_stderr) = match config.log {
+        let (log_stdout, log_stderr) = match log {
             Some(LogConfig { stdout, stderr }) => {
                 (SupLogStreamConfig::from(stdout), SupLogStreamConfig::from(stderr))
             }
@@ -380,17 +385,17 @@ impl From<ProcessConfig> for ocelot_supervise::SupervisorConfig {
 
         Self {
             name: String::new(),
-            program: PathBuf::from(config.program),
-            arguments: config.arguments,
+            program: PathBuf::from(program),
+            arguments,
             environment_variables,
-            working_directory: config.working_directory.map(PathBuf::from),
+            working_directory: working_directory.map(PathBuf::from),
             depends_on,
-            readiness_probe: config.readiness_probe.map(supervisor_probe::Probe::from),
-            liveness_probe: config.liveness_probe.map(supervisor_probe::Probe::from),
+            readiness_probe: readiness_probe.map(supervisor_probe::Probe::from),
+            liveness_probe: liveness_probe.map(supervisor_probe::Probe::from),
             restart_policy: supervisor_config::RestartPolicy::from(
-                config.restart_policy.unwrap_or_default(),
+                restart_policy.unwrap_or_default(),
             ),
-            shutdown_signal,
+            shutdown_signal: shutdown_signal.map(|s| s.to_signal()),
             termination_grace_period,
             log_stdout,
             log_stderr,

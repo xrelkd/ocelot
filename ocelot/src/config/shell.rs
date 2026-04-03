@@ -15,7 +15,7 @@ pub struct BootstrapShellConfig {
 }
 
 impl From<BootstrapShellConfig> for ocelot_bootstrap::ShellConfig {
-    fn from(config: BootstrapShellConfig) -> Self {
-        Self { program: config.program, args: config.args }
+    fn from(BootstrapShellConfig { program, args }: BootstrapShellConfig) -> Self {
+        Self { program, args }
     }
 }
