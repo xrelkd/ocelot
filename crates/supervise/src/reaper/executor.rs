@@ -159,8 +159,11 @@ fn reap_processes() -> Vec<ReapedProcess> {
                 Some(ReapedProcess { pid, exit_code })
             }
             WaitStatus::Signaled(pid, sig, _) => {
-                tracing::info!("Reaped child process {pid} terminated by signal {sig}");
-                None
+                let exit_code = 128 + sig as i32;
+                tracing::info!(
+                    "Reaped child process {pid} terminated by signal {sig} (exit code {exit_code})"
+                );
+                Some(ReapedProcess { pid, exit_code })
             }
             _ => None,
         }
