@@ -61,6 +61,7 @@
               stable.rust-src
               stable.rust-std
               targets.x86_64-unknown-linux-musl.stable.rust-std
+              targets.aarch64-unknown-linux-musl.stable.rust-std
               default.rustfmt
             ];
 
@@ -73,6 +74,7 @@
               stable.rust-src
               stable.rust-std
               targets.x86_64-unknown-linux-musl.stable.rust-std
+              targets.aarch64-unknown-linux-musl.stable.rust-std
             ];
 
           rustPlatform = pkgs.makeRustPlatform {
@@ -85,6 +87,34 @@
             rustc = rustToolchainMusl;
           };
 
+          crossPkgs = import nixpkgs {
+            inherit system;
+            crossSystem = {
+              config = "aarch64-unknown-linux-musl";
+            };
+            overlays = [
+              self.overlays.default
+              fenix.overlays.default
+            ];
+          };
+
+          rustToolchainCross =
+            with fenix.packages.${system};
+            combine [
+              stable.rustc
+              stable.cargo
+              stable.clippy
+              stable.rust-src
+              stable.rust-std
+              targets.x86_64-unknown-linux-musl.stable.rust-std
+              targets.aarch64-unknown-linux-musl.stable.rust-std
+            ];
+
+          rustPlatformCrossMusl = crossPkgs.pkgsStatic.makeRustPlatform {
+            cargo = rustToolchainCross;
+            rustc = rustToolchainCross;
+          };
+
           cargoArgs = [
             "--workspace"
             "--bins"
@@ -94,6 +124,12 @@
             "--all-targets"
           ];
           unitTestArgs = [ "--workspace" ];
+
+          ocelot-static-cross = crossPkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
+            inherit (cargoToml.workspace.metadata.crane) name;
+            inherit (cargoToml.workspace.package) version;
+            rustPlatform = rustPlatformCrossMusl;
+          };
         in
         {
 
@@ -126,6 +162,27 @@
               inherit ocelot;
             };
             check-format = pkgs.callPackage ./devshell/format.nix { };
+            ocelot-deb = pkgs.callPackage ./devshell/package-deb.nix {
+              inherit (cargoToml.workspace.metadata.crane) name;
+              inherit (cargoToml.workspace.package) version;
+              inherit ocelot-static;
+            };
+            ocelot-rpm = pkgs.callPackage ./devshell/package-rpm.nix {
+              inherit (cargoToml.workspace.metadata.crane) name;
+              inherit (cargoToml.workspace.package) version;
+              inherit ocelot-static;
+            };
+            ocelot-static-aarch64 = ocelot-static-cross;
+            ocelot-deb-aarch64 = pkgs.callPackage ./devshell/package-deb-aarch64.nix {
+              inherit (cargoToml.workspace.metadata.crane) name;
+              inherit (cargoToml.workspace.package) version;
+              inherit ocelot-static-cross;
+            };
+            ocelot-rpm-aarch64 = pkgs.callPackage ./devshell/package-rpm-aarch64.nix {
+              inherit (cargoToml.workspace.metadata.crane) name;
+              inherit (cargoToml.workspace.package) version;
+              inherit ocelot-static-cross;
+            };
           };
         };
     };
