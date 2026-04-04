@@ -13,7 +13,7 @@ use crate::config::{BootScriptConfig, OnFailurePolicy};
 /// Returns an error if execution fails and `on_failure` is `Abort`.
 /// Logs a warning and returns `Ok(())` if `on_failure` is `Warn`.
 pub fn execute_boot_script(
-    BootScriptConfig { command, args, on_failure, working_directory }: &BootScriptConfig,
+    BootScriptConfig { command, arguments: args, on_failure, working_directory }: &BootScriptConfig,
 ) -> Result<(), crate::error::Error> {
     if let Some(working_dir) = working_directory {
         tracing::info!("Setting working directory for boot script: {working_dir}");
@@ -60,7 +60,7 @@ mod tests {
     fn test_boot_script_success() {
         let config = BootScriptConfig {
             command: "true".to_string(),
-            args: vec![],
+            arguments: vec![],
             on_failure: OnFailurePolicy::Warn,
             working_directory: None,
         };
@@ -71,7 +71,7 @@ mod tests {
     fn test_boot_script_failure_warn_policy() {
         let config = BootScriptConfig {
             command: "false".to_string(),
-            args: vec![],
+            arguments: vec![],
             on_failure: OnFailurePolicy::Warn,
             working_directory: None,
         };
@@ -82,7 +82,7 @@ mod tests {
     fn test_boot_script_failure_abort_policy() {
         let config = BootScriptConfig {
             command: "false".to_string(),
-            args: vec![],
+            arguments: vec![],
             on_failure: OnFailurePolicy::Abort,
             working_directory: None,
         };

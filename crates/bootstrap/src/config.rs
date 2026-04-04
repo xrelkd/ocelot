@@ -190,7 +190,7 @@ pub struct ShellConfig {
     /// Shell program to execute.
     pub program: String,
     /// Arguments for the shell program.
-    pub args: Vec<String>,
+    pub arguments: Vec<String>,
 }
 
 /// Configuration for an extra virtiofs mount.
@@ -227,7 +227,7 @@ pub struct BootScriptConfig {
     /// The command to execute.
     pub command: String,
     /// Arguments for the command.
-    pub args: Vec<String>,
+    pub arguments: Vec<String>,
     /// Policy for handling non-zero exit codes.
     pub on_failure: OnFailurePolicy,
     /// Working directory for script execution.

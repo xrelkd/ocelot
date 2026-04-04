@@ -39,7 +39,7 @@ pub fn switch_root(
 /// or the shell execution fails.
 pub fn switch_root_shell(
     console_device: &str,
-    ShellConfig { program, args }: &ShellConfig,
+    ShellConfig { program, arguments: args }: &ShellConfig,
 ) -> Result<(), error::Error> {
     mount::mount_move_special()?;
 
