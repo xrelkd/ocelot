@@ -51,6 +51,8 @@
           };
 
           cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+          name = cargoToml.workspace.metadata.crane.name;
+          version = cargoToml.workspace.package.version;
 
           rustToolchain =
             with fenix.packages.${system};
@@ -60,6 +62,8 @@
               stable.clippy
               stable.rust-src
               stable.rust-std
+              targets.x86_64-unknown-linux-musl.stable.rust-std
+              targets.aarch64-unknown-linux-musl.stable.rust-std
               default.rustfmt
             ];
 
@@ -67,6 +71,49 @@
             cargo = rustToolchain;
             rustc = rustToolchain;
           };
+
+          rustPlatformMusl = pkgs.pkgsStatic.makeRustPlatform {
+            cargo = rustToolchain;
+            rustc = rustToolchain;
+          };
+
+          isCross = system == "x86_64-linux";
+          isCrossFromAarch64 = system == "aarch64-linux";
+
+          crossPkgs =
+            if isCross then
+              import nixpkgs {
+                inherit system;
+                crossSystem = {
+                  config = "aarch64-unknown-linux-musl";
+                };
+                overlays = [
+                  self.overlays.default
+                  fenix.overlays.default
+                ];
+              }
+            else if isCrossFromAarch64 then
+              import nixpkgs {
+                inherit system;
+                crossSystem = {
+                  config = "x86_64-unknown-linux-musl";
+                };
+                overlays = [
+                  self.overlays.default
+                  fenix.overlays.default
+                ];
+              }
+            else
+              null;
+
+          rustPlatformCrossMusl =
+            if isCross || isCrossFromAarch64 then
+              crossPkgs.pkgsStatic.makeRustPlatform {
+                cargo = rustToolchain;
+                rustc = rustToolchain;
+              }
+            else
+              null;
 
           cargoArgs = [
             "--workspace"
@@ -83,22 +130,95 @@
           formatter = pkgs.treefmt;
 
           devShells.default = pkgs.callPackage ./devshell {
-            inherit rustToolchain cargoArgs unitTestArgs;
+            inherit
+              rustToolchain
+              cargoArgs
+              unitTestArgs
+              ;
           };
 
           packages = rec {
             default = ocelot;
             ocelot = pkgs.callPackage ./devshell/package.nix {
-              inherit (cargoToml.workspace.metadata.crane) name;
-              inherit (cargoToml.workspace.package) version;
-              inherit rustPlatform;
+              inherit name version rustPlatform;
             };
+            ocelot-static = pkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
+              inherit name version;
+              rustPlatform = rustPlatformMusl;
+            };
+            completions = pkgs.runCommand "ocelot-completions" { } ''
+              mkdir -p $out/share/{bash-completion/completions,fish/vendor_completions.d,zsh/site-functions}
+              ${ocelot}/bin/ocelot completions bash  > $out/share/bash-completion/completions/ocelot
+              ${ocelot}/bin/ocelot completions fish  > $out/share/fish/vendor_completions.d/ocelot.fish
+              ${ocelot}/bin/ocelot completions zsh   > $out/share/zsh/site-functions/_ocelot
+            '';
             container = pkgs.callPackage ./devshell/container.nix {
-              inherit (cargoToml.workspace.metadata.crane) name;
-              inherit (cargoToml.workspace.package) version;
-              inherit ocelot;
+              inherit name version ocelot;
             };
             check-format = pkgs.callPackage ./devshell/format.nix { };
+            deb-x86_64 = pkgs.callPackage ./devshell/package-nfpm.nix {
+              inherit name version;
+              ocelot-static = if isCrossFromAarch64 then static-x86_64 else ocelot-static;
+              packager = "deb";
+              arch = "amd64";
+            };
+            rpm-x86_64 = pkgs.callPackage ./devshell/package-nfpm.nix {
+              inherit name version;
+              ocelot-static = if isCrossFromAarch64 then static-x86_64 else ocelot-static;
+              packager = "rpm";
+              arch = "x86_64";
+            };
+            apk-x86_64 = pkgs.callPackage ./devshell/package-nfpm.nix {
+              inherit name version;
+              ocelot-static = if isCrossFromAarch64 then static-x86_64 else ocelot-static;
+              packager = "apk";
+              arch = "x86_64";
+            };
+            tarball-x86_64 = pkgs.callPackage ./devshell/package-tarball.nix {
+              inherit name version;
+              ocelot-static = if isCrossFromAarch64 then static-x86_64 else ocelot-static;
+            };
+            static-aarch64 =
+              if isCross then
+                crossPkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
+                  inherit name version;
+                  rustPlatform = rustPlatformCrossMusl;
+                  inherit completions;
+                }
+              else
+                ocelot-static;
+            static-x86_64 =
+              if isCrossFromAarch64 then
+                crossPkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
+                  inherit name version;
+                  rustPlatform = rustPlatformCrossMusl;
+                  inherit completions;
+                }
+              else
+                ocelot-static;
+            deb-aarch64 = pkgs.callPackage ./devshell/package-nfpm.nix {
+              inherit name version;
+              ocelot-static = static-aarch64;
+              packager = "deb";
+              arch = "arm64";
+            };
+            rpm-aarch64 = pkgs.callPackage ./devshell/package-nfpm.nix {
+              inherit name version;
+              ocelot-static = static-aarch64;
+              packager = "rpm";
+              arch = "aarch64";
+            };
+            apk-aarch64 = pkgs.callPackage ./devshell/package-nfpm.nix {
+              inherit name version;
+              ocelot-static = static-aarch64;
+              packager = "apk";
+              arch = "aarch64";
+            };
+            tarball-aarch64 = pkgs.callPackage ./devshell/package-tarball.nix {
+              inherit name version;
+              ocelot-static = static-aarch64;
+              target = "aarch64-unknown-linux-musl";
+            };
           };
         };
     };

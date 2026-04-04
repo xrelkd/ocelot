@@ -78,7 +78,10 @@ nix = { version = "0.31", features = [
 petgraph = "0.8"
 procfs = "0.18"
 resolve-path = "0.1"
-shadow-rs = "1"
+shadow-rs = { version = "1", default-features = false, features = [
+  "tzdb",
+  "build",
+] }
 snafu = "0.9"
 tempfile = "3"
 
