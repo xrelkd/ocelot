@@ -1,18 +1,43 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Bootstrap config structure
 
-The system SHALL parse a YAML configuration file containing bootstrap-specific options and an embedded supervise configuration section.
+The system SHALL parse a YAML configuration file containing bootstrap-specific options including root filesystem, kernel modules, console, extra virtiofs mounts, symlinks, boot script, on-failure recovery, and an embedded supervise configuration section.
 
 #### Scenario: Parse complete config
 
-- **WHEN** a valid YAML config file is provided with root, modules, and supervise sections
+- **WHEN** a valid YAML config file is provided with all sections including `extra_virtiofs_mounts`, `symlinks`, and `boot_script`
 - **THEN** all sections are parsed into the appropriate config structs
 
 #### Scenario: Parse minimal config
 
 - **WHEN** a YAML config file contains only the root section and supervise section
 - **THEN** the config is parsed successfully with default values for omitted fields
+
+#### Scenario: Parse config with extra virtiofs mounts
+
+- **WHEN** the config specifies `extra_virtiofs_mounts` as a list of mount specifications
+- **THEN** each mount is parsed with `tag`, `path`, and optional `with_overlay` fields
+
+#### Scenario: Parse config with symlinks
+
+- **WHEN** the config specifies `symlinks` as a list of symlink specifications
+- **THEN** each symlink is parsed with `source` and `target` fields
+
+#### Scenario: Parse config with boot script
+
+- **WHEN** the config specifies `boot_script` with `command` and optional `args`, `on_failure`, and `working_directory`
+- **THEN** the boot script config is parsed with all specified fields
+
+#### Scenario: Parse config with module scan mode
+
+- **WHEN** the config specifies `modules.mode: scan` with `modules.dir`
+- **THEN** the module config is parsed in scan mode
+
+#### Scenario: Parse config with module list mode
+
+- **WHEN** the config specifies `modules.mode: list` with `modules.names` and optional `modules.dir`
+- **THEN** the module config is parsed in list mode
 
 ### Requirement: Root filesystem config
 
@@ -38,34 +63,86 @@ The system SHALL support root filesystem configuration with type, device/tag, fi
 - **WHEN** the config specifies an unsupported root type
 - **THEN** config validation fails with a descriptive error
 
+### Requirement: Extra virtiofs mount config
+
+The system SHALL support configuration of additional virtiofs mounts beyond the root filesystem, each with a tag, mount path, and optional overlay flag.
+
+#### Scenario: Single extra mount config
+
+- **WHEN** the config specifies one entry in `extra_virtiofs_mounts`
+- **THEN** the mount is parsed with `tag`, `path`, and `with_overlay` (defaulting to false)
+
+#### Scenario: Extra mount with overlay
+
+- **WHEN** the config specifies `extra_virtiofs_mounts` with `with_overlay: true`
+- **THEN** the mount is configured to use overlayfs with the virtiofs share as lower layer
+
+#### Scenario: Extra mount with mount options
+
+- **WHEN** the config specifies `extra_virtiofs_mounts` with `options`
+- **THEN** the mount options are passed to the virtiofs mount syscall
+
 ### Requirement: Kernel module config
 
-The system SHALL support kernel module configuration with an optional `modules.dep` file path for dependency resolution during config validation.
+The system SHALL support kernel module configuration in two modes: explicit list mode and directory scan mode.
 
-#### Scenario: Module list config with dependency file
+#### Scenario: Module list mode config
 
-- **WHEN** the config specifies `modules` as a list with `dep_file_path`
-- **THEN** config validation parses the depfile, resolves dependency order via topological sort, and passes sorted names to bootstrap
+- **WHEN** the config specifies `modules.mode: list` with `modules.names`
+- **THEN** each module name is parsed for loading via finit_module from the configured or default directory
 
-#### Scenario: Module list config without dependency file
+#### Scenario: Module scan mode config
 
-- **WHEN** the config specifies `modules` as a list without `dep_file_path`
-- **THEN** modules are passed to bootstrap in user-specified order (existing behavior)
+- **WHEN** the config specifies `modules.mode: scan` with `modules.dir`
+- **THEN** the module config is parsed in scan mode with the specified directory
 
-#### Scenario: Scan mode with dependency file
+#### Scenario: Module list mode with custom directory
 
-- **WHEN** the config specifies `modules` as a scan with `dep_file_path`
-- **THEN** config validation resolves dependency order and passes sorted names to bootstrap
+- **WHEN** the config specifies `modules.mode: list` with `modules.dir` and `modules.names`
+- **THEN** modules are loaded from the specified directory
 
-#### Scenario: Scan mode with dependency file and names filter
+#### Scenario: Module list mode default directory
 
-- **WHEN** the config specifies `modules` as a scan with `dep_file_path` and `names`
-- **THEN** only the specified modules and their transitive dependencies are resolved and passed to bootstrap in sorted order
+- **WHEN** the config specifies `modules.mode: list` without `modules.dir`
+- **THEN** modules are loaded from `/lib/modules` by default
 
-#### Scenario: Cyclic dependency in depfile
+### Requirement: Symlink config
 
-- **WHEN** the depfile contains cyclic dependencies among the modules to be loaded
-- **THEN** config validation fails with a `CyclicDependency` error listing all modules in the cycle
+The system SHALL support symlink configuration with source and target paths.
+
+#### Scenario: Single symlink config
+
+- **WHEN** the config specifies one entry in `symlinks` with `source` and `target`
+- **THEN** the symlink spec is parsed with both paths
+
+#### Scenario: Multiple symlinks config
+
+- **WHEN** the config specifies multiple entries in `symlinks`
+- **THEN** each symlink spec is parsed in order
+
+### Requirement: Boot script config
+
+The system SHALL support boot script configuration with command, optional arguments, failure policy, and working directory.
+
+#### Scenario: Boot script with command only
+
+- **WHEN** the config specifies `boot_script.command`
+- **THEN** the boot script is parsed with default `on_failure: warn` and no arguments
+
+#### Scenario: Boot script with arguments
+
+- **WHEN** the config specifies `boot_script.command` and `boot_script.args`
+- **THEN** the boot script is parsed with the specified arguments
+
+#### Scenario: Boot script with abort policy
+
+- **WHEN** the config specifies `boot_script.on_failure: abort`
+- **THEN** the boot script failure policy is set to abort
+
+#### Scenario: Boot script with working directory
+
+- **WHEN** the config specifies `boot_script.working_directory`
+- **THEN** the boot script is configured to run in the specified directory
 
 ### Requirement: Console config
 

@@ -1,13 +1,13 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Bootstrap boot flow
 
-The system SHALL provide a complete bootstrap boot flow that initializes the environment, mounts the root filesystem, switches root, and hands off to the supervise orchestrator.
+The system SHALL provide a complete bootstrap boot flow that initializes the environment, mounts the root filesystem, mounts additional virtiofs shares, creates symlinks, optionally executes a boot script, switches root, and hands off to the supervise orchestrator.
 
 #### Scenario: Successful boot sequence
 
 - **WHEN** `ocelot bootstrap` (or `ocelot boot`) is executed as PID 1 in a QEMU VM with valid configuration
-- **THEN** the system mounts virtual filesystems, loads kernel modules, mounts rootfs, switches root, and executes the supervise orchestrator
+- **THEN** the system mounts virtual filesystems, loads kernel modules, mounts rootfs, mounts extra virtiofs shares, creates symlinks, executes boot script (if configured), switches root, and executes the supervise orchestrator
 
 #### Scenario: PID 1 verification
 
@@ -16,7 +16,7 @@ The system SHALL provide a complete bootstrap boot flow that initializes the env
 
 ### Requirement: Virtual filesystem mounting
 
-The system SHALL mount the following virtual filesystems before any other operations: `/proc` (proc), `/sys` (sysfs), `/dev` (devtmpfs), and `/run` (tmpfs with mode 0755).
+The system SHALL mount the following virtual filesystems before any other operations: `/proc` (proc), `/sys` (sysfs), `/dev` (devtmpfs), and `/run` (tmpfs with mode 0755). Before mounting any virtiofs filesystem, the system SHALL verify kernel virtiofs support by checking `/proc/filesystems`.
 
 #### Scenario: Mount all virtual filesystems
 
@@ -28,24 +28,39 @@ The system SHALL mount the following virtual filesystems before any other operat
 - **WHEN** a mount point directory does not exist
 - **THEN** the system creates the directory with mode 0755 before mounting
 
+#### Scenario: Virtiofs support check before mount
+
+- **WHEN** the boot flow includes any virtiofs mount (root or extra)
+- **THEN** the system checks `/proc/filesystems` for virtiofs support before the first virtiofs mount attempt
+
 ### Requirement: Kernel module loading
 
-The system SHALL load specified kernel modules using `finit_module()` syscall from the configured module directory.
+The system SHALL load kernel modules using `finit_module()` syscall, supporting both explicit module list mode and directory scan mode.
 
 #### Scenario: Load modules from list
 
-- **WHEN** the config specifies a list of kernel modules
-- **THEN** each module is loaded via `finit_module()` in order
+- **WHEN** the config specifies `modules.mode: list` with module names
+- **THEN** each module is loaded via `finit_module()` in order from the configured directory
+
+#### Scenario: Load modules from directory scan
+
+- **WHEN** the config specifies `modules.mode: scan` with a directory path
+- **THEN** all `.ko`, `.ko.xz`, and `.ko.gz` files in the directory are loaded
 
 #### Scenario: Module load failure
 
 - **WHEN** a kernel module fails to load
-- **THEN** a warning is logged and loading continues with the next module
+- **THEN** a warning is logged and loading continues with the next module (list mode) or next file (scan mode)
 
 #### Scenario: No modules configured
 
 - **WHEN** no modules are specified in the config
 - **THEN** module loading is skipped without error
+
+#### Scenario: Scan mode summary
+
+- **WHEN** scan mode completes
+- **THEN** a summary is logged showing loaded count, failed count, and total count
 
 ### Requirement: Root filesystem mounting
 
@@ -73,22 +88,75 @@ The system SHALL mount the root filesystem to `/newroot` based on the configured
 
 ### Requirement: Overlay filesystem support
 
-The system SHALL support overlayfs on top of read-only root filesystems, providing a writable upper layer with isolated directories per mount source.
+The system SHALL support overlayfs on top of read-only root filesystems and individual extra virtiofs shares, providing a writable upper layer with isolated directories per mount source.
 
-#### Scenario: Enable overlay on virtiofs
+#### Scenario: Enable overlay on root
 
 - **WHEN** the config specifies `root.overlay: true` with a read-only backend
 - **THEN** an overlayfs is mounted with the backend as lowerdir, a tmpfs upperdir, and workdir
 
+#### Scenario: Enable overlay on extra virtiofs share
+
+- **WHEN** an extra virtiofs mount has `with_overlay: true`
+- **THEN** an overlayfs is mounted with the virtiofs share as lowerdir and isolated upper/work directories under `/run/overlayfs/{tag}/`
+
 #### Scenario: Overlay directory structure
 
-- **WHEN** overlayfs is enabled
+- **WHEN** overlayfs is enabled on any mount
 - **THEN** upper and work directories are created under `/run/overlayfs/{source}/` where source is the mount identifier (tag for virtiofs/9p, sanitized device name for block)
 
 #### Scenario: Multiple overlay mounts
 
 - **WHEN** multiple mounts use overlay
 - **THEN** each mount has isolated upper/work directories under `/run/overlayfs/{source}/`
+
+### Requirement: Symlink creation
+
+The system SHALL create filesystem symlinks during the boot flow after switching root and before executing the boot script or handoff.
+
+#### Scenario: Create configured symlinks
+
+- **WHEN** the config specifies entries in `symlinks` with `source` and `target`
+- **THEN** each symlink is created in configuration order under the new root
+
+#### Scenario: Symlink parent directory creation
+
+- **WHEN** the parent directory of a symlink source does not exist
+- **THEN** the system creates all parent directories before creating the symlink
+
+#### Scenario: Symlink target does not exist
+
+- **WHEN** a symlink's target path does not exist
+- **THEN** the symlink is still created and a warning is logged
+
+#### Scenario: No symlinks configured
+
+- **WHEN** no symlinks are specified in the config
+- **THEN** symlink creation is skipped without error
+
+### Requirement: Boot script execution
+
+The system SHALL optionally execute a boot script after switching root and before handing off to the supervise orchestrator or spawning a shell.
+
+#### Scenario: Boot script executes successfully
+
+- **WHEN** the config specifies `boot_script.command` and the script exits with code 0
+- **THEN** the boot flow continues to supervise handoff or shell spawn
+
+#### Scenario: Boot script failure with warn policy
+
+- **WHEN** the boot script exits with non-zero and `boot_script.on_failure` is `warn` (default)
+- **THEN** a warning is logged and the boot flow continues
+
+#### Scenario: Boot script failure with abort policy
+
+- **WHEN** the boot script exits with non-zero and `boot_script.on_failure` is `abort`
+- **THEN** the boot flow aborts with an error
+
+#### Scenario: No boot script configured
+
+- **WHEN** no boot script is specified in the config
+- **THEN** the boot script stage is skipped
 
 ### Requirement: Switch root
 
@@ -139,11 +207,11 @@ The system SHALL handle fatal errors gracefully by logging to kmsg and optionall
 
 ### Requirement: Handoff to supervise
 
-The system SHALL call `supervise::execute()` with the embedded supervise configuration after successfully switching root.
+The system SHALL call `supervise::execute()` with the embedded supervise configuration after successfully switching root and completing all boot stages.
 
 #### Scenario: Supervise handoff
 
-- **WHEN** switch_root completes successfully
+- **WHEN** switch_root completes successfully and all boot stages (extra mounts, symlinks, boot script) complete
 - **THEN** `supervise::execute()` is called with the supervise config from the YAML file
 
 #### Scenario: Supervise config validation before handoff
