@@ -125,14 +125,33 @@ impl RootConfig {
 /// - `List`: Load specific modules by name from a directory
 /// - `Scan`: Auto-discover and load all `.ko`/`.ko.xz`/`.ko.gz` files from a
 ///   directory
+///
+/// # Dependency Ordering
+///
+/// The `names` list in [`ModulesConfig::List`] is assumed to be in correct
+/// dependency order — dependencies before dependents. This ordering is
+/// validated by the ocelot binary's config layer when a `modules.dep` file
+/// is provided. If no dependency file is configured, the user is responsible
+/// for specifying the correct order.
 #[derive(Clone, Debug)]
 pub enum ModulesConfig {
     /// Load specific modules by name.
     ///
     /// When `dir` is `None`, defaults to `/lib/modules`.
+    ///
+    /// # Ordering
+    /// Modules are loaded in the order specified in `names`. This list is
+    /// expected to be in correct dependency order (dependencies before
+    /// dependents), as validated by the ocelot config layer when a
+    /// `modules.dep` file is provided.
     List { dir: Option<String>, names: Vec<String> },
     /// Scan directory for all `.ko`/`.ko.xz`/`.ko.gz` files and load each.
-    Scan { dir: String },
+    ///
+    /// # Ordering
+    /// Modules are loaded in the order specified in `names` (populated by
+    /// the ocelot config layer via dependency resolution from a
+    /// `modules.dep` file).
+    Scan { dir: String, names: Option<Vec<String>> },
 }
 
 impl Default for ModulesConfig {

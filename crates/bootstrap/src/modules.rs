@@ -23,8 +23,23 @@ pub fn load_modules(config: &ModulesConfig) {
                 }
             }
         }
-        ModulesConfig::Scan { dir } => {
-            scan_and_load_modules(dir);
+        ModulesConfig::Scan { dir, names } => {
+            if let Some(filtered_names) = names {
+                let dir = dir.as_str();
+                for name in filtered_names {
+                    let path = format!("{dir}/{name}");
+                    tracing::info!("Loading kernel module: {name}");
+
+                    match load_module_from_path(&path) {
+                        Ok(()) => tracing::info!("Successfully loaded module: {name}"),
+                        Err(source) => {
+                            tracing::warn!("Failed to load module {name}, error: {source}");
+                        }
+                    }
+                }
+            } else {
+                scan_and_load_modules(dir);
+            }
         }
     }
 }
@@ -110,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_scan_mode_empty_dir() {
-        let config = ModulesConfig::Scan { dir: "/nonexistent/modules".to_string() };
+        let config = ModulesConfig::Scan { dir: "/nonexistent/modules".to_string(), names: None };
         load_modules(&config);
     }
 }
