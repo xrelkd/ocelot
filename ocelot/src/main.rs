@@ -1,12 +1,6 @@
 mod cli;
 mod config;
 mod error;
-mod shadow {
-    use shadow_rs::shadow;
-    shadow!(build);
-
-    pub use self::build::*;
-}
 
 use std::path::Path;
 

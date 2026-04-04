@@ -32,7 +32,6 @@ nix           = { workspace = true }
 petgraph      = { workspace = true }
 procfs        = { workspace = true }
 resolve-path  = { workspace = true }
-shadow-rs     = { workspace = true }
 snafu         = { workspace = true }
 
 ocelot-bootstrap = { workspace = true }
@@ -40,9 +39,6 @@ ocelot-entry     = { workspace = true }
 ocelot-idle      = { workspace = true }
 ocelot-zombie    = { workspace = true }
 ocelot-supervise = { workspace = true }
-
-[build-dependencies]
-shadow-rs = { workspace = true }
 
 [lints]
 workspace = true

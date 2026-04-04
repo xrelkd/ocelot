@@ -7,14 +7,13 @@ use std::{io::Write, path::PathBuf, time::Duration};
 use clap::{CommandFactory, Parser, Subcommand};
 use snafu::ResultExt;
 
-use crate::{error, error::Error, shadow};
+use crate::{error, error::Error};
 
 #[derive(Parser)]
 #[command(
     name = "ocelot",
     author,
     version,
-    long_version = shadow::CLAP_LONG_VERSION,
     about,
     long_about = None
 )]
