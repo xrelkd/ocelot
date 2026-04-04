@@ -15,7 +15,10 @@ keywords.workspace     = true
 [dependencies]
 tracing = { workspace = true }
 
-nix   = { workspace = true, features = ["kmod"] }
+flate2  = { workspace = true }
+lzma-rs = { workspace = true }
+
+nix   = { workspace = true }
 snafu = { workspace = true }
 
 ocelot-entry     = { workspace = true }

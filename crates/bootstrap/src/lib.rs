@@ -9,6 +9,8 @@ mod switch_root;
 mod symlinks;
 mod virtiofs;
 
+use std::path::PathBuf;
+
 use nix::unistd;
 use snafu::ResultExt;
 
@@ -91,8 +93,9 @@ pub fn execute_supervise(
 
     if let Some(dir) = &config.working_directory {
         tracing::info!("Changing working directory to: {dir}");
-        std::env::set_current_dir(dir)
-            .with_context(|_| error::FailedToChangeWorkingDirectorySnafu { path: dir.clone() })?;
+        std::env::set_current_dir(dir).with_context(|_| {
+            error::FailedToChangeWorkingDirectorySnafu { path: PathBuf::from(dir) }
+        })?;
     }
 
     tracing::info!("Switching root and handing off to supervise");
@@ -172,8 +175,9 @@ pub fn execute_shell(config: &Config, shell_config: &ShellConfig) -> Result<(), 
 
     if let Some(dir) = &config.working_directory {
         tracing::info!("Changing working directory to: {dir}");
-        std::env::set_current_dir(dir)
-            .with_context(|_| error::FailedToChangeWorkingDirectorySnafu { path: dir.clone() })?;
+        std::env::set_current_dir(dir).with_context(|_| {
+            error::FailedToChangeWorkingDirectorySnafu { path: PathBuf::from(dir) }
+        })?;
     }
 
     tracing::info!("Switching root and spawning shell: {}", shell_config.program);
