@@ -156,13 +156,23 @@
               inherit name version ocelot;
             };
             check-format = pkgs.callPackage ./devshell/format.nix { };
-            deb-x86_64 = pkgs.callPackage ./devshell/package-deb.nix {
+            deb-x86_64 = pkgs.callPackage ./devshell/package-nfpm.nix {
               inherit name version;
               ocelot-static = if isCrossFromAarch64 then static-x86_64 else ocelot-static;
+              packager = "deb";
+              arch = "amd64";
             };
-            rpm-x86_64 = pkgs.callPackage ./devshell/package-rpm.nix {
+            rpm-x86_64 = pkgs.callPackage ./devshell/package-nfpm.nix {
               inherit name version;
               ocelot-static = if isCrossFromAarch64 then static-x86_64 else ocelot-static;
+              packager = "rpm";
+              arch = "x86_64";
+            };
+            apk-x86_64 = pkgs.callPackage ./devshell/package-nfpm.nix {
+              inherit name version;
+              ocelot-static = if isCrossFromAarch64 then static-x86_64 else ocelot-static;
+              packager = "apk";
+              arch = "x86_64";
             };
             tarball-x86_64 = pkgs.callPackage ./devshell/package-tarball.nix {
               inherit name version;
@@ -186,14 +196,22 @@
                 }
               else
                 ocelot-static;
-            deb-aarch64 = pkgs.callPackage ./devshell/package-deb.nix {
+            deb-aarch64 = pkgs.callPackage ./devshell/package-nfpm.nix {
               inherit name version;
               ocelot-static = static-aarch64;
+              packager = "deb";
               arch = "arm64";
             };
-            rpm-aarch64 = pkgs.callPackage ./devshell/package-rpm.nix {
+            rpm-aarch64 = pkgs.callPackage ./devshell/package-nfpm.nix {
               inherit name version;
               ocelot-static = static-aarch64;
+              packager = "rpm";
+              arch = "aarch64";
+            };
+            apk-aarch64 = pkgs.callPackage ./devshell/package-nfpm.nix {
+              inherit name version;
+              ocelot-static = static-aarch64;
+              packager = "apk";
               arch = "aarch64";
             };
             tarball-aarch64 = pkgs.callPackage ./devshell/package-tarball.nix {
