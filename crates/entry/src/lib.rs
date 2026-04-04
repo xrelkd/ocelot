@@ -233,25 +233,65 @@ where
 ///
 /// The child process may panic if dup2 or execv fails.
 pub fn execute_interactive(
-    console: &str,
     program: &str,
     args: &[&str],
+    console: &str,
+    timeout: Option<Duration>,
+) -> Result<i32, Error> {
+    execute_interactive_with_session(program, args, console, true, timeout)
+}
+
+/// Spawns an interactive shell with terminal setup and optional session
+/// creation, waits for it to exit.
+///
+/// This function sets up the console as controlling terminal, forks and execs
+/// the shell, then waits for it to exit with proper signal handling and zombie
+/// reaping.
+///
+/// # Arguments
+///
+/// * `console` - Console device path (e.g., "tty1" or "/dev/tty1")
+/// * `program` - Shell program to execute
+/// * `args` - Arguments for the shell
+/// * `timeout` - Optional duration to wait after signal before force-killing
+/// * `create_session` - If true, creates a new session for the shell child. Set
+///   to false when the shell should inherit the parent's session (e.g., init
+///   shell mode after `switch_root`).
+///
+/// # Returns
+///
+/// Returns the exit code of the shell process.
+///
+/// # Errors
+///
+/// Returns [`Error::CreatePipe`] if opening console device fails.
+/// Returns [`Error::SpawnChild`] if forking fails.
+///
+/// # Panics
+///
+/// The child process may panic if dup2 or execv fails.
+pub fn execute_interactive_with_session(
+    program: &str,
+    args: &[&str],
+    console: &str,
+    create_session: bool,
     timeout: Option<Duration>,
 ) -> Result<i32, Error> {
     let console_path =
         if console.starts_with('/') { console.to_string() } else { format!("/dev/{console}") };
 
-    let console_file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(&console_path)
-        .with_context(|_| error::OpenConsoleSnafu { path: console_path.clone() })?;
-
     let mut state = {
-        let pid = Process::spawn_with_console(
+        let console_file =
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&console_path)
+                .with_context(|_| error::OpenConsoleSnafu { path: console_path.clone() })?;
+        let pid = Process::spawn_with_console_and_session(
             &console_file,
             program,
             args.iter().map(|&s| s.to_string()),
+            create_session,
         )?;
         State::new(pid, timeout.unwrap_or(DEFAULT_WAIT_TIMEOUT))
     };
@@ -290,7 +330,11 @@ pub fn execute_interactive(
         }
 
         // Handle signals in a loop, especially SIGCHLD to reap child processes
-        while handle_signal(&signal_fd, &mut state).is_ok() {}
+        while handle_signal(&signal_fd, &mut state).is_ok() {
+            if state.is_exited() {
+                break;
+            }
+        }
     }
 
     let (pid, status_code) = state.exited();

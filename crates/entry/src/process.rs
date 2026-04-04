@@ -1,6 +1,6 @@
 use std::{
     ffi::CString,
-    os::fd::{AsFd, OwnedFd},
+    os::fd::{AsFd, AsRawFd, OwnedFd},
 };
 
 use nix::{
@@ -189,9 +189,44 @@ impl Process {
     ///
     /// Returns [`Error::SpawnChild`] if forking fails.
     pub fn spawn_with_console<Args>(
-        console_fd: impl AsFd,
+        console_fd: &impl AsRawFd,
         command: &str,
         args: Args,
+    ) -> Result<Pid, Error>
+    where
+        Args: IntoIterator<Item = String>,
+    {
+        Self::spawn_with_console_and_session(console_fd, command, args, true)
+    }
+
+    /// Spawns a child process with console/terminal setup and optional session
+    /// creation.
+    ///
+    /// This function forks a child process and sets up the console device
+    /// as the controlling terminal. The child will have its stdin, stdout,
+    /// and stderr redirected to the console device.
+    ///
+    /// # Arguments
+    ///
+    /// * `console_fd` - File descriptor for the console device
+    /// * `command` - The executable to run
+    /// * `args` - Iterator of arguments
+    /// * `create_session` - If true, calls `setsid()` in the child to create a
+    ///   new session before setting the controlling terminal. Set to false when
+    ///   the child should inherit the parent's session (e.g., init shell mode).
+    ///
+    /// # Returns
+    ///
+    /// Returns the child's process ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::SpawnChild`] if forking fails.
+    pub fn spawn_with_console_and_session<Args>(
+        console_file: &impl AsRawFd,
+        command: &str,
+        args: Args,
+        create_session: bool,
     ) -> Result<Pid, Error>
     where
         Args: IntoIterator<Item = String>,
@@ -229,23 +264,19 @@ impl Process {
             ForkResult::Child => {
                 reset_signal_handling()?;
 
-                let _ = unistd::setsid();
-
-                #[expect(unsafe_code, reason = "dup2_raw is safe with valid file descriptor")]
-                unsafe {
-                    let _unused = unistd::dup2_raw(&console_fd, libc::STDIN_FILENO)
-                        .map_err(|err| send_errno_and_exit(&err_writer, err));
-
-                    let _unused = unistd::dup2_raw(&console_fd, libc::STDOUT_FILENO)
-                        .map_err(|err| send_errno_and_exit(&err_writer, err));
-
-                    let _unused = unistd::dup2_raw(&console_fd, libc::STDERR_FILENO)
-                        .map_err(|err| send_errno_and_exit(&err_writer, err));
+                if create_session {
+                    let _ = unistd::setsid();
                 }
 
-                #[expect(unsafe_code, reason = "ioctl TIOCSCTTY is safe after setsid")]
+                #[expect(unsafe_code, reason = "dup2_raw, and ioctl are safe with valid arguments")]
                 unsafe {
-                    let _ = libc::ioctl(libc::STDIN_FILENO, libc::TIOCSCTTY, 0);
+                    // Set controlling terminal via TIOCSCTTY
+                    let _ = libc::ioctl(console_file.as_raw_fd(), libc::TIOCSCTTY, 0);
+
+                    // Redirect stdin/stdout/stderr
+                    let _ = libc::dup2(console_file.as_raw_fd(), libc::STDIN_FILENO);
+                    let _ = libc::dup2(console_file.as_raw_fd(), libc::STDOUT_FILENO);
+                    let _ = libc::dup2(console_file.as_raw_fd(), libc::STDERR_FILENO);
                 }
 
                 match unistd::execvp(&c_cmd, &c_args) {
