@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.4.2"
+version = "0.4.3"
 authors = ["xrelkd <46590321+xrelkd@users.noreply.github.com>"]
 homepage = "https://github.com/xrelkd/ocelot"
 repository = "https://github.com/xrelkd/ocelot"
@@ -27,6 +27,7 @@ members = [
   "crates/bootstrap",
   "crates/entry",
   "crates/idle",
+  "crates/rotating-file",
   "crates/supervise",
   "crates/test-utils",
   "crates/zombie",
@@ -79,18 +80,19 @@ petgraph = "0.8"
 procfs = "0.18"
 resolve-path = "0.1"
 shadow-rs = { version = "1", default-features = false, features = [
-  "tzdb",
   "build",
+  "tzdb",
 ] }
 snafu = "0.9"
 tempfile = "3"
 
-ocelot-bootstrap  = { path = "./crates/bootstrap" }
-ocelot-entry      = { path = "./crates/entry" }
-ocelot-idle       = { path = "./crates/idle" }
-ocelot-supervise  = { path = "./crates/supervise" }
-ocelot-test-utils = { path = "./crates/test-utils" }
-ocelot-zombie     = { path = "./crates/zombie" }
+ocelot-bootstrap     = { path = "./crates/bootstrap" }
+ocelot-entry         = { path = "./crates/entry" }
+ocelot-idle          = { path = "./crates/idle" }
+ocelot-rotating-file = { path = "./crates/rotating-file" }
+ocelot-supervise     = { path = "./crates/supervise" }
+ocelot-test-utils    = { path = "./crates/test-utils" }
+ocelot-zombie        = { path = "./crates/zombie" }
 
 [workspace.lints.rust]
 async_fn_in_trait = "allow"

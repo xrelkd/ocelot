@@ -1,3 +1,30 @@
+//! Async log file rotation with size/time triggers and compression support.
+//!
+//! This crate provides [`RotatingFile`], an async writer that automatically
+//! rotates log files based on configurable size or time thresholds. Rotated
+//! files can be compressed using gzip or lz4.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use ocelot_rotating_file::{RotatingFile, LogRotationConfig, LogCompression};
+//! use tokio::io::AsyncWriteExt;
+//!
+//! # async fn example() -> std::io::Result<()> {
+//! let rotation = LogRotationConfig {
+//!     max_size_bytes: Some(10 * 1024 * 1024), // 10MB
+//!     rotation_interval_secs: Some(86400),    // 24h
+//!     max_files: Some(7),
+//!     max_age_days: Some(30),
+//!     mode: Some(0o644),
+//!     compression: LogCompression::Gzip,
+//! };
+//! let mut file = RotatingFile::new("app.log".into(), rotation).await?;
+//! file.write_all(b"Hello, world!\n").await?;
+//! # Ok(())
+//! # }
+//! ```
+
 mod compress;
 
 #[cfg(test)]
@@ -14,7 +41,25 @@ use std::{
 use nix::unistd::fsync;
 use tokio::{fs::File, io, io::AsyncWrite};
 
-use crate::supervisor::{LogCompression, LogRotationConfig};
+/// Compression algorithm for rotated log files.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum LogCompression {
+    #[default]
+    None,
+    Gzip,
+    Lz4,
+}
+
+/// Rotation configuration for log files.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LogRotationConfig {
+    pub max_size_bytes: Option<u64>,
+    pub rotation_interval_secs: Option<u64>,
+    pub max_files: Option<u32>,
+    pub max_age_days: Option<u32>,
+    pub mode: Option<u32>,
+    pub compression: LogCompression,
+}
 
 /// A file writer that automatically rotates log files based on size and/or time
 /// constraints.
@@ -22,20 +67,6 @@ use crate::supervisor::{LogCompression, LogRotationConfig};
 /// Rotation occurs before writing data that would exceed configured limits.
 /// Rotated files are renamed with a timestamp suffix and old files are deleted
 /// to maintain the maximum file count.
-///
-/// # Examples
-///
-/// ```
-/// use ocelot_supervise::rotating_file::RotatingFile;
-/// use std::path::PathBuf;
-///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let rotation_config = /* config from LogRotationConfig */;
-/// let mut rotating_file = RotatingFile::new(PathBuf::from("app.log"), rotation_config).await?;
-/// rotating_file.write_all(b"Hello world!").await?;
-/// # Ok(())
-/// # }
-/// ```
 pub struct RotatingFile {
     base_path: PathBuf,
     current_file: Option<File>,
@@ -131,7 +162,6 @@ impl RotatingFile {
                 .current_file
                 .take()
                 .ok_or_else(|| io::Error::other("RotatingFile: no current file to rotate"))?;
-            // Ensure all buffered data is flushed to disk before reading for compression
             fsync(&old_tokio_file)?;
             drop(old_tokio_file);
         }
