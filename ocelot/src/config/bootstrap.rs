@@ -75,15 +75,16 @@ impl BootstrapConfig {
         let path = path.as_ref();
         let data = std::fs::read(path)
             .with_context(|_| error::OpenConfigSnafu { filename: path.to_path_buf() })?;
-        let config: Self = serde_yaml::from_slice(&data)
+        let mut config: Self = serde_yaml::from_slice(&data)
             .with_context(|_| error::ParseConfigSnafu { filename: path.to_path_buf() })?;
         config.validate()?;
         Ok(config)
     }
 
-    pub(crate) fn validate(&self) -> Result<(), Error> {
+    pub(crate) fn validate(&mut self) -> Result<(), Error> {
         self.validate_environment_variables()?;
         self.validate_mode_exclusivity()?;
+        self.validate_module_dependencies()?;
         Ok(())
     }
 
@@ -121,6 +122,46 @@ impl BootstrapConfig {
             return Err(Error::InvalidConfig {
                 message: "Must specify either 'shell' or 'supervise' mode.".to_string(),
             });
+        }
+
+        Ok(())
+    }
+
+    fn validate_module_dependencies(&mut self) -> Result<(), Error> {
+        let Some(modules) = &mut self.modules else {
+            return Ok(());
+        };
+
+        match modules {
+            ModulesConfig::List { dir: _, names, dep_file_path } => {
+                let Some(dep_path) = dep_file_path else {
+                    return Ok(());
+                };
+
+                let dep_path_clone = dep_path.clone();
+                let data = std::fs::read(dep_path).map_err(|source| {
+                    Error::ParseModuleDependencyFile { path: dep_path_clone, source }
+                })?;
+
+                let dep_map = self::modules_dep::parse_dep_file(&data);
+                let sorted = self::modules_dep::resolve_module_order(&dep_map, names)
+                    .map_err(|e| Error::Validate { source: e })?;
+
+                *names = sorted;
+            }
+            ModulesConfig::Scan { dir: _, dep_file_path, names } => {
+                let dep_path_clone = dep_file_path.clone();
+                let data = std::fs::read(dep_file_path).map_err(|source| {
+                    Error::ParseModuleDependencyFile { path: dep_path_clone, source }
+                })?;
+
+                let dep_map = self::modules_dep::parse_dep_file(&data);
+                let targets = names.clone().unwrap_or_default();
+                let sorted = self::modules_dep::resolve_module_order(&dep_map, &targets)
+                    .map_err(|e| Error::Validate { source: e })?;
+
+                *names = Some(sorted);
+            }
         }
 
         Ok(())
@@ -208,8 +249,11 @@ impl From<RootConfig> for ocelot_bootstrap::RootConfig {
 impl From<ModulesConfig> for ocelot_bootstrap::ModulesConfig {
     fn from(config: ModulesConfig) -> Self {
         match config {
-            ModulesConfig::List { dir, names } => Self::List { dir, names },
-            ModulesConfig::Scan { dir } => Self::Scan { dir },
+            ModulesConfig::List { dir, names, .. } => Self::List { dir, names },
+            ModulesConfig::Scan { dir: _, names, .. } => {
+                let resolved_names = names.unwrap_or_default();
+                Self::List { dir: None, names: resolved_names }
+            }
         }
     }
 }
@@ -309,11 +353,19 @@ pub enum ModulesConfig {
         dir: Option<String>,
         /// List of module names to load.
         names: Vec<String>,
+        /// Optional path to a modules.dep file for dependency resolution.
+        #[serde(default)]
+        dep_file_path: Option<String>,
     },
     /// Scan directory for all .ko/.ko.xz/.ko.gz files and load each.
     Scan {
         /// Directory to scan for kernel modules.
         dir: String,
+        /// Path to a modules.dep file for dependency resolution.
+        dep_file_path: String,
+        /// Optional list of module names to filter which modules to load.
+        #[serde(default)]
+        names: Option<Vec<String>>,
     },
 }
 

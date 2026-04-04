@@ -19,6 +19,9 @@ pub enum Error {
 
     #[snafu(display("Invalid configuration: {message}"))]
     InvalidConfig { message: String },
+
+    #[snafu(display("Failed to parse module dependency file '{path}': {source}"))]
+    ParseModuleDependencyFile { path: String, source: std::io::Error },
 }
 
 impl From<ValidationError> for Error {
@@ -34,6 +37,9 @@ pub enum ValidationError {
 
     #[snafu(display("Process '{process}' depends on non-existent process '{depends_on}'"))]
     MissingDependency { process: String, depends_on: String },
+
+    #[snafu(display("Module '{name}' not found in dependency file"))]
+    ModuleNotFound { name: String },
 
     #[snafu(display("Unsupported config version '{version}'"))]
     InvalidVersion { version: String },

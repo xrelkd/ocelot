@@ -719,7 +719,7 @@ environmentVariables:
   - [PATH, /usr/bin]
   - [PATH, /bin]
 ";
-    let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
+    let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -763,7 +763,7 @@ supervise:
     init:
       program: /sbin/init
 ";
-    let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
+    let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -777,7 +777,7 @@ root:
   type: virtiofs
   tag: myfs
 ";
-    let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
+    let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
     assert!(result.is_err());
     let err = result.unwrap_err();

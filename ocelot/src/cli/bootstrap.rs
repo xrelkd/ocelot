@@ -94,7 +94,7 @@ fn run_bootstrap(path: impl AsRef<Path>) -> Result<i32, Error> {
 }
 
 fn validate_config(file: &PathBuf, output: OutputFormat) -> i32 {
-    let cfg = match BootstrapConfig::load(file) {
+    let mut cfg = match BootstrapConfig::load(file) {
         Ok(cfg) => cfg,
         Err(e) => {
             print_error(&e, output);

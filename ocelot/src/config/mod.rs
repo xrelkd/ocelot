@@ -1,6 +1,7 @@
 mod bootstrap;
 mod dependency;
 mod error;
+mod modules_dep;
 mod probe;
 mod process;
 mod restart;
