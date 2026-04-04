@@ -24,6 +24,7 @@ fn main() {
     let cli = match bin_name {
         "pause" => Cli::parse_from([String::new(), "idle".to_string()].into_iter().chain(args)),
         "tini" => Cli::parse_from([String::new(), "entry".to_string()].into_iter().chain(args)),
+        "init" => Cli::parse_from([String::new(), "bootstrap".to_string()].into_iter().chain(args)),
         _ => Cli::default(),
     };
 
