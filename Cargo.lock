@@ -787,13 +787,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "ocelot-supervise"
+name = "ocelot-rotating-file"
 version = "0.4.3"
 dependencies = [
  "flate2",
- "futures",
  "lz4_flex",
  "nix",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "ocelot-supervise"
+version = "0.4.3"
+dependencies = [
+ "futures",
+ "nix",
+ "ocelot-rotating-file",
  "ocelot-test-utils",
  "snafu",
  "tempfile",

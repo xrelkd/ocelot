@@ -1,0 +1,27 @@
+[package]
+name                   = "ocelot-rotating-file"
+version.workspace      = true
+authors.workspace      = true
+homepage.workspace     = true
+readme.workspace       = true
+repository.workspace   = true
+license.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+categories.workspace   = true
+keywords.workspace     = true
+description            = "Async log file rotation with size/time triggers and compression support"
+
+[dependencies]
+tokio = { workspace = true }
+
+nix = { workspace = true }
+
+flate2   = { workspace = true }
+lz4_flex = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
