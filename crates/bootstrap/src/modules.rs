@@ -1,8 +1,8 @@
 use std::{
     ffi::CString,
     fs::File,
-    io::{BufReader, Read, Seek, SeekFrom, Write},
-    os::fd::{AsRawFd, FromRawFd, OwnedFd},
+    io::{BufReader, Seek, SeekFrom, Write},
+    os::fd::{AsRawFd, FromRawFd},
     path::Path,
 };
 
@@ -121,55 +121,58 @@ enum DecompressFormat {
     Gz,
 }
 
-fn decompress_module(data: &[u8], format: DecompressFormat) -> Result<Vec<u8>, std::io::Error> {
+fn decompress_module<W: Write>(
+    data: &[u8],
+    format: DecompressFormat,
+    writer: &mut W,
+) -> Result<(), std::io::Error> {
     match format {
         DecompressFormat::Xz => {
-            let mut decoded = Vec::new();
             let mut reader = BufReader::new(data);
-            lzma_rs::xz_decompress(&mut reader, &mut decoded).map_err(|e| match e {
+            lzma_rs::xz_decompress(&mut reader, writer).map_err(|e| match e {
                 lzma_rs::error::Error::IoError(e) => e,
                 e => std::io::Error::other(e),
             })?;
-            Ok(decoded)
+            Ok(())
         }
         DecompressFormat::Gz => {
             let mut gz_decoder = flate2::read::GzDecoder::new(data);
-            let mut decoded = Vec::new();
-            let _ = gz_decoder.read_to_end(&mut decoded)?;
-            Ok(decoded)
+            let _ = std::io::copy(&mut gz_decoder, writer)?;
+            Ok(())
         }
     }
-}
-
-fn write_module_to_memfd(data: &[u8], name: &str) -> Result<OwnedFd, std::io::Error> {
-    let fd = memfd_create(name, nix::sys::memfd::MFdFlags::empty())?;
-
-    // SAFETY: memfd_create returns a valid owned file descriptor. We create a
-    // File from the raw fd to write data, then forget it so the OwnedFd retains
-    // ownership and closes the fd when dropped.
-    #[expect(unsafe_code, reason = "memfd_create returns a valid owned fd")]
-    let mut file = unsafe { File::from_raw_fd(fd.as_raw_fd()) };
-    file.write_all(data)?;
-    file.seek(SeekFrom::Start(0)).map(|_| ())?;
-    std::mem::forget(file);
-    Ok(fd)
 }
 
 #[inline]
 fn load_compressed_module(path: impl AsRef<Path>, format: DecompressFormat) -> Result<(), Error> {
     let path = path.as_ref();
-    let decompressed = {
-        let compressed = std::fs::read(path)
-            .with_context(|_| error::OpenModuleSnafu { path: path.to_path_buf() })?;
-        decompress_module(&compressed, format)
-            .with_context(|_| error::DecompressModuleSnafu { path: path.to_path_buf() })?
-    };
+    let compressed = std::fs::read(path)
+        .with_context(|_| error::OpenModuleSnafu { path: path.to_path_buf() })?;
 
     let fd = {
-        let file_name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
-        let memfd_name = format!("kmod-{file_name}");
-        write_module_to_memfd(&decompressed, &memfd_name)
-            .with_context(|_| error::CreateMemfdSnafu { path: path.to_path_buf() })?
+        let fd = {
+            let memfd_name = {
+                let file_name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+                format!("kmod-{file_name}")
+            };
+            memfd_create(memfd_name.as_str(), nix::sys::memfd::MFdFlags::empty())
+                .map_err(std::io::Error::from)
+                .with_context(|_| error::CreateMemfdSnafu { path: path.to_path_buf() })?
+        };
+
+        // SAFETY: memfd_create returns a valid owned file descriptor. We create a
+        // File from the raw fd to write data, then forget it so the OwnedFd retains
+        // ownership and closes the fd when dropped.
+        #[expect(unsafe_code, reason = "memfd_create returns a valid owned fd")]
+        let mut file = unsafe { File::from_raw_fd(fd.as_raw_fd()) };
+        decompress_module(&compressed, format, &mut file)
+            .with_context(|_| error::DecompressModuleSnafu { path: path.to_path_buf() })?;
+        let _ = file
+            .seek(SeekFrom::Start(0))
+            .with_context(|_| error::CreateMemfdSnafu { path: path.to_path_buf() })?;
+        std::mem::forget(file);
+
+        fd
     };
 
     let params = CString::new("").expect("empty string is valid CStr");
