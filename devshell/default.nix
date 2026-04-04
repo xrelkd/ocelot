@@ -33,6 +33,7 @@ pkgs.mkShell {
     treefmt
 
     shellcheck
+    typos
 
     pkg-config
   ];
