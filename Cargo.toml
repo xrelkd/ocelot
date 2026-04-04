@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.4.2"
+version = "0.4.3"
 authors = ["xrelkd <46590321+xrelkd@users.noreply.github.com>"]
 homepage = "https://github.com/xrelkd/ocelot"
 repository = "https://github.com/xrelkd/ocelot"
@@ -76,7 +76,10 @@ nix = { version = "0.31", features = [
 petgraph = "0.8"
 procfs = "0.18"
 resolve-path = "0.1"
-shadow-rs = "1"
+shadow-rs = { version = "1", default-features = false, features = [
+  "tzdb",
+  "build",
+] }
 snafu = "0.9"
 tempfile = "3"
 

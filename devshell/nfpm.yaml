@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://nfpm.goreleaser.com/schema.json
+
+name: "@NAME@"
+arch: "@ARCH@"
+platform: "linux"
+version: "@VERSION@"
+section: "admin"
+priority: "optional"
+maintainer: "xrelkd"
+description: |
+  Ocelot - Process supervisor and init system written in Rust.
+  Statically linked binary suitable for use as PID 1.
+vendor: "Ocelot"
+homepage: "https://github.com/xrelkd/ocelot"
+license: "GPL-3.0"
+
+contents:
+  - src: ./usr/bin/ocelot
+    dst: /usr/bin/ocelot
+  - src: ./usr/share/bash-completion/completions/ocelot.bash
+    dst: /usr/share/bash-completion/completions/ocelot.bash
+  - src: ./usr/share/fish/vendor_completions.d/ocelot.fish
+    dst: /usr/share/fish/vendor_completions.d/ocelot.fish
+  - src: ./usr/share/zsh/site-functions/_ocelot
+    dst: /usr/share/zsh/site-functions/_ocelot
+
+overrides:
+  deb:
+    depends:
+      - bash-completion
+  rpm:
+    depends:
+      - bash-completion
+  apk:
+    depends:
+      - bash-completion
