@@ -1,6 +1,7 @@
 use std::{os::fd::OwnedFd, path::Path, time::Duration};
 
 use nix::{sys::signal::Signal, unistd::Pid};
+use ocelot_rotating_file::RotatingFile;
 use tokio::{
     io::{self, AsyncWriteExt, unix::AsyncFd},
     sync::mpsc,
@@ -9,11 +10,10 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Reaper,
+    LogRotationConfig, Reaper,
     reaper::ReapedProcess,
-    rotating_file::RotatingFile,
     splice_relay::{Destination, RelayRegistration, SpliceRelay},
-    supervisor::{LogRotationConfig, event::Event, probe::Probe},
+    supervisor::{event::Event, probe::Probe},
 };
 
 pub trait TaskRunner {

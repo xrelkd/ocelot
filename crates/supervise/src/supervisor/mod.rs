@@ -11,10 +11,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use self::event::Event;
 pub use self::{
-    config::{
-        Config as SupervisorConfig, LogCompression, LogDestination, LogRotationConfig,
-        LogStreamConfig, RestartPolicy,
-    },
+    config::{Config as SupervisorConfig, LogDestination, LogStreamConfig, RestartPolicy},
     dependency_registry::DependencyRegistry,
     executor::Executor as SupervisorExecutor,
 };

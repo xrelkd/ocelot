@@ -169,16 +169,12 @@ async fn test_gzip_compression() -> std::io::Result<()> {
     };
     let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
 
-    // First write: 5 bytes (under threshold)
     rf.write_all(&b"A".repeat(5)).await?;
     assert_eq!(rf.current_size, 5);
 
-    // Second write: 10 bytes, triggers rotation before write because 5+10 > 10
     rf.write_all(&b"B".repeat(10)).await?;
-    // After rotation and write, current_size should be 10 (the second write)
     assert_eq!(rf.current_size, 10);
 
-    // Find the compressed rotated file (should contain the first 5 'A's)
     let mut entries = fs::read_dir(dir.path()).await?;
     let mut compressed_path = None;
     while let Some(entry) = entries.next_entry().await? {
@@ -216,16 +212,12 @@ async fn test_lz4_compression() -> std::io::Result<()> {
     };
     let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
 
-    // First write: 5 bytes (under threshold)
     rf.write_all(&b"A".repeat(5)).await?;
     assert_eq!(rf.current_size, 5);
 
-    // Second write: 10 bytes, triggers rotation before write because 5+10 > 10
     rf.write_all(&b"B".repeat(10)).await?;
-    // After rotation and write, current_size should be 10 (the second write)
     assert_eq!(rf.current_size, 10);
 
-    // Find the compressed rotated file (should contain the first 5 'A's)
     let mut entries = fs::read_dir(dir.path()).await?;
     let mut compressed_path = None;
     while let Some(entry) = entries.next_entry().await? {

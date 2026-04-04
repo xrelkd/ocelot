@@ -1,6 +1,5 @@
 [package]
-name                   = "ocelot-supervise"
-description            = "Process supervisor library for ocelot"
+name                   = "ocelot-rotating-file"
 version.workspace      = true
 authors.workspace      = true
 homepage.workspace     = true
@@ -11,23 +10,18 @@ edition.workspace      = true
 rust-version.workspace = true
 categories.workspace   = true
 keywords.workspace     = true
+description            = "Async log file rotation with size/time triggers and compression support"
 
 [dependencies]
-tracing = { workspace = true }
+tokio = { workspace = true }
 
-futures    = { workspace = true }
-tokio      = { workspace = true }
-tokio-util = { workspace = true }
+nix = { workspace = true }
 
-nix   = { workspace = true }
-snafu = { workspace = true }
-
-ocelot-rotating-file = { workspace = true }
+flate2   = { workspace = true }
+lz4_flex = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-
-ocelot-test-utils = { workspace = true }
 
 [lints]
 workspace = true
