@@ -19,11 +19,10 @@ futures    = { workspace = true }
 tokio      = { workspace = true }
 tokio-util = { workspace = true }
 
-flate2   = { workspace = true }
-lz4_flex = { workspace = true }
-
 nix   = { workspace = true }
 snafu = { workspace = true }
+
+ocelot-rotating-file = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

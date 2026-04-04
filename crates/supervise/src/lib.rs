@@ -2,11 +2,11 @@ mod command;
 mod error;
 mod orchestrator;
 mod reaper;
-mod rotating_file;
 mod splice_relay;
 mod supervisor;
 
 use nix::unistd;
+pub use ocelot_rotating_file::{LogCompression, LogRotationConfig, RotatingFile};
 use snafu::ResultExt;
 
 pub use self::{
@@ -19,9 +19,8 @@ pub use self::{
         Status as RelayStatus,
     },
     supervisor::{
-        DependencyRegistry, LogCompression, LogDestination, LogRotationConfig, LogStreamConfig,
-        Phase, ProcessStatus, RestartPolicy, Supervisor, SupervisorConfig, SupervisorExecutor,
-        config as supervisor_config,
+        DependencyRegistry, LogDestination, LogStreamConfig, Phase, ProcessStatus, RestartPolicy,
+        Supervisor, SupervisorConfig, SupervisorExecutor, config as supervisor_config,
         config::{DependencyCondition, ProcessDependency},
         probe as supervisor_probe,
         probe::{Probe, ProbeHandler},
