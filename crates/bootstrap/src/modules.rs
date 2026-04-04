@@ -158,15 +158,19 @@ fn write_module_to_memfd(data: &[u8], name: &str) -> Result<OwnedFd, std::io::Er
 #[inline]
 fn load_compressed_module(path: impl AsRef<Path>, format: DecompressFormat) -> Result<(), Error> {
     let path = path.as_ref();
-    let compressed = std::fs::read(path)
-        .with_context(|_| error::OpenModuleSnafu { path: path.to_path_buf() })?;
+    let decompressed = {
+        let compressed = std::fs::read(path)
+            .with_context(|_| error::OpenModuleSnafu { path: path.to_path_buf() })?;
+        decompress_module(&compressed, format)
+            .with_context(|_| error::DecompressModuleSnafu { path: path.to_path_buf() })?
+    };
 
-    let decompressed = decompress_module(&compressed, format)
-        .with_context(|_| error::DecompressModuleSnafu { path: path.to_path_buf() })?;
-
-    let memfd_name = format!("kmod-{}\0", path.display());
-    let fd = write_module_to_memfd(&decompressed, &memfd_name)
-        .with_context(|_| error::CreateMemfdSnafu { path: path.to_path_buf() })?;
+    let fd = {
+        let file_name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+        let memfd_name = format!("kmod-{file_name}");
+        write_module_to_memfd(&decompressed, &memfd_name)
+            .with_context(|_| error::CreateMemfdSnafu { path: path.to_path_buf() })?
+    };
 
     let params = CString::new("").expect("empty string is valid CStr");
     kmod::finit_module(&fd, &params, ModuleInitFlags::empty()).with_context(|_| error::MountSnafu {
