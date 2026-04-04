@@ -27,7 +27,7 @@ workingDirectory: null
 # Shell mode configuration (mutually exclusive with supervise)
 shell:
   program: /bin/sh
-  args: ["-l"]
+  arguments: ["-l"]
 # Kernel module loading (optional)
 # modules:
 #   mode: list

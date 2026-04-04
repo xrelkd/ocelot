@@ -143,8 +143,8 @@ impl BootstrapConfig {
                     Error::ParseModuleDependencyFile { path: dep_path_clone, source }
                 })?;
 
-                let dep_map = self::modules_dep::parse_dep_file(&data);
-                let sorted = self::modules_dep::resolve_module_order(&dep_map, names)
+                let dep_map = super::modules_dep::parse_dep_file(&data);
+                let sorted = super::modules_dep::resolve_module_order(&dep_map, names)
                     .map_err(|e| Error::Validate { source: e })?;
 
                 *names = sorted;
@@ -155,9 +155,9 @@ impl BootstrapConfig {
                     Error::ParseModuleDependencyFile { path: dep_path_clone, source }
                 })?;
 
-                let dep_map = self::modules_dep::parse_dep_file(&data);
+                let dep_map = super::modules_dep::parse_dep_file(&data);
                 let targets = names.clone().unwrap_or_default();
-                let sorted = self::modules_dep::resolve_module_order(&dep_map, &targets)
+                let sorted = super::modules_dep::resolve_module_order(&dep_map, &targets)
                     .map_err(|e| Error::Validate { source: e })?;
 
                 *names = Some(sorted);
@@ -281,7 +281,7 @@ impl From<BootScriptConfig> for ocelot_bootstrap::BootScriptConfig {
     fn from(config: BootScriptConfig) -> Self {
         Self {
             command: config.command,
-            args: config.args,
+            arguments: config.arguments,
             on_failure: config.on_failure.into(),
             working_directory: config.working_directory,
         }
@@ -411,7 +411,7 @@ pub struct BootScriptConfig {
     pub command: String,
     /// Arguments for the command.
     #[serde(default)]
-    pub args: Vec<String>,
+    pub arguments: Vec<String>,
     /// Policy for handling non-zero exit codes (default: warn).
     #[serde(default)]
     pub on_failure: OnFailurePolicy,

@@ -11,11 +11,11 @@ pub struct BootstrapShellConfig {
     pub program: String,
     /// Arguments to pass to the shell program.
     #[serde(default)]
-    pub args: Vec<String>,
+    pub arguments: Vec<String>,
 }
 
 impl From<BootstrapShellConfig> for ocelot_bootstrap::ShellConfig {
-    fn from(BootstrapShellConfig { program, args }: BootstrapShellConfig) -> Self {
-        Self { program, args }
+    fn from(BootstrapShellConfig { program, arguments: args }: BootstrapShellConfig) -> Self {
+        Self { program, arguments: args }
     }
 }

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use petgraph::{Graph, algo, graph::NodeIndex};
 
-use self::error::ValidationError;
+use crate::config::error::ValidationError;
 
 /// Parse a `modules.dep` text file and return a mapping of module basenames to
 /// their dependency basenames.
