@@ -14,7 +14,14 @@ pub fn load_modules(config: &ModulesConfig) {
         ModulesConfig::List { dir, names } => {
             let dir = dir.as_deref().unwrap_or("/lib/modules");
             for name in names {
-                let path = format!("{dir}/{name}.ko");
+                let path = if name.ends_with(".ko")
+                    || name.ends_with(".ko.xz")
+                    || name.ends_with(".ko.gz")
+                {
+                    format!("{dir}/{name}")
+                } else {
+                    format!("{dir}/{name}.ko")
+                };
                 tracing::info!("Loading kernel module: {name}");
 
                 match load_module_from_path(&path) {
