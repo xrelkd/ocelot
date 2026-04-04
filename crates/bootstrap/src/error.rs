@@ -44,4 +44,7 @@ pub enum Error {
 
     #[snafu(display("Failed to execute interactive shell: {source}"))]
     ExecuteShell { source: ocelot_entry::Error },
+
+    #[snafu(display("Failed to fork child process: {source}"))]
+    SpawnChild { source: nix::Error },
 }

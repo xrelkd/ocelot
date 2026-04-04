@@ -1,6 +1,5 @@
 mod cmdline;
 mod config;
-mod console;
 mod error;
 mod modules;
 mod mount;
@@ -26,16 +25,15 @@ pub use self::{
 /// Executes the bootstrap flow.
 ///
 /// Initializes the environment for a QEMU VM boot:
-/// 1. Sets up console
-/// 2. Mounts virtual filesystems
-/// 3. Loads kernel modules
-/// 4. Mounts root filesystem
-/// 5. Sets up overlay if configured
-/// 6. Mounts extra virtiofs shares
-/// 7. Creates symlinks
-/// 8. Sets environment variables and working directory
-/// 9. Switches root and executes boot script
-/// 10. Hands off to supervise
+/// 1. Mounts virtual filesystems
+/// 2. Loads kernel modules
+/// 3. Mounts root filesystem
+/// 4. Sets up overlay if configured
+/// 5. Mounts extra virtiofs shares
+/// 6. Creates symlinks
+/// 7. Sets environment variables and working directory
+/// 8. Switches root and executes boot script
+/// 9. Hands off to supervise
 ///
 /// This function never returns on success — after `switch_root` it execs
 /// into the supervise orchestrator.
@@ -53,9 +51,6 @@ pub fn execute_supervise(
     } else {
         tracing::warn!("Bootstrap should be PID 1, current PID: {pid}");
     }
-
-    tracing::info!("Setting up console");
-    console::setup(&config.console)?;
 
     tracing::info!("Mounting virtual filesystems");
     mount::mount_virtual_filesystems()?;
@@ -114,16 +109,15 @@ pub fn execute_supervise(
 /// Executes the bootstrap flow in shell mode for debugging.
 ///
 /// Initializes the environment for a QEMU VM boot:
-/// 1. Sets up console
-/// 2. Mounts virtual filesystems
-/// 3. Loads kernel modules
-/// 4. Mounts root filesystem
-/// 5. Sets up overlay if configured
-/// 6. Mounts extra virtiofs shares
-/// 7. Creates symlinks
-/// 8. Sets environment variables and working directory
-/// 9. Switches root and executes boot script
-/// 10. Spawns an interactive shell
+/// 1. Mounts virtual filesystems
+/// 2. Loads kernel modules
+/// 3. Mounts root filesystem
+/// 4. Sets up overlay if configured
+/// 5. Mounts extra virtiofs shares
+/// 6. Creates symlinks
+/// 7. Sets environment variables and working directory
+/// 8. Switches root and executes boot script
+/// 9. Spawns an interactive shell
 ///
 /// This function never returns on success — after `switch_root` it execs
 /// into the specified shell.
@@ -138,9 +132,6 @@ pub fn execute_shell(config: &Config, shell_config: &ShellConfig) -> Result<(), 
     } else {
         tracing::warn!("Bootstrap should be PID 1, current PID: {pid}");
     }
-
-    tracing::info!("Setting up console");
-    console::setup(&config.console)?;
 
     tracing::info!("Mounting virtual filesystems");
     mount::mount_virtual_filesystems()?;

@@ -37,17 +37,24 @@ pub fn switch_root(
 ///
 /// Returns an error if mount operations fail, chroot fails,
 /// or the shell execution fails.
-pub fn switch_root_shell(console: &str, shell_config: &ShellConfig) -> Result<(), error::Error> {
+pub fn switch_root_shell(
+    console_device: &str,
+    ShellConfig { program, args }: &ShellConfig,
+) -> Result<(), error::Error> {
     mount::mount_move_special()?;
 
     unistd::chdir("/newroot").context(error::SwitchRootSnafu)?;
     unistd::chroot(".").context(error::SwitchRootSnafu)?;
     unistd::chdir("/").context(error::SwitchRootSnafu)?;
 
-    let ShellConfig { program, args } = shell_config;
-    let args = args.iter().map(String::as_str).collect::<Vec<&str>>();
-    let exit_code = ocelot_entry::execute_interactive(console, program, &args, None)
-        .context(error::ExecuteShellSnafu)?;
+    // Use execute_interactive_with_session with create_session=false so the
+    // shell inherits PID 1's session and controlling terminal. This also
+    // provides proper signal handling and zombie reaping via signalfd.
+    let exit_code = {
+        let args = args.iter().map(String::as_str).collect::<Vec<&str>>();
+        ocelot_entry::execute_interactive_with_session(program, &args, console_device, false, None)
+            .context(error::ExecuteShellSnafu)?
+    };
 
     tracing::info!("Shell exited with code: {exit_code}");
 
