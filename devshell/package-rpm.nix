@@ -6,14 +6,9 @@
   ocelot-static,
   stdenv,
   rpm,
+  arch ? "x86_64",
 }:
 
-let
-  archMap = {
-    "x86_64-linux" = "x86_64";
-    "aarch64-linux" = "aarch64";
-  };
-in
 stdenv.mkDerivation {
   pname = "${name}-rpm";
   inherit version;
@@ -46,7 +41,7 @@ stdenv.mkDerivation {
     fpm -s dir -t rpm \
       -n ${name} \
       -v ${version} \
-      --architecture ${archMap.${stdenv.hostPlatform.system} or "x86_64"} \
+      --architecture ${arch} \
       --rpm-compression xz \
       --prefix / \
       --chdir "$staging" \

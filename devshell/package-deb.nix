@@ -5,14 +5,9 @@
   fpm,
   ocelot-static,
   stdenv,
+  arch ? "amd64",
 }:
 
-let
-  archMap = {
-    "x86_64-linux" = "amd64";
-    "aarch64-linux" = "arm64";
-  };
-in
 stdenv.mkDerivation {
   pname = "${name}-deb";
   inherit version;
@@ -42,7 +37,7 @@ stdenv.mkDerivation {
     fpm -s dir -t deb \
       -n ${name} \
       -v ${version} \
-      --architecture ${archMap.${stdenv.hostPlatform.system} or "amd64"} \
+      --architecture ${arch} \
       --deb-compression xz \
       --prefix / \
       --chdir "$staging" \

@@ -1,6 +1,5 @@
 {
   rustToolchain,
-  rustToolchainMusl,
   cargoArgs,
   unitTestArgs,
   pkgs,
@@ -21,7 +20,6 @@ pkgs.mkShell {
     cargo-ext.cargo-test-all
     cargo-nextest
     rustToolchain
-    rustToolchainMusl
 
     tokei
 

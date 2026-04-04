@@ -4,6 +4,7 @@
   lib,
   rustPlatform,
   installShellFiles,
+  completions ? null,
 }:
 
 rustPlatform.buildRustPackage {
@@ -22,12 +23,19 @@ rustPlatform.buildRustPackage {
 
   doCheck = false;
 
-  postInstall = ''
-    installShellCompletion --cmd ocelot \
-      --bash <($out/bin/ocelot completions bash) \
-      --fish <($out/bin/ocelot completions fish) \
-      --zsh  <($out/bin/ocelot completions zsh)
-  '';
+  postInstall =
+    if completions != null then
+      ''
+        mkdir -p $out/share
+        cp -r ${completions}/share/* $out/share/
+      ''
+    else
+      ''
+        installShellCompletion --cmd ocelot \
+          --bash <($out/bin/ocelot completions bash) \
+          --fish <($out/bin/ocelot completions fish) \
+          --zsh  <($out/bin/ocelot completions zsh)
+      '';
 
   meta = with lib; {
     description = "Process supervisor and init system written in Rust Programming Language (statically linked)";
