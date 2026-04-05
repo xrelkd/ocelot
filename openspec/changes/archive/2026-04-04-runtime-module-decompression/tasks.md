@@ -15,7 +15,7 @@
 
 - [x] 3.1 Implement `write_module_to_memfd(data: &[u8]) -> Result<OwnedFd, Error>` using `nix::sys::memfd::memfd_create`
 - [x] 3.2 Refactor `load_module_from_path` to dispatch: `.ko.xz` → decompress + memfd → finit_module, `.ko.gz` → decompress + memfd → finit_module, `.ko` → direct finit_module
-- [x] 3.3 Ensure memfd is seeked to position 0 before passing to `finit_module`
+- [x] 3.3 Ensure memfd is sought to position 0 before passing to `finit_module`
 
 ## 4. Testing & Verification
 
