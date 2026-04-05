@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use ocelot_supervise::supervisor_config;
 use petgraph::{Direction, graph::DiGraph, stable_graph::StableDiGraph};
@@ -8,8 +8,7 @@ use serde_with::{DisplayFromStr, serde_as};
 use snafu::ResultExt;
 use tracing::Level;
 
-use super::{Error, ProcessConfig};
-use crate::config::{error, utils};
+use crate::config::{error, error::Error, process::ProcessConfig, utils};
 
 const fn default_shutdown_timeout_secs() -> u64 { 60 }
 
@@ -35,7 +34,7 @@ pub struct SuperviseConfig {
 impl SuperviseConfig {
     const SUPPORTED_VERSION: &'static str = "1.0";
 
-    pub fn load(path: impl AsRef<std::path::Path>) -> Result<Self, Error> {
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
         let orig_path = path.as_ref();
         let path_buf = orig_path.to_owned();
         let Ok(resolved_path) = path_buf.try_resolve() else {
@@ -192,5 +191,11 @@ impl SuperviseConfig {
         }
     }
 
-    pub fn template_basic() -> Vec<u8> { include_bytes!("templates/basic.yaml").to_vec() }
+    pub fn template_minimal() -> Vec<u8> {
+        include_bytes!("templates/supervise/minimal.yaml").to_vec()
+    }
+
+    pub fn template_basic() -> Vec<u8> { include_bytes!("templates/supervise/basic.yaml").to_vec() }
+
+    pub fn template_full() -> Vec<u8> { include_bytes!("templates/supervise/full.yaml").to_vec() }
 }

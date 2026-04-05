@@ -24,6 +24,7 @@ name = "ocelot"
 resolver = "2"
 members = [
   "ocelot",
+  "crates/bootstrap",
   "crates/entry",
   "crates/idle",
   "crates/rotating-file",
@@ -60,6 +61,7 @@ tokio-util = { version = "0.7" }
 
 flate2   = { version = "1", features = ["rust_backend"] }
 lz4_flex = "0.13"
+lzma-rs  = "0.3"
 
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
@@ -67,8 +69,10 @@ exitcode = "1"
 nix = { version = "0.31", features = [
   "event",
   "fs",
+  "kmod",
   "mount",
   "process",
+  "reboot",
   "sched",
   "signal",
   "user",
@@ -77,13 +81,10 @@ nix = { version = "0.31", features = [
 petgraph = "0.8"
 procfs = "0.18"
 resolve-path = "0.1"
-shadow-rs = { version = "1", default-features = false, features = [
-  "build",
-  "tzdb",
-] }
 snafu = "0.9"
 tempfile = "3"
 
+ocelot-bootstrap     = { path = "./crates/bootstrap" }
 ocelot-entry         = { path = "./crates/entry" }
 ocelot-idle          = { path = "./crates/idle" }
 ocelot-rotating-file = { path = "./crates/rotating-file" }

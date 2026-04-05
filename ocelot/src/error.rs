@@ -18,6 +18,9 @@ pub enum Error {
     RunSupervise { source: ocelot_supervise::Error },
 
     #[snafu(display("{source}"))]
+    RunBootstrap { source: ocelot_bootstrap::Error },
+
+    #[snafu(display("{source}"))]
     LoadConfig { source: crate::config::Error },
 
     #[snafu(display("Failed to read processes, error: {source}"))]
@@ -25,6 +28,9 @@ pub enum Error {
 
     #[snafu(display("Failed to write to stdout, error: {source}"))]
     WriteStdout { source: io::Error },
+
+    #[snafu(display("Invalid configuration: {message}"))]
+    InvalidConfig { message: String },
 }
 
 impl From<ocelot_idle::Error> for Error {
@@ -45,4 +51,8 @@ impl From<ocelot_supervise::Error> for Error {
 
 impl From<crate::config::Error> for Error {
     fn from(source: crate::config::Error) -> Self { Self::LoadConfig { source } }
+}
+
+impl From<ocelot_bootstrap::Error> for Error {
+    fn from(source: ocelot_bootstrap::Error) -> Self { Self::RunBootstrap { source } }
 }

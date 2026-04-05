@@ -43,8 +43,17 @@ pub enum ProbeHandlerConfig {
 }
 
 impl From<ProbeConfig> for supervisor_probe::Probe {
-    fn from(config: ProbeConfig) -> Self {
-        let handler = match config.handler {
+    fn from(
+        ProbeConfig {
+            handler,
+            initial_delay,
+            period,
+            timeout,
+            failure_threshold,
+            success_threshold,
+        }: ProbeConfig,
+    ) -> Self {
+        let handler = match handler {
             ProbeHandlerConfig::HttpGet { host, path, port } => {
                 supervisor_probe::ProbeHandler::HttpGet { host, path, port }
             }
@@ -53,14 +62,7 @@ impl From<ProbeConfig> for supervisor_probe::Probe {
             }
         };
 
-        Self {
-            handler,
-            initial_delay: config.initial_delay,
-            period: config.period,
-            timeout: config.timeout,
-            failure_threshold: config.failure_threshold,
-            success_threshold: config.success_threshold,
-        }
+        Self { handler, initial_delay, period, timeout, failure_threshold, success_threshold }
     }
 }
 

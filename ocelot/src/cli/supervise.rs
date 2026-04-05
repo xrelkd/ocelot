@@ -15,6 +15,13 @@ pub enum OutputFormat {
     Json,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, clap::ValueEnum)]
+pub enum TemplateTier {
+    Minimal,
+    Basic,
+    Full,
+}
+
 #[derive(Clone, Subcommand)]
 pub enum Commands {
     #[clap(visible_alias = "r", about = "Run supervisor with configuration file")]
@@ -27,7 +34,10 @@ pub enum Commands {
     },
 
     #[clap(about = "Output the configuration template in YAML format")]
-    ConfigTemplate,
+    ConfigTemplate {
+        #[clap(long, default_value = "basic")]
+        template: TemplateTier,
+    },
 
     #[clap(about = "Validate the configuration file")]
     Validate {
@@ -43,9 +53,14 @@ pub fn run(
     log_level: Option<tracing::Level>,
 ) -> Result<i32, Error> {
     match command {
-        Some(Commands::ConfigTemplate) => {
+        Some(Commands::ConfigTemplate { template }) => {
+            let template_bytes = match template {
+                TemplateTier::Minimal => config::SuperviseConfig::template_minimal(),
+                TemplateTier::Basic => config::SuperviseConfig::template_basic(),
+                TemplateTier::Full => config::SuperviseConfig::template_full(),
+            };
             std::io::stdout()
-                .write_all(config::SuperviseConfig::template_basic().as_slice())
+                .write_all(template_bytes.as_slice())
                 .context(error::WriteStdoutSnafu)?;
             Ok(0)
         }

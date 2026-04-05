@@ -1,0 +1,106 @@
+version: "1.0"
+logLevel: info
+
+processes:
+  nginx:
+    program: /usr/sbin/nginx
+    arguments:
+      - -g
+      - daemon off;
+    terminationGracePeriod: 60s
+    readinessProbe:
+      handler:
+        type: httpGet
+        path: /health
+        port: 80
+      initialDelay: 5s
+      period: 10s
+      timeout: 1s
+      failureThreshold: 3
+      successThreshold: 1
+    livenessProbe:
+      handler:
+        type: tcpSocket
+        host: localhost
+        port: 80
+      period: 30s
+      timeout: 5s
+      failureThreshold: 3
+    restartPolicy:
+      type: Never
+    shutdownSignal:
+      type: sigterm
+
+  myapp:
+    program: /usr/bin/myapp
+    arguments:
+      - --config
+      - /etc/myapp/config.yaml
+    environmentVariables:
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://localhost:5432/mydb
+    workingDirectory: /opt/myapp
+    terminationGracePeriod: 30s
+    shutdownSignal:
+      type: name
+      value: SIGTERM
+    restartPolicy:
+      type: OnFailure
+      maxRetries: 3
+      backoff: 5s
+    log:
+      stdout:
+        destination:
+          type: file
+          path: /var/log/myapp/stdout.log
+        rotation:
+          maxSizeBytes: 10485760 # 10MB
+          rotationInterval: 24h # rotate daily
+          maxFiles: 7
+      stderr:
+        destination:
+          type: file
+          path: /var/log/myapp/stderr.log
+        rotation:
+          maxSizeBytes: 10485760
+
+  redis:
+    program: /usr/bin/redis-server
+    arguments:
+      - --port
+      - 6379
+    terminationGracePeriod: 10s
+    shutdownSignal:
+      type: number
+      value: 9
+    restartPolicy:
+      type: Always
+      backoff: 1s
+
+  postgres:
+    program: /usr/bin/postgres
+    arguments:
+      - -D
+      - /var/lib/postgresql/data
+    environmentVariables:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+    workingDirectory: /var/lib/postgresql
+    terminationGracePeriod: 30s
+    readinessProbe:
+      handler:
+        type: tcpSocket
+        port: 5432
+      initialDelay: 10s
+      period: 5s
+    livenessProbe:
+      handler:
+        type: tcpSocket
+        port: 5432
+      initialDelay: 15s
+      period: 20s
+      timeout: 3s
+      failureThreshold: 3
+    restartPolicy:
+      type: Always
+      backoff: 1s

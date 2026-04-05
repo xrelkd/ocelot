@@ -1,0 +1,166 @@
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    thread,
+    time::Duration,
+};
+
+use nix::mount::{MsFlags, mount};
+use snafu::ResultExt;
+
+use crate::{
+    config::RootConfig,
+    error::{self, Error},
+};
+
+const DEVICE_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEVICE_WAIT_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Mounts the standard virtual filesystems: /proc, /sys, /dev, /run.
+///
+/// # Errors
+///
+/// Returns an error if any mount operation fails.
+pub fn mount_virtual_filesystems() -> Result<(), Error> {
+    mount_api_vfs("proc", "/proc", "proc")?;
+    mount_api_vfs("sysfs", "/sys", "sysfs")?;
+    mount_api_vfs("devtmpfs", "/dev", "devtmpfs")?;
+    mount_api_vfs("tmpfs", "/run", "tmpfs")?;
+    Ok(())
+}
+
+/// Mounts the root filesystem to `/newroot` based on configuration.
+///
+/// # Errors
+///
+/// Returns an error if the device is not found or mount operation fails.
+pub fn mount_root(config: &RootConfig) -> Result<(), Error> {
+    let source = config.source();
+    let fstype = config.fstype();
+
+    if matches!(config, RootConfig::Block { .. }) {
+        wait_for_device(source)?;
+    }
+
+    ensure_dir("/newroot")?;
+
+    let data = config.mount_options();
+    mount(Some(source), "/newroot", Some(fstype), MsFlags::empty(), data)
+        .with_context(|_| error::MountSnafu { operation: "root filesystem at /newroot" })?;
+
+    tracing::info!("Mounted {fstype} {source} at /newroot");
+    Ok(())
+}
+
+/// Sets up overlayfs on top of the mounted root filesystem.
+///
+/// Uses isolated directories per mount source under `/run/overlayfs/{source}/`.
+///
+/// # Errors
+///
+/// Returns an error if directory creation or mount operation fails.
+pub fn mount_overlay(config: &RootConfig) -> Result<(), Error> {
+    let source = config.source();
+    let base = overlay_base(source);
+    let upper = format!("{base}/upper");
+    let work = format!("{base}/work");
+
+    ensure_dir(&upper)?;
+    ensure_dir(&work)?;
+
+    let opts = format!("lowerdir=/newroot,upperdir={upper},workdir={work}");
+    mount(Some("overlay"), "/newroot", Some("overlay"), MsFlags::empty(), Some(opts.as_str()))
+        .with_context(|_| error::MountSnafu { operation: "overlayfs on /newroot" })?;
+
+    tracing::info!("Mounted overlayfs on /newroot (source: {source})");
+    Ok(())
+}
+
+/// Returns the base directory for overlay files for a given mount source.
+///
+/// Sanitizes the source name to prevent path traversal.
+fn overlay_base(source: &str) -> String {
+    let safe_name = source.replace('/', "_");
+    format!("/run/overlayfs/{safe_name}")
+}
+
+/// Moves virtual filesystems from the old root to /newroot.
+///
+/// # Errors
+///
+/// Returns an error if any mount move operation fails.
+pub fn mount_move_special() -> Result<(), Error> {
+    move_mount("/proc", "/newroot/proc")?;
+    move_mount("/sys", "/newroot/sys")?;
+    move_mount("/dev", "/newroot/dev")?;
+    move_mount("/run", "/newroot/run")?;
+    Ok(())
+}
+
+fn mount_api_vfs(source: &str, target: &str, fstype: &str) -> Result<(), Error> {
+    ensure_dir(target)?;
+    mount(Some(source), target, Some(fstype), MsFlags::empty(), Option::<&str>::None)
+        .with_context(|_| error::MountSnafu { operation: format!("{fstype} at {target}") })?;
+    tracing::info!("Mounted {fstype} at {target}");
+    Ok(())
+}
+
+fn move_mount(source: &str, target: &str) -> Result<(), Error> {
+    ensure_dir(target)?;
+    mount(
+        Some(Path::new(source)),
+        target,
+        Option::<&str>::None,
+        MsFlags::MS_MOVE,
+        Option::<&str>::None,
+    )
+    .with_context(|_| error::MountSnafu { operation: format!("{source} to {target}") })?;
+    Ok(())
+}
+
+fn ensure_dir(path: &str) -> Result<(), Error> {
+    fs::create_dir_all(path)
+        .with_context(|_| error::CreateDirectorySnafu { path: PathBuf::from(path) })
+}
+
+fn wait_for_device(device: &str) -> Result<(), Error> {
+    let path = Path::new(device);
+    let start = std::time::Instant::now();
+
+    while start.elapsed() < DEVICE_WAIT_TIMEOUT {
+        if path.exists() {
+            return Ok(());
+        }
+        thread::sleep(DEVICE_WAIT_INTERVAL);
+    }
+
+    Err(Error::Mount { operation: format!("wait for device {device}"), source: nix::Error::ENODEV })
+}
+
+#[expect(dead_code, reason = "reserved for future cleanup support")]
+pub fn umount_old_root() {
+    use nix::mount::umount;
+    let _ = umount("/oldroot");
+    drop(fs::remove_dir("/oldroot"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::overlay_base;
+
+    #[test]
+    fn test_overlay_base_simple_tag() {
+        assert_eq!(overlay_base("myshare"), "/run/overlayfs/myshare");
+    }
+
+    #[test]
+    fn test_overlay_base_device_path() {
+        // Slashes in device paths are replaced with underscores
+        assert_eq!(overlay_base("/dev/vda2"), "/run/overlayfs/_dev_vda2");
+    }
+
+    #[test]
+    fn test_overlay_base_complex_path() {
+        assert_eq!(overlay_base("virtiofs/my-tag"), "/run/overlayfs/virtiofs_my-tag");
+    }
+}

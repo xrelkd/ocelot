@@ -49,11 +49,10 @@ impl Config {
 
     #[must_use]
     pub fn command(&self) -> Command {
-        let mut cmd = Command::new(self.program.clone())
-            .args(self.arguments.clone())
-            .envs(self.environment_variables.clone());
+        let mut cmd =
+            Command::new(&self.program).args(&self.arguments).envs(&self.environment_variables);
         if let Some(dir) = &self.working_directory {
-            cmd = cmd.current_dir(dir.clone());
+            cmd = cmd.current_dir(dir);
         }
         if matches!(self.log_stdout.destination, LogDestination::Null) {
             cmd = cmd.discard_stdout(true);

@@ -86,11 +86,11 @@ const CHILD_STDERR_TOKEN: u64 = 2;
 /// Returns [`Error::SpawnChild`] if the `fork` system call fails or the child
 /// fails to spawn due to invalid arguments or resource limits.
 /// Returns [`Error::WaitPid`] if there's an error waiting for the child
-/// process. Returns [`Error::ChildExecute`] if the child's `execvp` call fails.
+/// process. Returns [`Error::ExecuteChild`] if the child's `execvp` call fails.
 /// Returns [`Error::ReadPipe`] if reading from the status pipe fails.
 /// Returns [`Error::CreatePipe`], [`Error::SetSignalMask`],
 /// [`Error::CreateSignalFd`], [`Error::CreateEpoll`], [`Error::AddEpoll`],
-/// [`Error::EpollWait`], or [`Error::ConvertTimeout`] for I/O setup failures.
+/// [`Error::WaitEpoll`], or [`Error::ConvertTimeout`] for I/O setup failures.
 ///
 /// # Signals
 ///
@@ -208,6 +208,142 @@ where
     Ok(status_code)
 }
 
+/// Spawns an interactive shell with terminal setup, waits for it to exit.
+///
+/// This function creates a new session, sets up the console as controlling
+/// terminal, forks and execs the shell, then waits for it to exit.
+///
+/// # Arguments
+///
+/// * `console` - Console device path (e.g., "tty1" or "/dev/tty1")
+/// * `program` - Shell program to execute
+/// * `args` - Arguments for the shell
+/// * `timeout` - Optional duration to wait after signal before force-killing
+///
+/// # Returns
+///
+/// Returns the exit code of the shell process.
+///
+/// # Errors
+///
+/// Returns [`Error::CreatePipe`] if opening console device fails.
+/// Returns [`Error::SpawnChild`] if forking fails.
+///
+/// # Panics
+///
+/// The child process may panic if dup2 or execv fails.
+pub fn execute_interactive(
+    program: &str,
+    args: &[&str],
+    console: &str,
+    timeout: Option<Duration>,
+) -> Result<i32, Error> {
+    execute_interactive_with_session(program, args, console, true, timeout)
+}
+
+/// Spawns an interactive shell with terminal setup and optional session
+/// creation, waits for it to exit.
+///
+/// This function sets up the console as controlling terminal, forks and execs
+/// the shell, then waits for it to exit with proper signal handling and zombie
+/// reaping.
+///
+/// # Arguments
+///
+/// * `console` - Console device path (e.g., "tty1" or "/dev/tty1")
+/// * `program` - Shell program to execute
+/// * `args` - Arguments for the shell
+/// * `timeout` - Optional duration to wait after signal before force-killing
+/// * `create_session` - If true, creates a new session for the shell child. Set
+///   to false when the shell should inherit the parent's session (e.g., init
+///   shell mode after `switch_root`).
+///
+/// # Returns
+///
+/// Returns the exit code of the shell process.
+///
+/// # Errors
+///
+/// Returns [`Error::CreatePipe`] if opening console device fails.
+/// Returns [`Error::SpawnChild`] if forking fails.
+///
+/// # Panics
+///
+/// The child process may panic if dup2 or execv fails.
+pub fn execute_interactive_with_session(
+    program: &str,
+    args: &[&str],
+    console: &str,
+    create_session: bool,
+    timeout: Option<Duration>,
+) -> Result<i32, Error> {
+    let console_path =
+        if console.starts_with('/') { console.to_string() } else { format!("/dev/{console}") };
+
+    let mut state = {
+        let console_file =
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&console_path)
+                .with_context(|_| error::OpenConsoleSnafu { path: console_path.clone() })?;
+        let pid = Process::spawn_with_console_and_session(
+            &console_file,
+            program,
+            args.iter().map(|&s| s.to_string()),
+            create_session,
+        )?;
+        State::new(pid, timeout.unwrap_or(DEFAULT_WAIT_TIMEOUT))
+    };
+
+    let signal_fd = create_signal_fd()?;
+
+    loop {
+        // Check if the child process has exited before waiting for signals,
+        // to avoid missing the exit status if it happens between signal checks.
+        if !state.is_exited()
+            && let Some(ReapedProcess { pid, exit_code }) = try_reap_process(state.id())?
+        {
+            tracing::info!("Reaped child process {pid} exited with status {exit_code}");
+            state.set_exited(exit_code);
+        }
+
+        if state.is_exited() {
+            break;
+        }
+
+        // Calculate the timeout for waiting on signals, and check if we need to force
+        // kill the child process.
+        if state.should_force_kill() {
+            tracing::warn!(
+                "Child process {pid} did not exit within the timeout, sending SIGKILL",
+                pid = state.id()
+            );
+            if let Err(source) = signal::kill(state.id(), Signal::SIGKILL) {
+                tracing::error!(
+                    "Failed to send SIGKILL to child process {pid}: {source}",
+                    pid = state.id()
+                );
+            }
+
+            state.set_killed();
+        }
+
+        // Handle signals in a loop, especially SIGCHLD to reap child processes
+        while handle_signal(&signal_fd, &mut state).is_ok() {
+            if state.is_exited() {
+                break;
+            }
+        }
+    }
+
+    let (pid, status_code) = state.exited();
+    tracing::info!("Child process {pid} exited with status {status_code}");
+
+    let _ = reap_zombies();
+    Ok(status_code)
+}
+
 fn check_pid() {
     let pid = unistd::getpid();
     if pid.as_raw() == 1 {
@@ -251,7 +387,7 @@ fn handle_signal(signal_fd: &SignalFd, state: &mut State) -> Result<(), Error> {
     };
     let sig = {
         let sig_num_i32 = i32::try_from(sig_info.ssi_signo)
-            .context(error::ConvertU32Snafu { value: sig_info.ssi_signo })?;
+            .context(error::ConvertSignalSnafu { value: sig_info.ssi_signo })?;
         Signal::try_from(sig_num_i32)
             .context(error::ParseSignalSnafu { signal_num: sig_num_i32 })?
     };
