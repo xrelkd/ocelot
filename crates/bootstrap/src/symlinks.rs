@@ -52,9 +52,9 @@ pub fn create_symlink(SymlinkSpec { source, target }: &SymlinkSpec) -> Result<()
 }
 
 /// Recursively creates a directory and all parent directories.
-fn ensure_dir_all(path: &str) -> Result<(), Error> {
-    std::fs::create_dir_all(path)
-        .with_context(|_| error::CreateDirectorySnafu { path: path.to_string() })
+fn ensure_dir_all(path: impl AsRef<Path>) -> Result<(), Error> {
+    std::fs::create_dir_all(&path)
+        .with_context(|_| error::CreateDirectorySnafu { path: path.as_ref().to_path_buf() })
 }
 
 #[cfg(test)]

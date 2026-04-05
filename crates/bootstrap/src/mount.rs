@@ -1,4 +1,9 @@
-use std::{fs, path::Path, thread, time::Duration};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    thread,
+    time::Duration,
+};
 
 use nix::mount::{MsFlags, mount};
 use snafu::ResultExt;
@@ -115,7 +120,7 @@ fn move_mount(source: &str, target: &str) -> Result<(), Error> {
 
 fn ensure_dir(path: &str) -> Result<(), Error> {
     fs::create_dir_all(path)
-        .with_context(|_| error::CreateDirectorySnafu { path: path.to_string() })
+        .with_context(|_| error::CreateDirectorySnafu { path: PathBuf::from(path) })
 }
 
 fn wait_for_device(device: &str) -> Result<(), Error> {

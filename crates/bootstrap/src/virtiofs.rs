@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, path::Path};
 
 use nix::mount::{MsFlags, mount};
 use snafu::ResultExt;
@@ -88,9 +88,9 @@ fn overlay_share_base(tag: &str) -> String {
 }
 
 /// Recursively creates a directory and all parent directories with mode 0755.
-fn ensure_dir_all(path: &str) -> Result<(), Error> {
-    fs::create_dir_all(path)
-        .with_context(|_| error::CreateDirectorySnafu { path: path.to_string() })
+fn ensure_dir_all(path: impl AsRef<Path>) -> Result<(), Error> {
+    fs::create_dir_all(&path)
+        .with_context(|_| error::CreateDirectorySnafu { path: path.as_ref().to_path_buf() })
 }
 
 #[cfg(test)]

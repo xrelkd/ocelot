@@ -29,8 +29,8 @@ pub enum Error {
     #[snafu(display("Virtiofs not supported: {message}"))]
     VirtiofsNotSupported { message: &'static str },
 
-    #[snafu(display("Failed to create directory '{path}': {source}"))]
-    CreateDirectory { path: String, source: std::io::Error },
+    #[snafu(display("Failed to create directory '{}': {source}", path.display()))]
+    CreateDirectory { path: PathBuf, source: std::io::Error },
 
     #[snafu(display("Failed to create symlink '{target}' -> '{link_source}': {source}"))]
     CreateSymlink { link_source: String, target: String, source: std::io::Error },
