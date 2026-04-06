@@ -11,14 +11,27 @@ use snafu::ResultExt;
 
 use crate::{config::ModulesConfig, error, error::Error};
 
+#[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
+pub fn pre(config: &ModulesConfig) -> Result<(), Error> {
+    load_modules(config);
+    tracing::debug!("Pre-switch: loaded kernel modules");
+    Ok(())
+}
+
+#[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
+pub fn post(_config: &ModulesConfig) -> Result<(), Error> {
+    tracing::debug!("Post-switch: modules (not implemented)");
+    Ok(())
+}
+
 /// Loads kernel modules based on the configuration.
 ///
 /// Dispatches to list mode or scan mode based on `ModulesConfig` variant.
 /// Errors are logged as warnings and do not stop the boot process.
-pub fn load_modules(config: &ModulesConfig) {
+fn load_modules(config: &ModulesConfig) {
     match config {
         ModulesConfig::List { dir, names } => {
-            let dir = dir.as_deref().unwrap_or("/lib/modules");
+            let dir = dir.as_deref().unwrap_or_else(|| Path::new("/lib/modules"));
             for name in names {
                 #[expect(
                     clippy::case_sensitive_file_extension_comparisons,
@@ -29,9 +42,9 @@ pub fn load_modules(config: &ModulesConfig) {
                     || name.ends_with(".ko.xz")
                     || name.ends_with(".ko.gz")
                 {
-                    format!("{dir}/{name}")
+                    dir.join(name)
                 } else {
-                    format!("{dir}/{name}.ko")
+                    dir.join(format!("{name}.ko"))
                 };
                 tracing::info!("Loading kernel module: {name}");
 
@@ -43,9 +56,8 @@ pub fn load_modules(config: &ModulesConfig) {
         }
         ModulesConfig::Scan { dir, names } => {
             if let Some(filtered_names) = names {
-                let dir = dir.as_str();
                 for name in filtered_names {
-                    let path = format!("{dir}/{name}");
+                    let path = dir.join(name);
                     tracing::info!("Loading kernel module: {name}");
 
                     match load_module_from_path(&path) {
@@ -65,11 +77,15 @@ pub fn load_modules(config: &ModulesConfig) {
 /// Scans a directory for kernel module files and loads each one.
 ///
 /// Loads `.ko`, `.ko.xz`, and `.ko.gz` files. Errors are logged as warnings.
-fn scan_and_load_modules(dir: &str) {
+fn scan_and_load_modules(dir: impl AsRef<Path>) {
+    let dir = dir.as_ref();
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(source) => {
-            tracing::info!("Module directory {dir} not found, skipping module loading: {source}");
+            tracing::info!(
+                "Module directory {} not found, skipping module loading: {source}",
+                dir.display()
+            );
             return;
         }
     };
@@ -220,8 +236,10 @@ mod tests {
 
     #[test]
     fn test_load_modules_empty_list() {
-        let config =
-            ModulesConfig::List { dir: Some("/lib/modules".to_string()), names: Vec::new() };
+        let config = ModulesConfig::List {
+            dir: Some(std::path::PathBuf::from("/lib/modules")),
+            names: Vec::new(),
+        };
         load_modules(&config);
     }
 
@@ -233,7 +251,10 @@ mod tests {
 
     #[test]
     fn test_scan_mode_empty_dir() {
-        let config = ModulesConfig::Scan { dir: "/nonexistent/modules".to_string(), names: None };
+        let config = ModulesConfig::Scan {
+            dir: std::path::PathBuf::from("/nonexistent/modules"),
+            names: None,
+        };
         load_modules(&config);
     }
 }

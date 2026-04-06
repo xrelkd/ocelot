@@ -1,40 +1,16 @@
-use std::time::Duration;
+use std::collections::HashMap;
 
 /// Bootstrap-specific configuration for early boot initialization.
-///
-/// This config covers only the initramfs boot phase: root filesystem,
-/// kernel modules, console, and failure recovery. Process supervision
-/// configuration is handled separately by the CLI and passed as
-/// `ocelot_supervise::OrchestratorConfig`.
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub root: RootConfig,
-    pub modules: Option<ModulesConfig>,
+    /// Pre-switch phase configuration.
+    pub pre_switch: PreSwitchPhase,
+    /// Switch-root phase configuration.
+    pub switch_root: SwitchRootPhase,
+    /// Post-switch phase configuration.
+    pub post_switch: PostSwitchPhase,
+    /// Console device for shell output.
     pub console: String,
-    pub on_failure: Option<OnFailureConfig>,
-    pub shutdown_timeout: Duration,
-    pub environment_variables: Vec<(String, String)>,
-    pub working_directory: Option<String>,
-    pub extra_virtiofs_mounts: Vec<VirtiofsMount>,
-    pub symlinks: Vec<SymlinkSpec>,
-    pub boot_script: Option<BootScriptConfig>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            root: RootConfig::Virtiofs { tag: String::new(), overlay: false, options: None },
-            modules: None,
-            console: "console".to_string(),
-            on_failure: None,
-            shutdown_timeout: Duration::from_secs(30),
-            environment_variables: Vec::new(),
-            working_directory: None,
-            extra_virtiofs_mounts: Vec::new(),
-            symlinks: Vec::new(),
-            boot_script: None,
-        }
-    }
 }
 
 /// Root filesystem backend configuration.
@@ -57,7 +33,7 @@ pub enum RootConfig {
     /// Block device (virtio-blk).
     Block {
         /// Device path (e.g., `/dev/vda2`).
-        device: String,
+        device: std::path::PathBuf,
         /// Filesystem type (e.g., `ext4`, `xfs`).
         fstype: String,
         /// Whether to use overlay filesystem on top.
@@ -90,10 +66,12 @@ impl RootConfig {
     }
 
     /// Returns the mount source (tag or device path).
+    /// # Panics
+    /// This function never panics.
     #[must_use]
     pub fn source(&self) -> &str {
         match self {
-            Self::Block { device, .. } => device,
+            Self::Block { device, .. } => device.to_str().expect("device path must be valid UTF-8"),
             Self::Virtiofs { tag, .. } | Self::NineP { tag, .. } => tag,
         }
     }
@@ -144,33 +122,272 @@ pub enum ModulesConfig {
     /// expected to be in correct dependency order (dependencies before
     /// dependents), as validated by the ocelot config layer when a
     /// `modules.dep` file is provided.
-    List { dir: Option<String>, names: Vec<String> },
+    List {
+        /// Directory containing kernel modules.
+        dir: Option<std::path::PathBuf>,
+        names: Vec<String>,
+    },
     /// Scan directory for all `.ko`/`.ko.xz`/`.ko.gz` files and load each.
     ///
     /// # Ordering
     /// Modules are loaded in the order specified in `names` (populated by
     /// the ocelot config layer via dependency resolution from a
     /// `modules.dep` file).
-    Scan { dir: String, names: Option<Vec<String>> },
+    Scan {
+        /// Directory to scan for kernel modules.
+        dir: std::path::PathBuf,
+        names: Option<Vec<String>>,
+    },
 }
 
 impl Default for ModulesConfig {
     fn default() -> Self { Self::List { dir: None, names: Vec::new() } }
 }
 
-/// Legacy kernel module loading configuration (flat struct).
-///
-/// This is kept for backward compatibility. New code should use
-/// [`ModulesConfig`] instead.
+/// Switch-root phase configuration.
 #[derive(Clone, Debug, Default)]
-pub struct ModuleConfig {
-    /// Directory containing kernel modules.
-    pub dir: Option<String>,
-    /// List of module names to load.
-    pub list: Vec<String>,
+pub struct SwitchRootPhase {
+    /// Method to use for switching root.
+    pub method: SwitchRootMethod,
+    /// Old root directory to clean up.
+    pub old_root_dir: Option<String>,
+    /// Whether to cleanup the old root.
+    pub cleanup_old_root: bool,
+    /// Whether to move special filesystems.
+    pub move_special: bool,
 }
 
-/// Failure recovery configuration.
+/// Switch-root method.
+#[derive(Clone, Debug, Default)]
+pub enum SwitchRootMethod {
+    /// Use `pivot_root` system call.
+    #[default]
+    PivotRoot,
+    /// Use chroot system call.
+    Chroot,
+}
+
+/// Pre-switch phase configuration.
+#[derive(Clone, Debug, Default)]
+pub struct PreSwitchPhase {
+    /// Kernel module loading configuration.
+    pub modules: Option<ModulesConfig>,
+    /// Network configuration (unsupported yet).
+    pub network: Option<NetworkConfig>,
+    /// Mount specifications.
+    pub mounts: Vec<MountSpec>,
+    /// Hook specifications.
+    pub hooks: Vec<HookSpec>,
+    /// Environment variables to set.
+    pub environment: Vec<(String, String)>,
+    /// Symlinks to create.
+    pub symlinks: Vec<Symlink>,
+    /// Sysctl configuration (unsupported yet).
+    pub sysctl: Sysctl,
+    /// Tmpfiles configuration (unsupported yet).
+    pub tmpfiles: Option<Tmpfile>,
+    /// Security configuration (unsupported yet).
+    pub security: Option<Security>,
+    /// Clock configuration (unsupported yet).
+    pub clock: Option<Clock>,
+}
+
+/// Post-switch phase configuration.
+#[derive(Clone, Debug)]
+pub struct PostSwitchPhase {
+    /// Kernel module loading configuration.
+    pub modules: Option<ModulesConfig>,
+    /// Network configuration (unsupported yet).
+    pub network: Option<NetworkConfig>,
+    /// Mount specifications.
+    pub mounts: Vec<MountSpec>,
+    /// Hook specifications.
+    pub hooks: Vec<HookSpec>,
+    /// Environment variables to set.
+    pub environment: Vec<(String, String)>,
+    /// Symlinks to create.
+    pub symlinks: Vec<Symlink>,
+    /// Sysctl configuration (unsupported yet).
+    pub sysctl: Sysctl,
+    /// Tmpfiles configuration (unsupported yet).
+    pub tmpfiles: Option<Tmpfile>,
+    /// Security configuration (unsupported yet).
+    pub security: Option<Security>,
+    /// Clock configuration (unsupported yet).
+    pub clock: Option<Clock>,
+    /// Handoff configuration.
+    pub handoff: Handoff,
+    /// Shutdown configuration.
+    pub shutdown: Option<Shutdown>,
+}
+
+/// Mount specification.
+#[derive(Clone, Debug)]
+pub struct MountSpec {
+    pub source: MountSource,
+    /// Mount target path.
+    pub target: std::path::PathBuf,
+    pub fstype: String,
+    pub flags: nix::mount::MsFlags,
+    pub options: Option<String>,
+    pub overlay: bool,
+    pub on_failure: MountFailurePolicy,
+}
+
+impl Default for MountSpec {
+    fn default() -> Self {
+        Self {
+            source: MountSource::Virtual,
+            target: std::path::PathBuf::new(),
+            fstype: String::new(),
+            flags: nix::mount::MsFlags::empty(),
+            options: None,
+            overlay: false,
+            on_failure: MountFailurePolicy::Warn,
+        }
+    }
+}
+
+/// Mount source.
+#[derive(Clone, Debug)]
+pub enum MountSource {
+    Device(String),
+    VirtiofsTag(String),
+    NinePTag(String),
+    Virtual,
+    Nfs { server: String, export: String },
+    Overlay(OverlaySpec),
+}
+
+/// Mount failure policy.
+#[derive(Clone, Debug, Default)]
+pub enum MountFailurePolicy {
+    #[default]
+    Warn,
+    Abort,
+    Retry,
+}
+
+/// Overlay filesystem specification.
+#[derive(Clone, Debug)]
+pub struct OverlaySpec {
+    pub lower: String,
+    pub upper: String,
+    pub work: String,
+}
+
+/// Hook specification.
+#[derive(Clone, Debug)]
+pub struct HookSpec {
+    pub name: String,
+    pub command: String,
+    pub arguments: Vec<String>,
+    pub timeout: u32,
+    pub on_failure: MountFailurePolicy,
+}
+
+/// Network configuration (unsupported yet).
+#[derive(Clone, Debug, Default)]
+pub struct NetworkConfig {
+    pub mode: NetworkMode,
+    pub interfaces: Vec<InterfaceConfig>,
+}
+
+/// Network mode.
+#[derive(Clone, Debug, Default)]
+pub enum NetworkMode {
+    #[default]
+    Dhcp,
+    Static,
+}
+
+/// Network interface configuration.
+#[derive(Clone, Debug, Default)]
+pub struct InterfaceConfig {
+    pub name: String,
+    pub address: Option<String>,
+    pub netmask: Option<String>,
+    pub gateway: Option<String>,
+}
+
+/// Sysctl configuration (unsupported yet).
+#[derive(Clone, Debug, Default)]
+pub struct Sysctl {
+    pub key_values: HashMap<String, String>,
+}
+
+impl From<HashMap<String, String>> for Sysctl {
+    fn from(key_values: HashMap<String, String>) -> Self { Self { key_values } }
+}
+
+/// Tmpfile configuration (unsupported yet).
+#[derive(Clone, Debug, Default)]
+pub struct Tmpfile {
+    /// Path to create.
+    pub path: std::path::PathBuf,
+    pub mode: String,
+    pub r#type: String,
+}
+
+/// Security configuration (unsupported yet).
+#[derive(Clone, Debug, Default)]
+pub struct Security {
+    pub selinux: Option<Selinux>,
+    pub apparmor: Option<Apparmor>,
+}
+
+/// `SELinux` configuration (unsupported yet).
+#[derive(Clone, Debug, Default)]
+pub struct Selinux {
+    pub enabled: bool,
+    pub policy: Option<String>,
+}
+
+/// `AppArmor` configuration (unsupported yet).
+#[derive(Clone, Debug, Default)]
+pub struct Apparmor {
+    pub enabled: bool,
+    pub profile: Option<String>,
+}
+
+/// Clock configuration (unsupported yet).
+#[derive(Clone, Debug, Default)]
+pub struct Clock {
+    pub rtc_sync: bool,
+}
+
+/// Symlink specification.
+#[derive(Clone, Debug, Default)]
+pub struct Symlink {
+    /// Source path (target of symlink).
+    pub source: std::path::PathBuf,
+    /// Destination path (where symlink is created).
+    pub target: std::path::PathBuf,
+}
+
+/// Handoff configuration.
+#[derive(Clone, Debug)]
+pub struct Handoff {
+    pub mode: HandoffMode,
+    pub boot_script: Option<BootScriptConfig>,
+}
+
+/// Handoff mode.
+#[derive(Clone, Debug)]
+pub enum HandoffMode {
+    Supervise(ocelot_supervise::OrchestratorConfig),
+    Shell(ShellConfig),
+}
+
+/// Shutdown configuration.
+#[derive(Clone, Debug, Default)]
+pub struct Shutdown {
+    pub timeout: u32,
+    pub sync: bool,
+    pub umount_all: bool,
+}
+
+/// Configuration for an extra virtiofs mount.
 ///
 /// When a boot stage fails, this config determines whether to spawn
 /// a debug shell for manual intervention.
@@ -246,7 +463,7 @@ pub enum OnFailurePolicy {
 
 #[cfg(test)]
 mod tests {
-    use super::{ModuleConfig, ModulesConfig, OnFailureConfig, OnFailurePolicy, RootConfig};
+    use super::{ModulesConfig, OnFailureConfig, OnFailurePolicy, RootConfig};
 
     #[test]
     fn test_root_config_virtiofs_overlay() {
@@ -274,7 +491,7 @@ mod tests {
     #[test]
     fn test_root_config_block() {
         let config = RootConfig::Block {
-            device: "/dev/vda2".to_string(),
+            device: std::path::PathBuf::from("/dev/vda2"),
             fstype: "ext4".to_string(),
             overlay: true,
             options: None,
@@ -322,13 +539,6 @@ mod tests {
             }
             ModulesConfig::Scan { .. } => panic!("expected List variant"),
         }
-    }
-
-    #[test]
-    fn test_module_config_legacy_default() {
-        let config = ModuleConfig::default();
-        assert!(config.dir.is_none());
-        assert!(config.list.is_empty());
     }
 
     #[test]

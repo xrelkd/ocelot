@@ -5,16 +5,95 @@ use std::{
     time::Duration,
 };
 
-use nix::mount::{MsFlags, mount};
+use nix::mount::MsFlags;
 use snafu::ResultExt;
 
 use crate::{
-    config::RootConfig,
-    error::{self, Error},
+    config::{MountSpec, RootConfig},
+    error,
+    error::Error,
 };
 
 const DEVICE_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 const DEVICE_WAIT_INTERVAL: Duration = Duration::from_millis(100);
+
+pub fn pre(specs: &[MountSpec]) -> Result<(), Error> {
+    for spec in specs {
+        let target_path = if spec.target.as_os_str().is_empty() {
+            Path::new("/newroot")
+        } else {
+            spec.target.as_path()
+        };
+
+        let flags = spec.flags;
+        let options = spec.options.as_deref();
+
+        // Build source path as a string, then convert to &Path
+        let source_string = match spec.source {
+            crate::config::MountSource::Device(ref d) => d.clone(),
+            crate::config::MountSource::VirtiofsTag(ref t)
+            | crate::config::MountSource::NinePTag(ref t) => t.clone(),
+            crate::config::MountSource::Virtual => String::new(),
+            crate::config::MountSource::Overlay(_) => "overlay".to_string(),
+            crate::config::MountSource::Nfs { ref server, ref export } => {
+                format!("{server}:{export}")
+            }
+        };
+        let source_path = Path::new(&source_string);
+
+        let fstype_path = Path::new(&spec.fstype);
+
+        nix::mount::mount(Some(source_path), target_path, Some(fstype_path), flags, options)
+            .with_context(|_| error::MountSnafu {
+                operation: format!("mount {} to {}", spec.fstype, target_path.display()),
+            })?;
+
+        tracing::debug!(
+            "Pre-switch: mounted {} at {} with flags: {:?}",
+            spec.fstype,
+            target_path.display(),
+            flags
+        );
+    }
+    Ok(())
+}
+
+pub fn post(specs: &[MountSpec]) -> Result<(), Error> {
+    for spec in specs {
+        let target_path =
+            if spec.target.as_os_str().is_empty() { Path::new("/") } else { spec.target.as_path() };
+
+        let flags = spec.flags;
+        let options = spec.options.as_deref();
+
+        let source_string = match spec.source {
+            crate::config::MountSource::Device(ref d) => d.clone(),
+            crate::config::MountSource::VirtiofsTag(ref t)
+            | crate::config::MountSource::NinePTag(ref t) => t.clone(),
+            crate::config::MountSource::Virtual => String::new(),
+            crate::config::MountSource::Overlay(_) => "overlay".to_string(),
+            crate::config::MountSource::Nfs { ref server, ref export } => {
+                format!("{server}:{export}")
+            }
+        };
+        let source_path = Path::new(&source_string);
+
+        let fstype_path = Path::new(&spec.fstype);
+
+        nix::mount::mount(Some(source_path), target_path, Some(fstype_path), flags, options)
+            .with_context(|_| error::MountSnafu {
+                operation: format!("mount {} to {}", spec.fstype, target_path.display()),
+            })?;
+
+        tracing::debug!(
+            "Post-switch: mounted {} at {} with flags: {:?}",
+            spec.fstype,
+            target_path.display(),
+            flags
+        );
+    }
+    Ok(())
+}
 
 /// Mounts the standard virtual filesystems: /proc, /sys, /dev, /run.
 ///
@@ -22,10 +101,26 @@ const DEVICE_WAIT_INTERVAL: Duration = Duration::from_millis(100);
 ///
 /// Returns an error if any mount operation fails.
 pub fn mount_virtual_filesystems() -> Result<(), Error> {
+    nix::mount::mount(
+        None::<&str>,
+        "/",
+        None::<&str>,
+        MsFlags::MS_REC | MsFlags::MS_PRIVATE,
+        None::<&str>,
+    )
+    .with_context(|_| error::MountSnafu { operation: "mount namespace isolation" })?;
+
     mount_api_vfs("proc", "/proc", "proc")?;
     mount_api_vfs("sysfs", "/sys", "sysfs")?;
     mount_api_vfs("devtmpfs", "/dev", "devtmpfs")?;
     mount_api_vfs("tmpfs", "/run", "tmpfs")?;
+    mount_api_vfs("devpts", "/dev/pts", "devpts")?;
+    mount_api_vfs("tmpfs", "/dev/shm", "tmpfs")?;
+    mount_api_vfs("tmpfs", "/tmp", "tmpfs")?;
+
+    fs::create_dir_all("/run/lock")
+        .with_context(|_| error::CreateDirectorySnafu { path: PathBuf::from("/run/lock") })?;
+
     Ok(())
 }
 
@@ -34,6 +129,7 @@ pub fn mount_virtual_filesystems() -> Result<(), Error> {
 /// # Errors
 ///
 /// Returns an error if the device is not found or mount operation fails.
+#[expect(dead_code, reason = "Deprecated, use phase::mounts_pre instead")]
 pub fn mount_root(config: &RootConfig) -> Result<(), Error> {
     let source = config.source();
     let fstype = config.fstype();
@@ -45,7 +141,7 @@ pub fn mount_root(config: &RootConfig) -> Result<(), Error> {
     ensure_dir("/newroot")?;
 
     let data = config.mount_options();
-    mount(Some(source), "/newroot", Some(fstype), MsFlags::empty(), data)
+    nix::mount::mount(Some(source), "/newroot", Some(fstype), MsFlags::empty(), data)
         .with_context(|_| error::MountSnafu { operation: "root filesystem at /newroot" })?;
 
     tracing::info!("Mounted {fstype} {source} at /newroot");
@@ -59,6 +155,7 @@ pub fn mount_root(config: &RootConfig) -> Result<(), Error> {
 /// # Errors
 ///
 /// Returns an error if directory creation or mount operation fails.
+#[expect(dead_code, reason = "Deprecated, use phase::mounts_pre instead")]
 pub fn mount_overlay(config: &RootConfig) -> Result<(), Error> {
     let source = config.source();
     let base = overlay_base(source);
@@ -69,8 +166,14 @@ pub fn mount_overlay(config: &RootConfig) -> Result<(), Error> {
     ensure_dir(&work)?;
 
     let opts = format!("lowerdir=/newroot,upperdir={upper},workdir={work}");
-    mount(Some("overlay"), "/newroot", Some("overlay"), MsFlags::empty(), Some(opts.as_str()))
-        .with_context(|_| error::MountSnafu { operation: "overlayfs on /newroot" })?;
+    nix::mount::mount(
+        Some("overlay"),
+        "/newroot",
+        Some("overlay"),
+        MsFlags::empty(),
+        Some(opts.as_str()),
+    )
+    .with_context(|_| error::MountSnafu { operation: "overlayfs on /newroot" })?;
 
     tracing::info!("Mounted overlayfs on /newroot (source: {source})");
     Ok(())
@@ -89,17 +192,25 @@ fn overlay_base(source: &str) -> String {
 /// # Errors
 ///
 /// Returns an error if any mount move operation fails.
-pub fn mount_move_special() -> Result<(), Error> {
+pub fn mount_move_special(extra_targets: &[PathBuf]) -> Result<(), Error> {
     move_mount("/proc", "/newroot/proc")?;
     move_mount("/sys", "/newroot/sys")?;
     move_mount("/dev", "/newroot/dev")?;
     move_mount("/run", "/newroot/run")?;
+    move_mount("/dev/pts", "/newroot/dev/pts")?;
+    move_mount("/dev/shm", "/newroot/dev/shm")?;
+
+    for target in extra_targets {
+        let newroot_target = format!("/newroot{}", target.display());
+        move_mount(&target.to_string_lossy(), &newroot_target)?;
+    }
+
     Ok(())
 }
 
 fn mount_api_vfs(source: &str, target: &str, fstype: &str) -> Result<(), Error> {
     ensure_dir(target)?;
-    mount(Some(source), target, Some(fstype), MsFlags::empty(), Option::<&str>::None)
+    nix::mount::mount(Some(source), target, Some(fstype), MsFlags::empty(), Option::<&str>::None)
         .with_context(|_| error::MountSnafu { operation: format!("{fstype} at {target}") })?;
     tracing::info!("Mounted {fstype} at {target}");
     Ok(())
@@ -107,7 +218,7 @@ fn mount_api_vfs(source: &str, target: &str, fstype: &str) -> Result<(), Error> 
 
 fn move_mount(source: &str, target: &str) -> Result<(), Error> {
     ensure_dir(target)?;
-    mount(
+    nix::mount::mount(
         Some(Path::new(source)),
         target,
         Option::<&str>::None,
