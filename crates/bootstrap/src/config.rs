@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 /// Bootstrap-specific configuration for early boot initialization.
 #[derive(Clone, Debug)]
@@ -382,7 +382,7 @@ pub enum HandoffMode {
 /// Shutdown configuration.
 #[derive(Clone, Debug, Default)]
 pub struct Shutdown {
-    pub timeout: u32,
+    pub timeout: Duration,
     pub sync: bool,
     pub umount_all: bool,
 }
