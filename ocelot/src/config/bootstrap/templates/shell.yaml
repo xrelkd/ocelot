@@ -34,7 +34,7 @@ preSwitch:
   modules: null
   network: null
   hooks: []
-  sysctl: null
+  sysctl: {}
   tmpfiles: null
   security: null
   clock: null
@@ -54,7 +54,7 @@ postSwitch:
   hooks: []
   modules: null
   network: null
-  sysctl: null
+  sysctl: {}
   tmpfiles: null
   security: null
   clock: null
@@ -69,6 +69,6 @@ postSwitch:
 
   # Shutdown configuration (used after shell exits)
   shutdown:
-    timeout: 30
+    timeoutSecs: 30
     sync: true
     umountAll: true
