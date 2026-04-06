@@ -77,7 +77,9 @@ pub fn run(command: Option<Commands>, file: Option<PathBuf>) -> Result<i32, Erro
 }
 
 fn run_bootstrap(path: impl AsRef<Path>) -> Result<i32, Error> {
-    let config = BootstrapConfig::load(path)?;
+    let mut config = BootstrapConfig::load(path)?;
+    // Validate and reorder module load order based on dependencies
+    config.validate()?;
     let handoff_mode = config.handoff_mode();
     let log_level = config.log_level;
     let bootstrap_config = ocelot_bootstrap::Config::from(config);
