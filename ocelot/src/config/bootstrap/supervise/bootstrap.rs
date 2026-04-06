@@ -96,7 +96,15 @@ impl BootstrapSuperviseConfig {
 impl From<BootstrapSuperviseConfig> for ocelot_supervise::OrchestratorConfig {
     fn from(supervise: BootstrapSuperviseConfig) -> Self {
         Self {
-            supervisors: supervise.processes.values().cloned().map(Into::into).collect(),
+            supervisors: supervise
+                .processes
+                .into_iter()
+                .map(|(name, process)| {
+                    let mut config = ocelot_supervise::SupervisorConfig::from(process);
+                    config.name = name;
+                    config
+                })
+                .collect(),
             shutdown_timeout: Duration::from_secs(supervise.shutdown_timeout_secs),
         }
     }
