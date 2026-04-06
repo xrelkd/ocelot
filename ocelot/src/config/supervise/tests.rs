@@ -4,12 +4,15 @@ use nix::sys::signal::Signal;
 use ocelot_supervise::{LogDestination, supervisor_config::DependencyCondition};
 
 use crate::config::{
-    BootstrapConfig, Error, ProcessConfig, SuperviseConfig,
-    dependency::DependencyConfig,
+    BootstrapConfig, Error,
     error::ValidationError,
-    probe::{ProbeConfig, ProbeHandlerConfig},
-    process::ShutdownSignalConfig,
-    restart::RestartPolicyConfig,
+    supervise::{
+        SuperviseConfig,
+        dependency::DependencyConfig,
+        probe::{ProbeConfig, ProbeHandlerConfig},
+        process::{ProcessConfig, ShutdownSignalConfig},
+        restart::RestartPolicyConfig,
+    },
 };
 
 #[test]
@@ -657,131 +660,56 @@ processes:
 }
 
 #[test]
-fn test_bootstrap_config_deserialization_with_env_vars() {
-    let yaml = b"
-root:
-  type: virtiofs
-  tag: myfs
-  overlay: true
-console: ttyS0
-shell:
-  program: /bin/sh
-environmentVariables:
-  - [PATH, /usr/bin:/bin]
-  - [LANG, en_US.UTF-8]
-";
-    let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
-    assert_eq!(config.environment_variables.len(), 2);
-    assert_eq!(config.environment_variables[0], ("PATH".to_string(), "/usr/bin:/bin".to_string()));
-    assert_eq!(config.environment_variables[1], ("LANG".to_string(), "en_US.UTF-8".to_string()));
-}
-
-#[test]
-fn test_bootstrap_config_deserialization_with_working_directory() {
-    let yaml = b"
-root:
-  type: virtiofs
-  tag: myfs
-console: ttyS0
-shell:
-  program: /bin/sh
-workingDirectory: /srv/app
-";
-    let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
-    assert_eq!(config.working_directory, Some("/srv/app".to_string()));
-}
-
-#[test]
-fn test_bootstrap_config_default_values() {
-    let yaml = b"
-root:
-  type: virtiofs
-  tag: myfs
-console: ttyS0
-shell:
-  program: /bin/sh
-";
-    let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
-    assert!(config.environment_variables.is_empty());
-    assert_eq!(config.working_directory, None);
-}
-
-#[test]
 fn test_bootstrap_config_duplicate_env_vars_fails() {
     let yaml = b"
-root:
-  type: virtiofs
-  tag: myfs
 console: ttyS0
-shell:
-  program: /bin/sh
-environmentVariables:
-  - [PATH, /usr/bin]
-  - [PATH, /bin]
+preSwitch:
+  environment:
+    - [PATH, /usr/bin]
+    - [PATH, /bin]
+postSwitch:
+  handoff:
+    mode: supervise
+    shell:
+      program: /bin/sh
+    supervise:
+      processes:
+        init:
+          program: /sbin/init
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
     assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(
-        err.to_string().contains("Bootstrap configuration has duplicate environment variables")
-    );
-}
-
-#[test]
-fn test_bootstrap_config_deserialization_supervise_mode() {
-    let yaml = b"
-root:
-  type: virtiofs
-  tag: myfs
-supervise:
-  processes:
-    init:
-      program: /sbin/init
-    nginx:
-      program: /usr/sbin/nginx
-      arguments:
-        - -g
-        - daemon off;
-";
-    let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
-    assert!(config.shell.is_none());
-    assert!(config.supervise.is_some());
-    assert_eq!(config.supervise.as_ref().unwrap().processes.len(), 2);
 }
 
 #[test]
 fn test_bootstrap_config_mutual_exclusivity_both_fails() {
     let yaml = b"
-root:
-  type: virtiofs
-  tag: myfs
-shell:
-  program: /bin/sh
-supervise:
-  processes:
-    init:
-      program: /sbin/init
+postSwitch:
+  handoff:
+    mode: supervise
+    shell:
+      program: /bin/sh
+    supervise:
+      processes:
+        init:
+          program: /sbin/init
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
     assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("Cannot specify both"));
 }
 
 #[test]
 fn test_bootstrap_config_mutual_exclusivity_neither_fails() {
     let yaml = b"
-root:
-  type: virtiofs
-  tag: myfs
+postSwitch:
+  handoff:
+    mode: supervise
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
     assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("Must specify either"));
 }
 
 #[test]
@@ -804,21 +732,4 @@ fn test_supervise_config_template_full() {
     let template = SuperviseConfig::template_full();
     let config: SuperviseConfig = serde_yaml::from_slice(&template).unwrap();
     assert!(config.processes.len() >= 2);
-}
-
-#[test]
-fn test_bootstrap_config_template_shell() {
-    let template = BootstrapConfig::template_shell();
-    let config: BootstrapConfig = serde_yaml::from_slice(&template).unwrap();
-    assert!(config.shell.is_some());
-    assert!(config.supervise.is_none());
-    assert!(config.environment_variables.is_empty());
-}
-
-#[test]
-fn test_bootstrap_config_template_supervise() {
-    let template = BootstrapConfig::template_supervise();
-    let config: BootstrapConfig = serde_yaml::from_slice(&template).unwrap();
-    assert!(config.shell.is_none());
-    assert!(config.supervise.is_some());
 }

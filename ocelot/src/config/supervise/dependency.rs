@@ -33,7 +33,7 @@ impl From<DependencyCondition> for supervisor_config::DependencyCondition {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::dependency::{DependencyCondition, DependencyConfig};
+    use super::{DependencyCondition, DependencyConfig};
 
     #[test]
     fn test_dependency_condition_started() {

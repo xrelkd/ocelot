@@ -15,7 +15,12 @@ use serde::{
 };
 
 use crate::config::{
-    dependency::DependencyConfig, error, probe::ProbeConfig, restart::RestartPolicyConfig,
+    error,
+    supervise::{
+        dependency::DependencyConfig,
+        probe::{ProbeConfig, ProbeHandlerConfig},
+        restart::RestartPolicyConfig,
+    },
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
@@ -177,8 +182,8 @@ impl ProcessConfig {
             );
 
             match &p.handler {
-                crate::config::ProbeHandlerConfig::HttpGet { port, .. }
-                | crate::config::ProbeHandlerConfig::TcpSocket { port, .. } => {
+                ProbeHandlerConfig::HttpGet { port, .. }
+                | ProbeHandlerConfig::TcpSocket { port, .. } => {
                     snafu::ensure!(
                         (1..=65535).contains(port),
                         error::InvalidProbePortSnafu { port: *port }
@@ -452,7 +457,7 @@ mod tests {
     use bytesize::ByteSize;
     use nix::sys::signal::Signal;
 
-    use crate::config::process::{LogRotationConfig, ProcessConfig, ShutdownSignalConfig};
+    use super::{LogRotationConfig, ProcessConfig, ShutdownSignalConfig};
 
     #[test]
     fn test_shutdown_signal_sigterm_explicit() {
@@ -461,6 +466,7 @@ type: sigterm
 ";
         let config: ShutdownSignalConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config, ShutdownSignalConfig::Sigterm);
+        assert_eq!(config.to_signal(), Signal::SIGTERM);
     }
 
     #[test]

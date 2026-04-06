@@ -1,3 +1,11 @@
+mod dependency;
+mod probe;
+mod process;
+mod restart;
+
+#[cfg(test)]
+mod tests;
+
 use std::{collections::HashMap, path::Path};
 
 use ocelot_supervise::supervisor_config;
@@ -8,7 +16,8 @@ use serde_with::{DisplayFromStr, serde_as};
 use snafu::ResultExt;
 use tracing::Level;
 
-use crate::config::{error, error::Error, process::ProcessConfig, utils};
+pub use self::process::ProcessConfig;
+use crate::config::{error, error::Error, utils};
 
 const fn default_shutdown_timeout_secs() -> u64 { 60 }
 
@@ -191,11 +200,9 @@ impl SuperviseConfig {
         }
     }
 
-    pub fn template_minimal() -> Vec<u8> {
-        include_bytes!("templates/supervise/minimal.yaml").to_vec()
-    }
+    pub fn template_minimal() -> Vec<u8> { include_bytes!("templates/minimal.yaml").to_vec() }
 
-    pub fn template_basic() -> Vec<u8> { include_bytes!("templates/supervise/basic.yaml").to_vec() }
+    pub fn template_basic() -> Vec<u8> { include_bytes!("templates/basic.yaml").to_vec() }
 
-    pub fn template_full() -> Vec<u8> { include_bytes!("templates/supervise/full.yaml").to_vec() }
+    pub fn template_full() -> Vec<u8> { include_bytes!("templates/full.yaml").to_vec() }
 }

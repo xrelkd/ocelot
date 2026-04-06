@@ -11,7 +11,11 @@ use std::{
 use clap::Subcommand;
 use snafu::ResultExt;
 
-use crate::{config::BootstrapConfig, error, error::Error};
+use crate::{
+    config::{BootstrapConfig, HandoffMode},
+    error,
+    error::Error,
+};
 
 #[derive(Clone, Subcommand)]
 pub enum Commands {
@@ -74,22 +78,21 @@ pub fn run(command: Option<Commands>, file: Option<PathBuf>) -> Result<i32, Erro
 
 fn run_bootstrap(path: impl AsRef<Path>) -> Result<i32, Error> {
     let config = BootstrapConfig::load(path)?;
-    let bootstrap_config = config.to_bootstrap_config();
-
-    if let Some(shell_config) = config.to_shell_config() {
-        init_tracing_subscriber(tracing::Level::INFO);
-        ocelot_bootstrap::execute_shell(&bootstrap_config, &shell_config)?;
-        ocelot_bootstrap::shutdown()?;
-    } else if let Some(orchestrator) = config.to_orchestrator_config() {
-        init_tracing_subscriber(config.log_level);
-        ocelot_bootstrap::execute_supervise(&bootstrap_config, orchestrator)?;
-        ocelot_bootstrap::shutdown()?;
-    } else {
-        return Err(Error::InvalidConfig {
-            message: "Configuration must specify either shell mode or supervise mode".to_string(),
-        });
+    let handoff_mode = config.handoff_mode();
+    let log_level = config.log_level;
+    let bootstrap_config = ocelot_bootstrap::Config::from(config);
+    match handoff_mode {
+        HandoffMode::Shell => {
+            init_tracing_subscriber(tracing::Level::INFO);
+            ocelot_bootstrap::execute_shell(&bootstrap_config)?;
+            ocelot_bootstrap::shutdown()?;
+        }
+        HandoffMode::Supervise => {
+            init_tracing_subscriber(log_level);
+            ocelot_bootstrap::execute_supervise(&bootstrap_config)?;
+            ocelot_bootstrap::shutdown()?;
+        }
     }
-
     Ok(0)
 }
 

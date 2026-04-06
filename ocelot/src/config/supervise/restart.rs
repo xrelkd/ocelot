@@ -40,7 +40,7 @@ impl From<RestartPolicyConfig> for supervisor_config::RestartPolicy {
 mod tests {
     use std::time::Duration;
 
-    use crate::config::restart::RestartPolicyConfig;
+    use super::RestartPolicyConfig;
 
     #[test]
     fn test_restart_policy_never_serde() {

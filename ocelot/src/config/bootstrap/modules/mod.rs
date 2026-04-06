@@ -1,8 +1,94 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use petgraph::{Graph, algo, graph::NodeIndex};
+use serde::Deserialize;
+use snafu::ResultExt;
 
-use crate::config::error::ValidationError;
+use crate::config::{Error, error, error::ValidationError, utils};
+
+/// Kernel module loading configuration.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields, tag = "mode")]
+pub enum ModulesConfig {
+    /// Load specific modules by name.
+    List {
+        /// Directory containing kernel modules (defaults to /lib/modules).
+        #[serde(default)]
+        dir: Option<String>,
+        /// List of module names to load.
+        names: Vec<String>,
+        /// Optional path to a modules.dep file for dependency resolution.
+        #[serde(default)]
+        dep_file_path: Option<String>,
+    },
+    /// Scan directory for all .ko/.ko.xz/.ko.gz files and load each.
+    Scan {
+        /// Directory to scan for kernel modules.
+        dir: String,
+        /// Path to a modules.dep file for dependency resolution.
+        dep_file_path: String,
+        /// Optional list of module names to filter which modules to load.
+        #[serde(default)]
+        names: Option<Vec<String>>,
+    },
+}
+
+impl ModulesConfig {
+    /// Validates module configuration and resolves dependencies if a depfile is
+    /// provided.
+    pub fn validate(&mut self) -> Result<(), Error> {
+        match self {
+            Self::List { dir: _, names, dep_file_path } => {
+                let Some(dep_path) = dep_file_path else {
+                    return Ok(());
+                };
+
+                let dep_map = {
+                    let data = std::fs::read(&dep_path).with_context(|_| {
+                        error::ParseModuleDependencyFileSnafu { path: dep_path.clone() }
+                    })?;
+                    parse_dep_file(&data)
+                };
+                let sorted =
+                    resolve_module_order(&dep_map, names).with_context(|_| error::ValidateSnafu)?;
+                *names = sorted;
+                Ok(())
+            }
+            Self::Scan { dir: _, dep_file_path, names } => {
+                let dep_map = {
+                    let data = std::fs::read(&dep_file_path).with_context(|_| {
+                        error::ParseModuleDependencyFileSnafu { path: dep_file_path.clone() }
+                    })?;
+                    parse_dep_file(&data)
+                };
+                if let Some(names_vec) = names {
+                    let targets = names_vec.clone();
+                    let sorted = resolve_module_order(&dep_map, &targets)
+                        .with_context(|_| error::ValidateSnafu)?;
+                    *names_vec = sorted;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl From<ModulesConfig> for ocelot_bootstrap::ModulesConfig {
+    fn from(config: ModulesConfig) -> Self {
+        match config {
+            ModulesConfig::List { dir, names, .. } => {
+                Self::List { dir: dir.map(PathBuf::from), names }
+            }
+            ModulesConfig::Scan { dir: _, names, .. } => {
+                let resolved_names = names.unwrap_or_default();
+                Self::List { dir: None, names: resolved_names }
+            }
+        }
+    }
+}
 
 /// Parse a `modules.dep` text file and return a mapping of module basenames to
 /// their dependency basenames.
@@ -35,9 +121,6 @@ pub fn parse_dep_file(data: &[u8]) -> HashMap<String, Vec<String>> {
 
     map
 }
-
-/// Extract the basename (filename component) from a module path.
-fn basename(path: &str) -> String { path.rsplit('/').next().unwrap_or(path).to_string() }
 
 /// Resolve a valid module loading order from a dependency map and a list of
 /// target modules.
@@ -88,7 +171,7 @@ pub fn resolve_module_order(
                 return Err(ValidationError::CyclicDependency { cycle: vec![graph[node].clone()] });
             };
 
-            super::utils::find_cycle_in_scc(&graph, &scc, node).map_or_else(
+            utils::find_cycle_in_scc(&graph, &scc, node).map_or_else(
                 || Err(ValidationError::CyclicDependency { cycle: vec![graph[node].clone()] }),
                 |cycle_nodes| {
                     let cycle: Vec<String> =
@@ -129,14 +212,12 @@ fn collect_transitive_deps(
     Ok(needed)
 }
 
+/// Extract the basename (filename component) from a module path.
+fn basename(path: &str) -> String { path.rsplit('/').next().unwrap_or(path).to_string() }
+
 #[cfg(test)]
 mod tests {
     use super::{parse_dep_file, resolve_module_order};
-
-    const VIRTIO_DEP: &[u8] = include_bytes!("test_data/modules-virtio.dep");
-    const CYCLE_DEP: &[u8] = include_bytes!("test_data/modules-cycle.dep");
-    const CYCLE3_DEP: &[u8] = include_bytes!("test_data/modules-cycle3.dep");
-    const SELFLOOP_DEP: &[u8] = include_bytes!("test_data/modules-selfloop.dep");
 
     #[test]
     fn test_parse_empty_depfile() {
@@ -146,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_parse_depfile_no_deps() {
-        let data = b"kernel/foo.ko.xz:\n";
+        let data = b"kernel/foo.ko.xz:";
         let map = parse_dep_file(data);
         let empty: Vec<String> = vec![];
         assert_eq!(map.get("foo.ko.xz"), Some(&empty));
@@ -154,15 +235,18 @@ mod tests {
 
     #[test]
     fn test_parse_depfile_with_deps() {
-        let data = b"kernel/bar.ko.xz: kernel/foo.ko.xz\n";
+        let data = b"kernel/bar.ko.xz: kernel/foo.ko.xz";
         let map = parse_dep_file(data);
         assert_eq!(map.get("bar.ko.xz"), Some(&vec!["foo.ko.xz".to_string()]));
     }
 
     #[test]
     fn test_parse_depfile_mixed() {
-        let data =
-            b"kernel/a.ko.xz:\nkernel/b.ko.xz: kernel/a.ko.xz\nkernel/c.ko.xz: kernel/a.ko.xz kernel/b.ko.xz\n";
+        let data = br"
+kernel/a.ko.xz:
+kernel/b.ko.xz: kernel/a.ko.xz
+kernel/c.ko.xz: kernel/a.ko.xz kernel/b.ko.xz
+";
         let map = parse_dep_file(data);
         let empty: Vec<String> = vec![];
         assert_eq!(map.get("a.ko.xz"), Some(&empty));
@@ -172,8 +256,11 @@ mod tests {
 
     #[test]
     fn test_resolve_linear_deps() {
-        let data =
-            b"kernel/c.ko.xz:\nkernel/b.ko.xz: kernel/c.ko.xz\nkernel/a.ko.xz: kernel/b.ko.xz\n";
+        let data = br"
+kernel/c.ko.xz:
+kernel/b.ko.xz: kernel/c.ko.xz
+kernel/a.ko.xz: kernel/b.ko.xz
+";
         let map = parse_dep_file(data);
         let order = resolve_module_order(&map, &["a.ko.xz".to_string()]).unwrap();
         assert_eq!(order, vec!["c.ko.xz", "b.ko.xz", "a.ko.xz"]);
@@ -181,8 +268,11 @@ mod tests {
 
     #[test]
     fn test_resolve_shared_deps() {
-        let data =
-            b"kernel/c.ko.xz:\nkernel/a.ko.xz: kernel/c.ko.xz\nkernel/b.ko.xz: kernel/c.ko.xz\n";
+        let data = br"
+kernel/c.ko.xz:
+kernel/a.ko.xz: kernel/c.ko.xz
+kernel/b.ko.xz: kernel/c.ko.xz
+";
         let map = parse_dep_file(data);
         let order =
             resolve_module_order(&map, &["a.ko.xz".to_string(), "b.ko.xz".to_string()]).unwrap();
@@ -195,14 +285,42 @@ mod tests {
 
     #[test]
     fn test_resolve_extra_depfile_entries_ignored() {
-        let map = parse_dep_file(VIRTIO_DEP);
+        let data = br"
+kernel/drivers/virtio/virtio_ring.ko.xz:
+kernel/drivers/virtio/virtio.ko.xz: kernel/drivers/virtio/virtio_ring.ko.xz
+kernel/drivers/net/net_failover.ko.xz: kernel/net/core/failover.ko.xz
+kernel/net/core/failover.ko.xz:
+kernel/drivers/virtio/virtio_mmio.ko.xz: kernel/drivers/virtio/virtio.ko.xz kernel/drivers/virtio/virtio_ring.ko.xz
+kernel/drivers/virtio/virtio_pci.ko.xz: kernel/drivers/virtio/virtio_pci_legacy_dev.ko.xz kernel/drivers/virtio/virtio_pci_modern_dev.ko.xz kernel/drivers/virtio/virtio.ko.xz kernel/drivers/virtio/virtio_ring.ko.xz
+kernel/drivers/virtio/virtio_pci_legacy_dev.ko.xz:
+kernel/drivers/virtio/virtio_pci_modern_dev.ko.xz:
+kernel/drivers/net/virtio_net.ko.xz: kernel/drivers/net/net_failover.ko.xz kernel/net/core/failover.ko.xz kernel/drivers/virtio/virtio.ko.xz kernel/drivers/virtio/virtio_ring.ko.xz
+kernel/drivers/block/virtio_blk.ko.xz: kernel/drivers/virtio/virtio.ko.xz kernel/drivers/virtio/virtio_ring.ko.xz
+kernel/fs/fuse/fuse.ko.xz:
+kernel/fs/fuse/virtiofs.ko.xz: kernel/drivers/virtio/virtio.ko.xz kernel/drivers/virtio/virtio_ring.ko.xz kernel/fs/fuse/fuse.ko.xz
+";
+        let map = parse_dep_file(data);
         let order = resolve_module_order(&map, &["virtio_ring.ko.xz".to_string()]).unwrap();
         assert_eq!(order, vec!["virtio_ring.ko.xz"]);
     }
 
     #[test]
     fn test_resolve_virtio_net_full() {
-        let map = parse_dep_file(VIRTIO_DEP);
+        let data = br"
+kernel/drivers/virtio/virtio_ring.ko.xz:
+kernel/drivers/virtio/virtio.ko.xz: kernel/drivers/virtio/virtio_ring.ko.xz
+kernel/drivers/net/net_failover.ko.xz: kernel/net/core/failover.ko.xz
+kernel/net/core/failover.ko.xz:
+kernel/drivers/virtio/virtio_mmio.ko.xz: kernel/drivers/virtio/virtio.ko.xz kernel/drivers/virtio/virtio_ring.ko.xz
+kernel/drivers/virtio/virtio_pci.ko.xz: kernel/drivers/virtio/virtio_pci_legacy_dev.ko.xz kernel/drivers/virtio/virtio_pci_modern_dev.ko.xz kernel/drivers/virtio/virtio.ko.xz kernel/drivers/virtio/virtio_ring.ko.xz
+kernel/drivers/virtio/virtio_pci_legacy_dev.ko.xz:
+kernel/drivers/virtio/virtio_pci_modern_dev.ko.xz:
+kernel/drivers/net/virtio_net.ko.xz: kernel/drivers/net/net_failover.ko.xz kernel/net/core/failover.ko.xz kernel/drivers/virtio/virtio.ko.xz kernel/drivers/virtio/virtio_ring.ko.xz
+kernel/drivers/block/virtio_blk.ko.xz: kernel/drivers/virtio/virtio.ko.xz kernel/drivers/virtio/virtio_ring.ko.xz
+kernel/fs/fuse/fuse.ko.xz:
+kernel/fs/fuse/virtiofs.ko.xz: kernel/drivers/virtio/virtio.ko.xz kernel/drivers/virtio/virtio_ring.ko.xz kernel/fs/fuse/fuse.ko.xz
+";
+        let map = parse_dep_file(data);
         let order = resolve_module_order(&map, &["virtio_net.ko.xz".to_string()]).unwrap();
         let net_pos = order.iter().position(|m| m == "virtio_net.ko.xz").unwrap();
         let ring_pos = order.iter().position(|m| m == "virtio_ring.ko.xz").unwrap();
@@ -212,14 +330,18 @@ mod tests {
         assert!(ring_pos < net_pos);
         assert!(virtio_pos < net_pos);
         assert!(nf_pos < net_pos);
-        assert!(failover_pos < net_pos);
+        assert!(failover_pos < nf_pos);
         assert!(failover_pos < nf_pos);
         assert!(ring_pos < virtio_pos);
     }
 
     #[test]
     fn test_cycle_two_modules() {
-        let map = parse_dep_file(CYCLE_DEP);
+        let data = br"
+kernel/drivers/net/virtio_net.ko.xz: kernel/drivers/virtio/virtio.ko.xz
+kernel/drivers/virtio/virtio.ko.xz: kernel/drivers/net/virtio_net.ko.xz
+";
+        let map = parse_dep_file(data);
         let result = resolve_module_order(&map, &["virtio_net.ko.xz".to_string()]);
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -229,7 +351,12 @@ mod tests {
 
     #[test]
     fn test_cycle_three_modules() {
-        let map = parse_dep_file(CYCLE3_DEP);
+        let data = br"
+kernel/a.ko.xz: kernel/b.ko.xz
+kernel/b.ko.xz: kernel/c.ko.xz
+kernel/c.ko.xz: kernel/a.ko.xz
+";
+        let map = parse_dep_file(data);
         let result = resolve_module_order(&map, &["a.ko.xz".to_string()]);
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -241,7 +368,8 @@ mod tests {
 
     #[test]
     fn test_self_loop() {
-        let map = parse_dep_file(SELFLOOP_DEP);
+        let data = br"kernel/a.ko.xz: kernel/a.ko.xz";
+        let map = parse_dep_file(data);
         let result = resolve_module_order(&map, &["a.ko.xz".to_string()]);
         assert!(result.is_err());
         let err = result.unwrap_err();

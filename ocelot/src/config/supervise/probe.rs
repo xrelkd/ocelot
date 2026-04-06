@@ -70,7 +70,7 @@ impl From<ProbeConfig> for supervisor_probe::Probe {
 mod tests {
     use std::time::Duration;
 
-    use crate::config::probe::{ProbeConfig, ProbeHandlerConfig};
+    use super::{ProbeConfig, ProbeHandlerConfig};
 
     #[test]
     fn test_probe_handler_http_get_serde() {
