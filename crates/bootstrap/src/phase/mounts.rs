@@ -19,11 +19,15 @@ const DEVICE_WAIT_INTERVAL: Duration = Duration::from_millis(100);
 
 pub fn pre(specs: &[MountSpec]) -> Result<(), Error> {
     for spec in specs {
-        let target_path = if spec.target.as_os_str().is_empty() {
-            Path::new("/newroot")
-        } else {
-            spec.target.as_path()
-        };
+        let target_path =
+            if spec.target.as_os_str().is_empty() { Path::new("/newroot") } else { &spec.target };
+
+        // Ensure the target directory exists
+        if !target_path.exists() {
+            fs::create_dir_all(target_path).with_context(|_| error::CreateDirectorySnafu {
+                path: target_path.to_path_buf(),
+            })?;
+        }
 
         let flags = spec.flags;
         let options = spec.options.as_deref();
@@ -61,7 +65,14 @@ pub fn pre(specs: &[MountSpec]) -> Result<(), Error> {
 pub fn post(specs: &[MountSpec]) -> Result<(), Error> {
     for spec in specs {
         let target_path =
-            if spec.target.as_os_str().is_empty() { Path::new("/") } else { spec.target.as_path() };
+            if spec.target.as_os_str().is_empty() { Path::new("/") } else { &spec.target };
+
+        // Ensure the target directory exists
+        if !target_path.exists() {
+            fs::create_dir_all(target_path).with_context(|_| error::CreateDirectorySnafu {
+                path: target_path.to_path_buf(),
+            })?;
+        }
 
         let flags = spec.flags;
         let options = spec.options.as_deref();
@@ -189,6 +200,10 @@ fn overlay_base(source: &str) -> String {
 
 /// Moves virtual filesystems from the old root to /newroot.
 ///
+/// The following mounts are moved: /proc, /sys, /dev (with its subtree),
+/// /run. The /dev subtree includes /dev/pts and /dev/shm which are moved
+/// automatically when /dev is moved, so they don't need to be moved separately.
+///
 /// # Errors
 ///
 /// Returns an error if any mount move operation fails.
@@ -197,8 +212,6 @@ pub fn mount_move_special(extra_targets: &[PathBuf]) -> Result<(), Error> {
     move_mount("/sys", "/newroot/sys")?;
     move_mount("/dev", "/newroot/dev")?;
     move_mount("/run", "/newroot/run")?;
-    move_mount("/dev/pts", "/newroot/dev/pts")?;
-    move_mount("/dev/shm", "/newroot/dev/shm")?;
 
     for target in extra_targets {
         let newroot_target = format!("/newroot{}", target.display());
