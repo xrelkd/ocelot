@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde::Deserialize;
 
 /// `ShutdownConfig`.
@@ -5,7 +7,7 @@ use serde::Deserialize;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ShutdownConfig {
     #[serde(default)]
-    pub timeout: u32,
+    pub timeout_secs: u64,
     #[serde(default = "default_true")]
     pub sync: bool,
     #[serde(default = "default_true")]
@@ -14,7 +16,11 @@ pub struct ShutdownConfig {
 
 impl From<ShutdownConfig> for ocelot_bootstrap::Shutdown {
     fn from(config: ShutdownConfig) -> Self {
-        Self { timeout: config.timeout, sync: config.sync, umount_all: config.umount_all }
+        Self {
+            timeout: Duration::from_secs(config.timeout_secs),
+            sync: config.sync,
+            umount_all: config.umount_all,
+        }
     }
 }
 
