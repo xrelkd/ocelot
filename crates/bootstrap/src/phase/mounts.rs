@@ -9,9 +9,8 @@ use nix::mount::MsFlags;
 use snafu::ResultExt;
 
 use crate::{
-    config::{MountSpec, RootConfig},
-    error,
-    error::Error,
+    config::{MountSource, MountSpec, RootConfig},
+    error::{self, Error},
 };
 
 const DEVICE_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -34,12 +33,11 @@ pub fn pre(specs: &[MountSpec]) -> Result<(), Error> {
 
         // Build source path as a string, then convert to &Path
         let source_string = match spec.source {
-            crate::config::MountSource::Device(ref d) => d.clone(),
-            crate::config::MountSource::VirtiofsTag(ref t)
-            | crate::config::MountSource::NinePTag(ref t) => t.clone(),
-            crate::config::MountSource::Virtual => String::new(),
-            crate::config::MountSource::Overlay(_) => "overlay".to_string(),
-            crate::config::MountSource::Nfs { ref server, ref export } => {
+            MountSource::Device(ref d) => d.clone(),
+            MountSource::VirtiofsTag(ref t) | MountSource::NinePTag(ref t) => t.clone(),
+            MountSource::Virtual => String::new(),
+            MountSource::Overlay(_) => "overlay".to_string(),
+            MountSource::Nfs { ref server, ref export } => {
                 format!("{server}:{export}")
             }
         };
@@ -78,12 +76,11 @@ pub fn post(specs: &[MountSpec]) -> Result<(), Error> {
         let options = spec.options.as_deref();
 
         let source_string = match spec.source {
-            crate::config::MountSource::Device(ref d) => d.clone(),
-            crate::config::MountSource::VirtiofsTag(ref t)
-            | crate::config::MountSource::NinePTag(ref t) => t.clone(),
-            crate::config::MountSource::Virtual => String::new(),
-            crate::config::MountSource::Overlay(_) => "overlay".to_string(),
-            crate::config::MountSource::Nfs { ref server, ref export } => {
+            MountSource::Device(ref d) => d.clone(),
+            MountSource::VirtiofsTag(ref t) | MountSource::NinePTag(ref t) => t.clone(),
+            MountSource::Virtual => String::new(),
+            MountSource::Overlay(_) => "overlay".to_string(),
+            MountSource::Nfs { ref server, ref export } => {
                 format!("{server}:{export}")
             }
         };
