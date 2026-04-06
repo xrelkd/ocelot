@@ -11,6 +11,9 @@ mod security;
 mod supervise;
 mod system;
 
+#[cfg(test)]
+mod tests;
+
 pub use self::{
     core::{BootstrapConfig, HandoffMode},
     supervise::{BootScriptConfig, BootstrapSuperviseConfig},
