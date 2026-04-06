@@ -16,7 +16,7 @@ Additionally, the current configuration validation does not properly validate mo
 - **Create `phase/` module** with `pre()` / `post()` functions per subsystem (clock, sysctl, tmpfiles, symlinks, environment, modules, network, mounts, hooks, security, handoff)
 - **Rewrite `execute_supervise` / `execute_shell`** to follow phased execution order with proper timing
 - **Split `switch_root`** into `only()` (pivot_root only, no exec) and separate handoff functions
-- **Add mount flag support** (`MS_RDONLY`, `MS_NOEXEC`, `MS_NOSUID`, etc.) to `MountSpec`
+- **Replace mount flag string list** (`flags: Vec<String>`) with **user-friendly boolean switches** and an `AtimeMode` enum for atime configuration
 - **Add mount namespace isolation** (`MS_REC | MS_PRIVATE`) before switch_root operations
 - **Add `/dev/pts`, `/dev/shm`, `/tmp`** to virtual filesystem mounts
 - **Use fully qualified names** for nix crate functions (e.g., `nix::mount::mount()` instead of `mount::mount()`)

@@ -135,3 +135,25 @@ The analysis document identifies 8 phases of a complete boot process, of which o
 - **[Binary size growth]** New phase module and types increase bootstrap binary → Mitigation: unused code is properly stripped; actual runtime code is minimal
 - **[Validation complexity]** Enhanced validation adds complexity to config loading → Mitigation: centralizes important safety checks that prevent boot failures
 - **[Name verbosity]** Fully qualified nix names are more verbose → Mitigation: improved clarity outweighs verbosity, IDEs can help with completion
+
+## Refinements
+
+### Mount Flags: User-Friendly Boolean Switches
+
+**Problem:** The original `MountSpecConfig` used `flags: Vec<String>` requiring users to know Linux kernel constant names (`MS_RDONLY`, `MS_NOEXEC`, etc.). This was unuser-friendly, not discoverable, and typos were silently ignored.
+
+**Solution:** Replace string flags with explicit boolean fields for common use cases:
+
+- `read_only`, `no_exec`, `no_suid`, `no_dev` (security)
+- `sync`, `dir_sync`, `mandatory_locks`, `posix_acl` (advanced)
+- `atime: AtimeMode` enum (`Default`, `NoAtime`, `RelAtime`, `StrictAtime`, `LazyTime`)
+
+All fields are `#[serde(default)]` with defaults: `false` for booleans, `AtimeMode::Default` for atime.
+
+**YAML naming:** Although Rust fields use `snake_case`, YAML keys use `camelCase` via `#[serde(rename_all = "camelCase")]`. So in YAML you write: `readOnly`, `noExec`, `noSuid`, `noDev`, `dirSync`, `mandatoryLocks`, `posixAcl`.
+
+**Conversion:** Build `MsFlags` bitmask by OR-ing bits from boolean fields. No escape hatch — all supported flags are explicitly enumerated.
+
+**Rationale for exposed flags:** Covers security (ro, noexec, nosuid, nodev) and performance tuning (atime modes, sync). Internal flags (MS_REC, MS_MOVE, propagation flags) remain bootstrap-internal.
+
+**Atime as enum:** Atime flags are mutually exclusive; enum prevents invalid combinations at compile/YAML validation time.

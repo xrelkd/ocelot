@@ -44,11 +44,11 @@
 
 ### Requirement: SysctlConfig SHALL define kernel parameter settings
 
-`SysctlConfig` SHALL be a `HashMap<String, serde_yaml::Value>` in the serialization layer and `HashMap<String, String>` in the runtime layer. Values SHALL be converted to strings at parse time.
+`SysctlConfig` SHALL be a struct with a field `values: HashMap<String, String>` in the serialization layer. The runtime `Sysctl` SHALL be a struct with field `key_values: HashMap<String, String>`. Kernel sysctl values are always strings.
 
 #### Scenario: Sysctl parameter setting
 
-- **WHEN** `sysctl` specifies `kernel.panic: 10`
+- **WHEN** `sysctl` specifies `values: { kernel.panic: 10 }`
 - **THEN** the value is written to `/proc/sys/kernel/panic` during the appropriate phase
 
 ### Requirement: TmpfileConfig SHALL define temporary file/directory creation
