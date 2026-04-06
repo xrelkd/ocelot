@@ -1,0 +1,76 @@
+# Ocelot Bootstrap Configuration (Supervise Mode)
+#
+# This template demonstrates the three-tier phased architecture for bootstrap.
+# Supervise mode hands off to the process supervisor after boot.
+
+# Console device
+console: console
+
+# Log level
+logLevel: info
+
+# Pre-switch phase
+preSwitch:
+  mounts:
+    - type: virtiofs
+      tag: rootfs
+      target: /newroot
+      overlay: false
+      # Optional mount flags (all default to false):
+      # readOnly: true
+      # noExec: true
+      # noSuid: true
+      # noDev: true
+      # sync: true
+      # dirSync: true
+      # mandatoryLocks: true
+      # posixAcl: true
+      # atime: noAtime  # Default, NoAtime, RelAtime, StrictAtime, LazyTime
+  environment: []
+  symlinks: []
+  modules: null
+  network: null
+  hooks: []
+  sysctl: null
+  tmpfiles: null
+  security: null
+  clock: null
+
+# Switch-root phase
+switchRoot:
+  method: pivotRoot
+  oldRootDir: /oldroot
+  cleanupOldRoot: true
+  moveSpecial: true
+
+# Post-switch phase
+postSwitch:
+  environment: []
+  symlinks: []
+  mounts: []
+  hooks: []
+  modules: null
+  network: null
+  sysctl: null
+  tmpfiles: null
+  security: null
+  clock: null
+
+  # Handoff configuration
+  handoff:
+    mode: supervise
+    supervise:
+      processes:
+        init:
+          program: /sbin/init
+        http-server:
+          program: /usr/bin/nginx
+          arguments:
+            - -g
+            - daemon off;
+    # shell not used
+
+  shutdown:
+    timeout: 30
+    sync: true
+    umountAll: true

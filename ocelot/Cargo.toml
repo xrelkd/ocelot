@@ -37,7 +37,12 @@ snafu         = { workspace = true }
 ocelot-bootstrap = { workspace = true }
 ocelot-entry     = { workspace = true }
 ocelot-idle      = { workspace = true }
+ocelot-supervise = { workspace = true }
 ocelot-zombie    = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
 ocelot-supervise = { workspace = true }
 
 [lints]

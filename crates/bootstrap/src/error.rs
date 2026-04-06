@@ -32,8 +32,8 @@ pub enum Error {
     #[snafu(display("Failed to create directory '{}': {source}", path.display()))]
     CreateDirectory { path: PathBuf, source: std::io::Error },
 
-    #[snafu(display("Failed to create symlink '{target}' -> '{link_source}': {source}"))]
-    CreateSymlink { link_source: String, target: String, source: std::io::Error },
+    #[snafu(display("Failed to create symlink '{}' -> '{}': {source}", link_source.display(), target.display()))]
+    CreateSymlink { link_source: PathBuf, target: PathBuf, source: std::io::Error },
 
     #[snafu(display("Failed to open kernel module '{}': {source}", path.display()))]
     OpenModule { path: PathBuf, source: std::io::Error },
@@ -55,4 +55,7 @@ pub enum Error {
 
     #[snafu(display("Failed to fork child process: {source}"))]
     SpawnChild { source: nix::Error },
+
+    #[snafu(display("Hook error: {message}"))]
+    Hook { message: String },
 }

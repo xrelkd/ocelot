@@ -1,0 +1,74 @@
+# Ocelot Bootstrap Configuration (Shell Mode)
+#
+# This template demonstrates the three-tier phased architecture for bootstrap.
+# Shell mode spawns an interactive shell after boot for debugging.
+
+# Console device (default: "console")
+console: console
+
+# Log level (default: "info")
+logLevel: info
+
+# Pre-switch phase
+preSwitch:
+  # Mount the root filesystem (required)
+  mounts:
+    - type: virtiofs
+      tag: rootfs
+      target: /newroot
+      overlay: false
+      # Optional mount flags as boolean fields (all default to false):
+      # readOnly: true          # MS_RDONLY
+      # noExec: true            # MS_NOEXEC
+      # noSuid: true            # MS_NOSUID
+      # noDev: true             # MS_NODEV
+      # sync: true              # MS_SYNCHRONOUS
+      # dirSync: true           # MS_DIRSYNC
+      # mandatoryLocks: true    # MS_MANDLOCK
+      # posixAcl: true          # MS_POSIXACL
+      # atime: noAtime          # AtimeMode: Default, NoAtime, RelAtime, StrictAtime, LazyTime
+
+  # Optional configuration
+  environment: []
+  symlinks: []
+  modules: null
+  network: null
+  hooks: []
+  sysctl: null
+  tmpfiles: null
+  security: null
+  clock: null
+
+# Switch-root phase
+switchRoot:
+  method: pivotRoot
+  oldRootDir: /oldroot
+  cleanupOldRoot: true
+  moveSpecial: true
+
+# Post-switch phase
+postSwitch:
+  environment: []
+  symlinks: []
+  mounts: []
+  hooks: []
+  modules: null
+  network: null
+  sysctl: null
+  tmpfiles: null
+  security: null
+  clock: null
+
+  # Handoff configuration
+  handoff:
+    mode: shell
+    shell:
+      program: /bin/sh
+      arguments: []
+      # workingDirectory: null
+
+  # Shutdown configuration (used after shell exits)
+  shutdown:
+    timeout: 30
+    sync: true
+    umountAll: true

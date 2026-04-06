@@ -1,3 +1,0 @@
-kernel/a.ko.xz: kernel/b.ko.xz
-kernel/b.ko.xz: kernel/c.ko.xz
-kernel/c.ko.xz: kernel/a.ko.xz
