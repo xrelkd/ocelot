@@ -78,11 +78,11 @@ nix = { version = "0.31", features = [
   "user",
   "zerocopy",
 ] }
-petgraph = "0.8"
-procfs = "0.18"
+
+procfs       = "0.18"
 resolve-path = "0.1"
-snafu = "0.9"
-tempfile = "3"
+snafu        = "0.9"
+tempfile     = "3"
 
 ocelot-bootstrap     = { path = "./crates/bootstrap" }
 ocelot-entry         = { path = "./crates/entry" }

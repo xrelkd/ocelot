@@ -3,11 +3,13 @@ use std::{
     path::PathBuf,
 };
 
-use petgraph::{Graph, algo, graph::NodeIndex};
 use serde::Deserialize;
 use snafu::ResultExt;
 
-use crate::config::{Error, error, error::ValidationError, utils};
+use crate::{
+    config::{Error, error, error::ValidationError},
+    graph::DiGraph,
+};
 
 /// Kernel module loading configuration.
 #[derive(Clone, Debug, Deserialize)]
@@ -171,8 +173,8 @@ fn parse_dep_file(data: &[u8]) -> HashMap<String, Vec<String>> {
 /// Resolve a valid module loading order from a dependency map and a list of
 /// target modules.
 ///
-/// Performs topological sort using petgraph. If a cycle is detected, returns
-/// a `CyclicDependency` error with the full cycle path.
+/// Performs topological sort using Kosaraju's SCC. If a cycle is detected,
+/// returns a `CyclicDependency` error with the full cycle path.
 ///
 /// Only the targets and their transitive dependencies are included in the
 /// result. Extra entries in the dependency map are ignored.
@@ -182,51 +184,29 @@ fn resolve_module_order(
 ) -> Result<Vec<String>, ValidationError> {
     let needed = collect_transitive_deps(dep_map, targets)?;
 
-    let mut graph = Graph::<String, ()>::new();
-    let mut indices: HashMap<String, NodeIndex> = HashMap::new();
+    let mut graph = DiGraph::<String>::new();
 
     for name in &needed {
-        let _ = indices.insert(name.clone(), graph.add_node(name.clone()));
+        let _ = graph.add_node(name, name.clone());
     }
 
     for name in &needed {
-        let from = indices[name];
         if let Some(deps) = dep_map.get(name) {
             for dep in deps {
                 if needed.contains(dep) {
-                    let to = indices[dep];
-                    let _ = graph.add_edge(from, to, ());
+                    graph.add_edge(name, dep);
                 }
             }
         }
     }
 
-    match algo::toposort(&graph, None) {
-        Ok(sorted) => {
-            // toposort returns dependents first; we need dependencies first.
-            let mut order: Vec<String> = sorted.into_iter().map(|idx| graph[idx].clone()).collect();
-            order.reverse();
+    graph.detect_cycle().map_or_else(
+        || {
+            let order = graph.topological_order();
             Ok(order)
-        }
-        Err(cycle_err) => {
-            let node = cycle_err.node_id();
-            let sccs = algo::kosaraju_scc(&graph);
-            let scc = sccs.iter().find(|scc| scc.contains(&node)).cloned();
-
-            let Some(scc) = scc else {
-                return Err(ValidationError::CyclicDependency { cycle: vec![graph[node].clone()] });
-            };
-
-            utils::find_cycle_in_scc(&graph, &scc, node).map_or_else(
-                || Err(ValidationError::CyclicDependency { cycle: vec![graph[node].clone()] }),
-                |cycle_nodes| {
-                    let cycle: Vec<String> =
-                        cycle_nodes.into_iter().map(|idx| graph[idx].clone()).collect();
-                    Err(ValidationError::CyclicDependency { cycle })
-                },
-            )
-        }
-    }
+        },
+        |cycle| Err(ValidationError::CyclicDependency { cycle }),
+    )
 }
 
 /// Collect all transitive dependencies for a set of target modules.

@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod error;
+mod graph;
 
 use std::path::Path;
 
