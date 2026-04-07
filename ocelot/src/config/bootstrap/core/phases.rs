@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 
 use crate::config::bootstrap::{
@@ -23,7 +25,7 @@ pub struct PreSwitchConfig {
     #[serde(default)]
     pub hooks: Vec<HookSpecConfig>,
     #[serde(default)]
-    pub environment: Vec<(String, String)>,
+    pub environment: HashMap<String, String>,
     #[serde(default)]
     pub symlinks: Vec<SymlinkConfig>,
     #[serde(default)]
@@ -76,7 +78,7 @@ pub struct PostSwitchConfig {
     #[serde(default)]
     pub hooks: Vec<HookSpecConfig>,
     #[serde(default)]
-    pub environment: Vec<(String, String)>,
+    pub environment: HashMap<String, String>,
     #[serde(default)]
     pub symlinks: Vec<SymlinkConfig>,
     #[serde(default)]

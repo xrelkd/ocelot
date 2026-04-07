@@ -74,7 +74,7 @@ preSwitch:
       target: /newroot
       overlay: false
   environment:
-    - [PATH, /usr/bin]
+    PATH: /usr/bin
   hooks:
     - name: pre-hook
       command: /bin/pre-hook
@@ -86,7 +86,7 @@ postSwitch:
       - networkd
 
   environment:
-    - [HOME, /root]
+    HOME: /root
   handoff:
     mode: shell
     shell:
@@ -108,6 +108,7 @@ postSwitch:
     assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Shell));
     assert!(config.post_switch.handoff.shell.is_some());
     assert!(config.post_switch.handoff.supervise.is_none());
+    assert!(config.post_switch.shutdown.is_none());
 }
 
 #[test]

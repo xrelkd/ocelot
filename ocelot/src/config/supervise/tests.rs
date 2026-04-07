@@ -665,8 +665,8 @@ fn test_bootstrap_config_duplicate_env_vars_fails() {
 console: ttyS0
 preSwitch:
   environment:
-    - [PATH, /usr/bin]
-    - [PATH, /bin]
+    PATH: /usr/bin
+    PATH: /bin
 postSwitch:
   handoff:
     mode: supervise

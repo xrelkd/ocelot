@@ -17,7 +17,7 @@ preSwitch:
       tag: rootfs
       target: /newroot
       overlay: false
-      # Optional mount flags as boolean fields (all default to false):
+      # Optional mount flags as boolean fields (all default to true):
       # readOnly: true          # MS_RDONLY
       # noExec: true            # MS_NOEXEC
       # noSuid: true            # MS_NOSUID
@@ -26,10 +26,8 @@ preSwitch:
       # dirSync: true           # MS_DIRSYNC
       # mandatoryLocks: true    # MS_MANDLOCK
       # posixAcl: true          # MS_POSIXACL
-      # atime: noAtime          # AtimeMode: Default, NoAtime, RelAtime, StrictAtime, LazyTime
-
-  # Optional configuration
-  environment: []
+      # atime: noAtime          # AtimeMode: noAtime, relAtime, strictAtime, lazyTime
+  environment: {}
   symlinks: []
   modules: null
   network: null
@@ -38,6 +36,8 @@ preSwitch:
   tmpfiles: null
   security: null
   clock: null
+
+# Optional configuration
 
 # Switch-root phase
 switchRoot:
@@ -48,7 +48,7 @@ switchRoot:
 
 # Post-switch phase
 postSwitch:
-  environment: []
+  environment: {}
   symlinks: []
   mounts: []
   hooks: []
