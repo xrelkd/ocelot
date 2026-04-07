@@ -99,7 +99,7 @@ impl From<ModulesConfig> for ocelot_bootstrap::ModulesConfig {
 ///
 /// Returns a map from module basename (e.g., `virtio_net.ko.xz`) to a list of
 /// dependency basenames.
-pub fn parse_dep_file(data: &[u8]) -> HashMap<String, Vec<String>> {
+fn parse_dep_file(data: &[u8]) -> HashMap<String, Vec<String>> {
     let text = String::from_utf8_lossy(data);
     let mut map = HashMap::new();
 
@@ -130,7 +130,7 @@ pub fn parse_dep_file(data: &[u8]) -> HashMap<String, Vec<String>> {
 ///
 /// Only the targets and their transitive dependencies are included in the
 /// result. Extra entries in the dependency map are ignored.
-pub fn resolve_module_order(
+fn resolve_module_order(
     dep_map: &HashMap<String, Vec<String>>,
     targets: &[String],
 ) -> Result<Vec<String>, ValidationError> {
