@@ -179,7 +179,7 @@ pub struct PreSwitchPhase {
     /// Hook specifications.
     pub hooks: Vec<HookSpec>,
     /// Environment variables to set.
-    pub environment: Vec<(String, String)>,
+    pub environment: HashMap<String, String>,
     /// Symlinks to create.
     pub symlinks: Vec<Symlink>,
     /// Sysctl configuration (unsupported yet).
@@ -204,7 +204,7 @@ pub struct PostSwitchPhase {
     /// Hook specifications.
     pub hooks: Vec<HookSpec>,
     /// Environment variables to set.
-    pub environment: Vec<(String, String)>,
+    pub environment: HashMap<String, String>,
     /// Symlinks to create.
     pub symlinks: Vec<Symlink>,
     /// Sysctl configuration (unsupported yet).
