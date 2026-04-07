@@ -282,7 +282,7 @@ pub struct HookSpec {
     pub name: String,
     pub command: String,
     pub arguments: Vec<String>,
-    pub timeout: u32,
+    pub timeout: Duration,
     pub on_failure: MountFailurePolicy,
 }
 
