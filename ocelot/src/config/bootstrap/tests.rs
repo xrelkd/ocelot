@@ -1,8 +1,13 @@
 //! Unit tests for bootstrap configuration module.
 
+use std::collections::HashMap;
+
+use nix::mount::MsFlags;
+use ocelot_bootstrap::MountSpec;
 use tempfile::tempdir;
 
 use super::*;
+use crate::config::bootstrap::mount::MountSpecConfig;
 
 // ============================================================================
 // BootstrapConfig Tests
@@ -336,4 +341,255 @@ fn test_validate_switch_root_methods() {
 ";
     let config2: BootstrapConfig = serde_yaml::from_slice(yaml_chroot).unwrap();
     assert_eq!(format!("{:?}", config2.switch_root.method), "Chroot");
+}
+
+// ============================================================================
+// MountSpecConfig Tests
+// ============================================================================
+
+#[test]
+fn test_mount_spec_config_virtiofs_all_flags() {
+    let yaml = b"
+type: virtiofs
+target: /mnt/virtiofs
+tag: rootfs
+overlay: false
+options: cache=always
+readOnly: true
+noExec: true
+noSuid: true
+noDev: true
+sync: true
+dirSync: true
+mandatoryLocks: true
+posixAcl: true
+atime: noAtime
+";
+    let config: MountSpecConfig = serde_yaml::from_slice(yaml).unwrap();
+    let mount_spec: MountSpec = config.into();
+    assert!(matches!(
+        mount_spec.source,
+        ocelot_bootstrap::MountSource::VirtiofsTag(tag)
+        if tag == "rootfs"
+    ));
+    assert_eq!(mount_spec.target, std::path::PathBuf::from("/mnt/virtiofs"));
+    assert_eq!(mount_spec.fstype, "virtiofs");
+    assert!(!mount_spec.overlay);
+    assert_eq!(mount_spec.options, Some("cache=always".to_string()));
+    let expected = MsFlags::MS_RDONLY
+        | MsFlags::MS_NOEXEC
+        | MsFlags::MS_NOSUID
+        | MsFlags::MS_NODEV
+        | MsFlags::MS_SYNCHRONOUS
+        | MsFlags::MS_DIRSYNC
+        | MsFlags::MS_MANDLOCK
+        | MsFlags::MS_POSIXACL
+        | MsFlags::MS_NOATIME;
+    assert_eq!(mount_spec.flags, expected);
+    assert!(matches!(mount_spec.on_failure, ocelot_bootstrap::MountFailurePolicy::Warn));
+}
+
+#[test]
+fn test_mount_spec_config_block_all_flags() {
+    let yaml = b"
+type: block
+target: /boot
+device: /dev/vda1
+fstype: vfat
+overlay: false
+options: ro
+readOnly: true
+noExec: true
+noSuid: true
+noDev: true
+sync: true
+dirSync: true
+mandatoryLocks: true
+posixAcl: true
+atime: relAtime
+";
+    let config: MountSpecConfig = serde_yaml::from_slice(yaml).unwrap();
+    let mount_spec: MountSpec = config.into();
+    assert!(matches!(
+        mount_spec.source,
+        ocelot_bootstrap::MountSource::Device(dev)
+        if dev == "/dev/vda1"
+    ));
+    assert_eq!(mount_spec.target, std::path::PathBuf::from("/boot"));
+    assert_eq!(mount_spec.fstype, "vfat");
+    assert!(!mount_spec.overlay);
+    assert_eq!(mount_spec.options, Some("ro".to_string()));
+    let expected = MsFlags::MS_RDONLY
+        | MsFlags::MS_NOEXEC
+        | MsFlags::MS_NOSUID
+        | MsFlags::MS_NODEV
+        | MsFlags::MS_SYNCHRONOUS
+        | MsFlags::MS_DIRSYNC
+        | MsFlags::MS_MANDLOCK
+        | MsFlags::MS_POSIXACL
+        | MsFlags::MS_RELATIME;
+    assert_eq!(mount_spec.flags, expected);
+    assert!(matches!(mount_spec.on_failure, ocelot_bootstrap::MountFailurePolicy::Warn));
+}
+
+#[test]
+fn test_mount_spec_config_ninep_all_flags() {
+    let yaml = b"
+type: 9p
+target: /dev
+tag: dev
+fstype: 9p2000
+overlay: false
+options: trans=virtio
+readOnly: true
+noExec: true
+noSuid: true
+noDev: true
+sync: true
+dirSync: true
+mandatoryLocks: true
+posixAcl: true
+atime: strictAtime
+";
+    let config: MountSpecConfig = serde_yaml::from_slice(yaml).unwrap();
+    let mount_spec: MountSpec = config.into();
+    assert!(matches!(
+        mount_spec.source,
+        ocelot_bootstrap::MountSource::NinePTag(tag)
+        if tag == "dev"
+    ));
+    assert_eq!(mount_spec.target, std::path::PathBuf::from("/dev"));
+    assert_eq!(mount_spec.fstype, "9p2000");
+    assert!(!mount_spec.overlay);
+    assert_eq!(mount_spec.options, Some("trans=virtio".to_string()));
+    let expected = MsFlags::MS_RDONLY
+        | MsFlags::MS_NOEXEC
+        | MsFlags::MS_NOSUID
+        | MsFlags::MS_NODEV
+        | MsFlags::MS_SYNCHRONOUS
+        | MsFlags::MS_DIRSYNC
+        | MsFlags::MS_MANDLOCK
+        | MsFlags::MS_POSIXACL
+        | MsFlags::MS_STRICTATIME;
+    assert_eq!(mount_spec.flags, expected);
+    assert!(matches!(mount_spec.on_failure, ocelot_bootstrap::MountFailurePolicy::Warn));
+}
+
+#[test]
+fn test_mount_spec_config_virtual_all_flags() {
+    let yaml = b"
+type: virtual
+target: /mnt/virtual
+fstype: tmpfs
+options: size=100m
+readOnly: true
+noExec: true
+noSuid: true
+noDev: true
+sync: true
+dirSync: true
+mandatoryLocks: true
+posixAcl: true
+atime: lazyTime
+";
+    let config: MountSpecConfig = serde_yaml::from_slice(yaml).unwrap();
+    let mount_spec: MountSpec = config.into();
+    assert!(matches!(mount_spec.source, ocelot_bootstrap::MountSource::Virtual));
+    assert_eq!(mount_spec.target, std::path::PathBuf::from("/mnt/virtual"));
+    assert_eq!(mount_spec.fstype, "tmpfs");
+    assert_eq!(mount_spec.options, Some("size=100m".to_string()));
+    let expected = MsFlags::MS_RDONLY
+        | MsFlags::MS_NOEXEC
+        | MsFlags::MS_NOSUID
+        | MsFlags::MS_NODEV
+        | MsFlags::MS_SYNCHRONOUS
+        | MsFlags::MS_DIRSYNC
+        | MsFlags::MS_MANDLOCK
+        | MsFlags::MS_POSIXACL
+        | MsFlags::MS_LAZYTIME;
+    assert_eq!(mount_spec.flags, expected);
+    assert!(matches!(mount_spec.on_failure, ocelot_bootstrap::MountFailurePolicy::Warn));
+}
+
+#[test]
+fn test_mount_spec_config_nfs_all_flags() {
+    let yaml = b"
+type: nfs
+target: /mnt/nfs
+server: 192.168.1.100
+export: /export
+fstype: nfs4
+options: soft,timeo=100
+readOnly: true
+noExec: true
+noSuid: true
+noDev: true
+sync: true
+dirSync: true
+mandatoryLocks: true
+posixAcl: true
+atime: noAtime
+";
+    let config: MountSpecConfig = serde_yaml::from_slice(yaml).unwrap();
+    let mount_spec: MountSpec = config.into();
+    assert!(matches!(
+        mount_spec.source,
+        ocelot_bootstrap::MountSource::Nfs { server, export }
+        if server == "192.168.1.100" && export == "/export"
+    ));
+    assert_eq!(mount_spec.target, std::path::PathBuf::from("/mnt/nfs"));
+    assert_eq!(mount_spec.fstype, "nfs4");
+    assert_eq!(mount_spec.options, Some("soft,timeo=100".to_string()));
+    let expected = MsFlags::MS_RDONLY
+        | MsFlags::MS_NOEXEC
+        | MsFlags::MS_NOSUID
+        | MsFlags::MS_NODEV
+        | MsFlags::MS_SYNCHRONOUS
+        | MsFlags::MS_DIRSYNC
+        | MsFlags::MS_MANDLOCK
+        | MsFlags::MS_POSIXACL
+        | MsFlags::MS_NOATIME;
+    assert_eq!(mount_spec.flags, expected);
+    assert!(matches!(mount_spec.on_failure, ocelot_bootstrap::MountFailurePolicy::Warn));
+}
+
+#[test]
+fn test_mount_spec_config_overlay_all_flags() {
+    let yaml = b"
+type: overlay
+target: /mnt/overlay
+lower: /lower
+upper: /upper
+work: /work
+readOnly: true
+noExec: true
+noSuid: true
+noDev: true
+sync: true
+dirSync: true
+mandatoryLocks: true
+posixAcl: true
+atime: relAtime
+";
+    let config: MountSpecConfig = serde_yaml::from_slice(yaml).unwrap();
+    let mount_spec: MountSpec = config.into();
+    assert!(matches!(
+        mount_spec.source,
+        ocelot_bootstrap::MountSource::Overlay(ocelot_bootstrap::OverlaySpec { lower, upper, work })
+        if lower == "/lower" && upper == "/upper" && work == "/work"
+    ));
+    assert_eq!(mount_spec.target, std::path::PathBuf::from("/mnt/overlay"));
+    assert_eq!(mount_spec.fstype, "overlay");
+    assert_eq!(mount_spec.options, None);
+    let expected = MsFlags::MS_RDONLY
+        | MsFlags::MS_NOEXEC
+        | MsFlags::MS_NOSUID
+        | MsFlags::MS_NODEV
+        | MsFlags::MS_SYNCHRONOUS
+        | MsFlags::MS_DIRSYNC
+        | MsFlags::MS_MANDLOCK
+        | MsFlags::MS_POSIXACL
+        | MsFlags::MS_RELATIME;
+    assert_eq!(mount_spec.flags, expected);
+    assert!(matches!(mount_spec.on_failure, ocelot_bootstrap::MountFailurePolicy::Warn));
 }
