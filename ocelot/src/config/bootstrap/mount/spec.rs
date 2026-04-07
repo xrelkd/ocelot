@@ -23,24 +23,8 @@ pub enum MountSpecConfig {
         overlay: bool,
         #[serde(default)]
         options: Option<String>,
-        #[serde(default)]
-        read_only: bool,
-        #[serde(default)]
-        no_exec: bool,
-        #[serde(default)]
-        no_suid: bool,
-        #[serde(default)]
-        no_dev: bool,
-        #[serde(default)]
-        sync: bool,
-        #[serde(default)]
-        dir_sync: bool,
-        #[serde(default)]
-        mandatory_locks: bool,
-        #[serde(default)]
-        posix_acl: bool,
-        #[serde(default)]
-        atime: AtimeMode,
+        #[serde(flatten)]
+        flags: MountFlags,
     },
     Block {
         target: String,
@@ -49,25 +33,10 @@ pub enum MountSpecConfig {
         overlay: bool,
         #[serde(default)]
         options: Option<String>,
-        #[serde(default)]
-        read_only: bool,
-        #[serde(default)]
-        no_exec: bool,
-        #[serde(default)]
-        no_suid: bool,
-        #[serde(default)]
-        no_dev: bool,
-        #[serde(default)]
-        sync: bool,
-        #[serde(default)]
-        dir_sync: bool,
-        #[serde(default)]
-        mandatory_locks: bool,
-        #[serde(default)]
-        posix_acl: bool,
-        #[serde(default)]
-        atime: AtimeMode,
+        #[serde(flatten)]
+        flags: MountFlags,
     },
+    #[serde(rename = "9p")]
     NineP {
         target: String,
         tag: String,
@@ -75,48 +44,16 @@ pub enum MountSpecConfig {
         overlay: bool,
         #[serde(default)]
         options: Option<String>,
-        #[serde(default)]
-        read_only: bool,
-        #[serde(default)]
-        no_exec: bool,
-        #[serde(default)]
-        no_suid: bool,
-        #[serde(default)]
-        no_dev: bool,
-        #[serde(default)]
-        sync: bool,
-        #[serde(default)]
-        dir_sync: bool,
-        #[serde(default)]
-        mandatory_locks: bool,
-        #[serde(default)]
-        posix_acl: bool,
-        #[serde(default)]
-        atime: AtimeMode,
+        #[serde(flatten)]
+        flags: MountFlags,
     },
     Virtual {
         target: String,
         fstype: String,
         #[serde(default)]
         options: Option<String>,
-        #[serde(default)]
-        read_only: bool,
-        #[serde(default)]
-        no_exec: bool,
-        #[serde(default)]
-        no_suid: bool,
-        #[serde(default)]
-        no_dev: bool,
-        #[serde(default)]
-        sync: bool,
-        #[serde(default)]
-        dir_sync: bool,
-        #[serde(default)]
-        mandatory_locks: bool,
-        #[serde(default)]
-        posix_acl: bool,
-        #[serde(default)]
-        atime: AtimeMode,
+        #[serde(flatten)]
+        flags: MountFlags,
     },
     Nfs {
         target: String,
@@ -125,246 +62,68 @@ pub enum MountSpecConfig {
         fstype: Option<String>,
         #[serde(default)]
         options: Option<String>,
-        #[serde(default)]
-        read_only: bool,
-        #[serde(default)]
-        no_exec: bool,
-        #[serde(default)]
-        no_suid: bool,
-        #[serde(default)]
-        no_dev: bool,
-        #[serde(default)]
-        sync: bool,
-        #[serde(default)]
-        dir_sync: bool,
-        #[serde(default)]
-        mandatory_locks: bool,
-        #[serde(default)]
-        posix_acl: bool,
-        #[serde(default)]
-        atime: AtimeMode,
+        #[serde(flatten)]
+        flags: MountFlags,
     },
     Overlay {
         target: String,
         lower: String,
         upper: String,
         work: String,
-        #[serde(default)]
-        read_only: bool,
-        #[serde(default)]
-        no_exec: bool,
-        #[serde(default)]
-        no_suid: bool,
-        #[serde(default)]
-        no_dev: bool,
-        #[serde(default)]
-        sync: bool,
-        #[serde(default)]
-        dir_sync: bool,
-        #[serde(default)]
-        mandatory_locks: bool,
-        #[serde(default)]
-        posix_acl: bool,
-        #[serde(default)]
-        atime: AtimeMode,
+        #[serde(flatten)]
+        flags: MountFlags,
     },
 }
 
 impl From<MountSpecConfig> for ocelot_bootstrap::MountSpec {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Large match on all MountSpecConfig variants with many fields; splitting \
-                  variants would be artificial"
-    )]
     fn from(config: MountSpecConfig) -> Self {
         match config {
-            MountSpecConfig::Virtiofs {
-                target,
-                tag,
-                overlay,
-                options,
-                read_only,
-                no_exec,
-                no_suid,
-                no_dev,
-                sync,
-                dir_sync,
-                mandatory_locks,
-                posix_acl,
-                atime,
-            } => Self {
+            MountSpecConfig::Virtiofs { target, tag, overlay, options, flags } => Self {
                 source: ocelot_bootstrap::MountSource::VirtiofsTag(tag),
                 target: target.into(),
                 fstype: "virtiofs".to_string(),
-                flags: MountFlagsBuilder {
-                    read_only,
-                    no_exec,
-                    no_suid,
-                    no_dev,
-                    sync,
-                    dir_sync,
-                    mandatory_locks,
-                    posix_acl,
-                    atime,
-                }
-                .build(),
+                flags: flags.derive(),
                 options,
                 overlay,
                 on_failure: ocelot_bootstrap::MountFailurePolicy::Warn,
             },
-            MountSpecConfig::Block {
-                target,
-                device,
-                fstype,
-                overlay,
-                options,
-                read_only,
-                no_exec,
-                no_suid,
-                no_dev,
-                sync,
-                dir_sync,
-                mandatory_locks,
-                posix_acl,
-                atime,
-            } => Self {
+            MountSpecConfig::Block { target, device, fstype, overlay, options, flags } => Self {
                 source: ocelot_bootstrap::MountSource::Device(device),
                 target: target.into(),
                 fstype,
-                flags: MountFlagsBuilder {
-                    read_only,
-                    no_exec,
-                    no_suid,
-                    no_dev,
-                    sync,
-                    dir_sync,
-                    mandatory_locks,
-                    posix_acl,
-                    atime,
-                }
-                .build(),
+                flags: flags.derive(),
                 options,
                 overlay,
                 on_failure: ocelot_bootstrap::MountFailurePolicy::Warn,
             },
-            MountSpecConfig::NineP {
-                target,
-                tag,
-                fstype,
-                overlay,
-                options,
-                read_only,
-                no_exec,
-                no_suid,
-                no_dev,
-                sync,
-                dir_sync,
-                mandatory_locks,
-                posix_acl,
-                atime,
-            } => Self {
+            MountSpecConfig::NineP { target, tag, fstype, overlay, options, flags } => Self {
                 source: ocelot_bootstrap::MountSource::NinePTag(tag),
                 target: target.into(),
                 fstype: fstype.unwrap_or_else(|| "9p".to_string()),
-                flags: MountFlagsBuilder {
-                    read_only,
-                    no_exec,
-                    no_suid,
-                    no_dev,
-                    sync,
-                    dir_sync,
-                    mandatory_locks,
-                    posix_acl,
-                    atime,
-                }
-                .build(),
+                flags: flags.derive(),
                 options,
                 overlay,
                 on_failure: ocelot_bootstrap::MountFailurePolicy::Warn,
             },
-            MountSpecConfig::Virtual {
-                target,
-                fstype,
-                options,
-                read_only,
-                no_exec,
-                no_suid,
-                no_dev,
-                sync,
-                dir_sync,
-                mandatory_locks,
-                posix_acl,
-                atime,
-            } => Self {
+            MountSpecConfig::Virtual { target, fstype, options, flags } => Self {
                 source: ocelot_bootstrap::MountSource::Virtual,
                 target: target.into(),
                 fstype,
-                flags: MountFlagsBuilder {
-                    read_only,
-                    no_exec,
-                    no_suid,
-                    no_dev,
-                    sync,
-                    dir_sync,
-                    mandatory_locks,
-                    posix_acl,
-                    atime,
-                }
-                .build(),
+                flags: flags.derive(),
                 options,
                 overlay: false,
                 on_failure: ocelot_bootstrap::MountFailurePolicy::Warn,
             },
-            MountSpecConfig::Nfs {
-                target,
-                server,
-                export,
-                fstype,
-                options,
-                read_only,
-                no_exec,
-                no_suid,
-                no_dev,
-                sync,
-                dir_sync,
-                mandatory_locks,
-                posix_acl,
-                atime,
-            } => Self {
+            MountSpecConfig::Nfs { target, server, export, fstype, options, flags } => Self {
                 source: ocelot_bootstrap::MountSource::Nfs { server, export },
                 target: target.into(),
                 fstype: fstype.unwrap_or_else(|| "nfs".to_string()),
-                flags: MountFlagsBuilder {
-                    read_only,
-                    no_exec,
-                    no_suid,
-                    no_dev,
-                    sync,
-                    dir_sync,
-                    mandatory_locks,
-                    posix_acl,
-                    atime,
-                }
-                .build(),
+                flags: flags.derive(),
                 options,
                 overlay: false,
                 on_failure: ocelot_bootstrap::MountFailurePolicy::Warn,
             },
-            MountSpecConfig::Overlay {
-                target,
-                lower,
-                upper,
-                work,
-                read_only,
-                no_exec,
-                no_suid,
-                no_dev,
-                sync,
-                dir_sync,
-                mandatory_locks,
-                posix_acl,
-                atime,
-            } => Self {
+            MountSpecConfig::Overlay { target, lower, upper, work, flags } => Self {
                 source: ocelot_bootstrap::MountSource::Overlay(ocelot_bootstrap::OverlaySpec {
                     lower,
                     upper,
@@ -372,18 +131,7 @@ impl From<MountSpecConfig> for ocelot_bootstrap::MountSpec {
                 }),
                 target: target.into(),
                 fstype: "overlay".to_string(),
-                flags: MountFlagsBuilder {
-                    read_only,
-                    no_exec,
-                    no_suid,
-                    no_dev,
-                    sync,
-                    dir_sync,
-                    mandatory_locks,
-                    posix_acl,
-                    atime,
-                }
-                .build(),
+                flags: flags.derive(),
                 options: None,
                 overlay: false,
                 on_failure: ocelot_bootstrap::MountFailurePolicy::Warn,
@@ -392,14 +140,15 @@ impl From<MountSpecConfig> for ocelot_bootstrap::MountSpec {
     }
 }
 
-/// Builder for constructing `MsFlags` from boolean mount options.
-#[derive(Clone, Debug, Default)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "Mount flags naturally have many independent boolean switches; this is the \
               user-facing abstraction"
 )]
-struct MountFlagsBuilder {
+/// Builder for constructing `MsFlags` from boolean mount options.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MountFlags {
     read_only: bool,
     no_exec: bool,
     no_suid: bool,
@@ -411,9 +160,9 @@ struct MountFlagsBuilder {
     atime: AtimeMode,
 }
 
-impl MountFlagsBuilder {
+impl MountFlags {
     #[must_use]
-    fn build(self) -> MsFlags {
+    fn derive(self) -> MsFlags {
         let mut flags = MsFlags::empty();
         if self.read_only {
             flags |= MsFlags::MS_RDONLY;
@@ -454,12 +203,12 @@ impl MountFlagsBuilder {
 mod tests {
     use nix::mount::MsFlags;
 
-    use super::*;
+    use super::{AtimeMode, MountFlags, MountSpecConfig};
 
     #[test]
     fn test_mount_flags_builder() {
         // Test all flags set
-        let builder = MountFlagsBuilder {
+        let builder = MountFlags {
             read_only: true,
             no_exec: true,
             no_suid: true,
@@ -470,7 +219,7 @@ mod tests {
             posix_acl: true,
             atime: AtimeMode::NoAtime,
         };
-        let flags = builder.build();
+        let flags = builder.derive();
         let expected = MsFlags::MS_RDONLY
             | MsFlags::MS_NOEXEC
             | MsFlags::MS_NOSUID
@@ -483,7 +232,7 @@ mod tests {
         assert_eq!(flags, expected);
 
         // Test no flags (all false, atime Default)
-        let builder = MountFlagsBuilder {
+        let builder = MountFlags {
             read_only: false,
             no_exec: false,
             no_suid: false,
@@ -494,7 +243,7 @@ mod tests {
             posix_acl: false,
             atime: AtimeMode::Default,
         };
-        let flags = builder.build();
+        let flags = builder.derive();
         assert_eq!(flags, MsFlags::empty());
 
         // Test each atime variant individually with no other flags
@@ -504,7 +253,7 @@ mod tests {
             (AtimeMode::StrictAtime, MsFlags::MS_STRICTATIME),
             (AtimeMode::LazyTime, MsFlags::MS_LAZYTIME),
         ] {
-            let builder = MountFlagsBuilder {
+            let builder = MountFlags {
                 read_only: false,
                 no_exec: false,
                 no_suid: false,
@@ -515,12 +264,12 @@ mod tests {
                 posix_acl: false,
                 atime,
             };
-            let flags = builder.build();
+            let flags = builder.derive();
             assert_eq!(flags, flag);
         }
 
         // Test partial flags: read-only + no-suid + relatime
-        let builder = MountFlagsBuilder {
+        let builder = MountFlags {
             read_only: true,
             no_exec: false,
             no_suid: true,
@@ -531,7 +280,7 @@ mod tests {
             posix_acl: false,
             atime: AtimeMode::RelAtime,
         };
-        let flags = builder.build();
+        let flags = builder.derive();
         let expected = MsFlags::MS_RDONLY | MsFlags::MS_NOSUID | MsFlags::MS_RELATIME;
         assert_eq!(flags, expected);
     }
@@ -546,9 +295,9 @@ atime: noAtime
 ";
         let config: MountSpecConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
-            MountSpecConfig::Virtual { atime, read_only, .. } => {
-                assert!(matches!(atime, AtimeMode::NoAtime));
-                assert!(!read_only);
+            MountSpecConfig::Virtual { flags, .. } => {
+                assert!(matches!(flags.atime, AtimeMode::NoAtime));
+                assert!(!flags.read_only);
             }
             _ => panic!("wrong variant"),
         }
@@ -561,9 +310,9 @@ atime: strictAtime
 ";
         let config: MountSpecConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
-            MountSpecConfig::Virtual { atime, read_only, .. } => {
-                assert!(matches!(atime, AtimeMode::StrictAtime));
-                assert!(!read_only);
+            MountSpecConfig::Virtual { flags, .. } => {
+                assert!(matches!(flags.atime, AtimeMode::StrictAtime));
+                assert!(!flags.read_only);
             }
             _ => panic!("wrong variant"),
         }
@@ -576,9 +325,9 @@ atime: lazyTime
 ";
         let config: MountSpecConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
-            MountSpecConfig::Virtual { atime, read_only, .. } => {
-                assert!(matches!(atime, AtimeMode::LazyTime));
-                assert!(!read_only);
+            MountSpecConfig::Virtual { flags, .. } => {
+                assert!(matches!(flags.atime, AtimeMode::LazyTime));
+                assert!(!flags.read_only);
             }
             _ => panic!("wrong variant"),
         }
@@ -591,9 +340,9 @@ fstype: ext4
 ";
         let config: MountSpecConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
-            MountSpecConfig::Virtual { atime, read_only, .. } => {
-                assert!(matches!(atime, AtimeMode::Default));
-                assert!(!read_only);
+            MountSpecConfig::Virtual { flags, .. } => {
+                assert!(matches!(flags.atime, AtimeMode::Default));
+                assert!(!flags.read_only);
             }
             _ => panic!("wrong variant"),
         }
@@ -606,15 +355,17 @@ fstype: ext4
             target: "/mnt".to_string(),
             fstype: "ext4".to_string(),
             options: None,
-            read_only: true,
-            no_exec: true,
-            no_suid: true,
-            no_dev: true,
-            sync: true,
-            dir_sync: true,
-            mandatory_locks: true,
-            posix_acl: true,
-            atime: AtimeMode::NoAtime,
+            flags: MountFlags {
+                read_only: true,
+                no_exec: true,
+                no_suid: true,
+                no_dev: true,
+                sync: true,
+                dir_sync: true,
+                mandatory_locks: true,
+                posix_acl: true,
+                atime: AtimeMode::NoAtime,
+            },
         };
         let mount_spec: ocelot_bootstrap::MountSpec = config.into();
         let expected = MsFlags::MS_RDONLY
@@ -633,15 +384,17 @@ fstype: ext4
             target: "/mnt".to_string(),
             fstype: "ext4".to_string(),
             options: None,
-            read_only: false,
-            no_exec: false,
-            no_suid: false,
-            no_dev: false,
-            sync: false,
-            dir_sync: false,
-            mandatory_locks: false,
-            posix_acl: false,
-            atime: AtimeMode::Default,
+            flags: MountFlags {
+                read_only: false,
+                no_exec: false,
+                no_suid: false,
+                no_dev: false,
+                sync: false,
+                dir_sync: false,
+                mandatory_locks: false,
+                posix_acl: false,
+                atime: AtimeMode::Default,
+            },
         };
         let mount_spec: ocelot_bootstrap::MountSpec = config.into();
         assert_eq!(mount_spec.flags, MsFlags::empty());
@@ -657,15 +410,17 @@ fstype: ext4
                 target: "/mnt".to_string(),
                 fstype: "ext4".to_string(),
                 options: None,
-                read_only: false,
-                no_exec: false,
-                no_suid: false,
-                no_dev: false,
-                sync: false,
-                dir_sync: false,
-                mandatory_locks: false,
-                posix_acl: false,
-                atime,
+                flags: MountFlags {
+                    read_only: false,
+                    no_exec: false,
+                    no_suid: false,
+                    no_dev: false,
+                    sync: false,
+                    dir_sync: false,
+                    mandatory_locks: false,
+                    posix_acl: false,
+                    atime,
+                },
             };
             let mount_spec: ocelot_bootstrap::MountSpec = config.into();
             assert_eq!(mount_spec.flags, flag);
@@ -679,15 +434,17 @@ fstype: ext4
             tag: "rootfs".to_string(),
             overlay: true,
             options: Some("rw".to_string()),
-            read_only: true,
-            no_exec: false,
-            no_suid: true,
-            no_dev: false,
-            sync: false,
-            dir_sync: false,
-            mandatory_locks: false,
-            posix_acl: true,
-            atime: AtimeMode::RelAtime,
+            flags: MountFlags {
+                read_only: true,
+                no_exec: false,
+                no_suid: true,
+                no_dev: false,
+                sync: false,
+                dir_sync: false,
+                mandatory_locks: false,
+                posix_acl: true,
+                atime: AtimeMode::RelAtime,
+            },
         };
         let mount_spec: ocelot_bootstrap::MountSpec = config.into();
         assert!(
@@ -711,15 +468,17 @@ fstype: ext4
             fstype: "vfat".to_string(),
             overlay: false,
             options: None,
-            read_only: true,
-            no_exec: false,
-            no_suid: false,
-            no_dev: true,
-            sync: false,
-            dir_sync: false,
-            mandatory_locks: false,
-            posix_acl: false,
-            atime: AtimeMode::Default,
+            flags: MountFlags {
+                read_only: true,
+                no_exec: false,
+                no_suid: false,
+                no_dev: true,
+                sync: false,
+                dir_sync: false,
+                mandatory_locks: false,
+                posix_acl: false,
+                atime: AtimeMode::Default,
+            },
         };
         let mount_spec: ocelot_bootstrap::MountSpec = config.into();
         assert!(
@@ -738,15 +497,17 @@ fstype: ext4
             fstype: None,
             overlay: false,
             options: None,
-            read_only: false,
-            no_exec: false,
-            no_suid: false,
-            no_dev: false,
-            sync: false,
-            dir_sync: false,
-            mandatory_locks: false,
-            posix_acl: false,
-            atime: AtimeMode::StrictAtime,
+            flags: MountFlags {
+                read_only: false,
+                no_exec: false,
+                no_suid: false,
+                no_dev: false,
+                sync: false,
+                dir_sync: false,
+                mandatory_locks: false,
+                posix_acl: false,
+                atime: AtimeMode::StrictAtime,
+            },
         };
         let mount_spec: ocelot_bootstrap::MountSpec = config.into();
         assert!(
@@ -763,15 +524,17 @@ fstype: ext4
             lower: "/lower".to_string(),
             upper: "/upper".to_string(),
             work: "/work".to_string(),
-            read_only: false,
-            no_exec: false,
-            no_suid: false,
-            no_dev: false,
-            sync: false,
-            dir_sync: false,
-            mandatory_locks: false,
-            posix_acl: false,
-            atime: AtimeMode::LazyTime,
+            flags: MountFlags {
+                read_only: false,
+                no_exec: false,
+                no_suid: false,
+                no_dev: false,
+                sync: false,
+                dir_sync: false,
+                mandatory_locks: false,
+                posix_acl: false,
+                atime: AtimeMode::LazyTime,
+            },
         };
         let mount_spec: ocelot_bootstrap::MountSpec = config.into();
         assert!(matches!(mount_spec.source, ocelot_bootstrap::MountSource::Overlay(_)));

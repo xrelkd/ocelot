@@ -1,4 +1,6 @@
-pub fn pre(config: &[(String, String)]) {
+use std::collections::HashMap;
+
+pub fn pre(config: &HashMap<String, String>) {
     for (key, value) in config {
         #[expect(unsafe_code, reason = "Safe in PID 1 single-threaded context")]
         unsafe {
@@ -8,7 +10,7 @@ pub fn pre(config: &[(String, String)]) {
     }
 }
 
-pub fn post(config: &[(String, String)]) {
+pub fn post(config: &HashMap<String, String>) {
     for (key, value) in config {
         #[expect(unsafe_code, reason = "Safe in PID 1 single-threaded context")]
         unsafe {

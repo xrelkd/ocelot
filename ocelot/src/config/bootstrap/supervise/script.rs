@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde::Deserialize;
 
 use crate::config::bootstrap::{mount::MountFailurePolicy, supervise::policy::OnFailurePolicy};
@@ -41,7 +43,7 @@ pub struct HookSpecConfig {
     #[serde(default)]
     pub arguments: Vec<String>,
     #[serde(default)]
-    pub timeout: u32,
+    pub timeout_secs: u64,
     #[serde(default)]
     pub on_failure: MountFailurePolicy,
 }
@@ -52,7 +54,7 @@ impl From<HookSpecConfig> for ocelot_bootstrap::HookSpec {
             name: config.name,
             command: config.command,
             arguments: config.arguments,
-            timeout: config.timeout,
+            timeout: Duration::from_secs(config.timeout_secs),
             on_failure: match config.on_failure {
                 MountFailurePolicy::Warn => ocelot_bootstrap::MountFailurePolicy::Warn,
                 MountFailurePolicy::Abort => ocelot_bootstrap::MountFailurePolicy::Abort,

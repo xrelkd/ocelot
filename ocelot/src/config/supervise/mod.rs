@@ -9,7 +9,6 @@ mod tests;
 use std::{collections::HashMap, path::Path};
 
 use ocelot_supervise::supervisor_config;
-use petgraph::{Direction, graph::DiGraph, stable_graph::StableDiGraph};
 use resolve_path::PathResolveExt;
 use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
@@ -17,7 +16,10 @@ use snafu::ResultExt;
 use tracing::Level;
 
 pub use self::process::ProcessConfig;
-use crate::config::{error, error::Error, utils};
+use crate::{
+    config::{error, error::Error},
+    graph::DiGraph,
+};
 
 const fn default_shutdown_timeout_secs() -> u64 { 60 }
 
@@ -58,25 +60,21 @@ impl SuperviseConfig {
     /// `ocelot_supervise::SupervisorConfig` by transforming each process
     /// configuration and resolving dependencies using a directed graph.
     ///
-    /// This method builds a `StableDiGraph` where nodes represent processes and
+    /// This method builds a `DiGraph` where nodes represent processes and
     /// edges represent dependency relationships (from dependency to
     /// dependent). For each process, its `depends_on` list is populated by
     /// querying the graph's incoming neighbors, ensuring all direct
     /// dependencies are correctly listed with their original conditions.
     pub fn to_supervisors(&self) -> Vec<ocelot_supervise::SupervisorConfig> {
-        let mut graph = StableDiGraph::<String, ()>::new();
-        let name_to_node = self
-            .processes
-            .keys()
-            .map(|name| (name.clone(), graph.add_node(name.clone())))
-            .collect::<HashMap<_, _>>();
+        let mut graph = DiGraph::<String>::new();
+
+        for name in self.processes.keys() {
+            let _ = graph.add_node(name, name.clone());
+        }
 
         for (name, config) in &self.processes {
-            let name_idx = name_to_node[name];
             for dep_name in config.depends_on.keys() {
-                if let Some(&dep_idx) = name_to_node.get(dep_name) {
-                    let _ = graph.add_edge(dep_idx, name_idx, ());
-                }
+                graph.add_edge(name, dep_name);
             }
         }
 
@@ -86,19 +84,29 @@ impl SuperviseConfig {
                 let mut supervisor = ocelot_supervise::SupervisorConfig::from(config.clone());
                 supervisor.name.clone_from(name);
                 supervisor.depends_on = {
-                    let node_idx = name_to_node[name];
-                    graph
-                        .neighbors_directed(node_idx, Direction::Incoming)
-                        .filter_map(|neighbor_idx| {
-                            let dep_name = graph[neighbor_idx].clone();
-                            config.depends_on.get(&dep_name).map(|dep_config| {
-                                let condition = dep_config
-                                    .condition
-                                    .map(supervisor_config::DependencyCondition::from);
-                                (dep_name, supervisor_config::ProcessDependency { condition })
-                            })
+                    let name_id = graph.get_id(name);
+                    name_id
+                        .map(|id| {
+                            graph
+                                .neighbors(id)
+                                .iter()
+                                .filter_map(|&neighbor_id| {
+                                    graph.get_label(neighbor_id).and_then(|dep_name| {
+                                        let dep_name_str = dep_name.clone();
+                                        config.depends_on.get(&dep_name_str).map(|dep_config| {
+                                            let condition = dep_config
+                                                .condition
+                                                .map(supervisor_config::DependencyCondition::from);
+                                            (
+                                                dep_name_str,
+                                                supervisor_config::ProcessDependency { condition },
+                                            )
+                                        })
+                                    })
+                                })
+                                .collect()
                         })
-                        .collect()
+                        .unwrap_or_default()
                 };
                 supervisor
             })
@@ -151,53 +159,27 @@ impl SuperviseConfig {
         Ok(())
     }
 
-    /// Detects circular dependencies using topological sort (Kahn's algorithm)
-    /// and extracts full cycle path using Kosaraju's algorithm + DFS.
+    /// Detects circular dependencies using Kosaraju's algorithm.
     ///
     /// Time complexity: O(P + D) where P = number of processes, D = total
     /// dependencies. Space complexity: O(P + D) for the graph and index
     /// map.
     fn detect_dependency_cycles(&self) -> Result<(), Error> {
-        let mut graph = DiGraph::<String, ()>::new();
-        let mut indices = HashMap::new();
+        let mut graph = DiGraph::<String>::new();
 
         for name in self.processes.keys() {
-            let _ = indices.insert(name.clone(), graph.add_node(name.clone()));
+            let _ = graph.add_node(name, name.clone());
         }
 
         for (name, config) in &self.processes {
-            let from = indices[name];
             for dep_name in config.depends_on.keys() {
-                let to = indices[dep_name];
-                let _ = graph.add_edge(from, to, ());
+                graph.add_edge(name, dep_name);
             }
         }
 
-        if let Err(cycle) = petgraph::algo::toposort(&graph, None) {
-            let node = cycle.node_id();
-            let sccs = petgraph::algo::kosaraju_scc(&graph);
-            let node_name = graph[node].clone();
-            let scc_opt = sccs.iter().find(|scc| scc.contains(&node)).cloned();
-            let Some(scc) = scc_opt else {
-                return error::CyclicDependencySnafu { cycle: vec![node_name] }
-                    .fail()
-                    .map_err(Error::from);
-            };
-            utils::find_cycle_in_scc(&graph, &scc, node).map_or_else(
-                || {
-                    error::CyclicDependencySnafu { cycle: vec![node_name] }
-                        .fail()
-                        .map_err(Error::from)
-                },
-                |cycle_nodes| {
-                    let cycle: Vec<String> =
-                        cycle_nodes.into_iter().map(|idx| graph[idx].clone()).collect();
-                    error::CyclicDependencySnafu { cycle }.fail().map_err(Error::from)
-                },
-            )
-        } else {
-            Ok(())
-        }
+        graph.detect_cycle().map_or(Ok(()), |cycle| {
+            error::CyclicDependencySnafu { cycle }.fail().map_err(Error::from)
+        })
     }
 
     pub fn template_minimal() -> Vec<u8> { include_bytes!("templates/minimal.yaml").to_vec() }

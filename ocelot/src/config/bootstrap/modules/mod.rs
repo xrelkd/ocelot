@@ -3,17 +3,20 @@ use std::{
     path::PathBuf,
 };
 
-use petgraph::{Graph, algo, graph::NodeIndex};
 use serde::Deserialize;
 use snafu::ResultExt;
 
-use crate::config::{Error, error, error::ValidationError, utils};
+use crate::{
+    config::{Error, error, error::ValidationError},
+    graph::DiGraph,
+};
 
 /// Kernel module loading configuration.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields, tag = "mode")]
 pub enum ModulesConfig {
     /// Load specific modules by name.
+    #[serde(rename_all = "camelCase")]
     List {
         /// Directory containing kernel modules (defaults to /lib/modules).
         #[serde(default)]
@@ -25,6 +28,7 @@ pub enum ModulesConfig {
         dep_file_path: Option<String>,
     },
     /// Scan directory for all .ko/.ko.xz/.ko.gz files and load each.
+    #[serde(rename_all = "camelCase")]
     Scan {
         /// Directory to scan for kernel modules.
         dir: String,
@@ -37,33 +41,75 @@ pub enum ModulesConfig {
 }
 
 impl ModulesConfig {
-    /// Validates module configuration and resolves dependencies if a depfile is
-    /// provided.
-    pub fn validate(&mut self) -> Result<(), Error> {
+    /// Validates module configuration.
+    ///
+    /// Checks that the `dep_file_path` (if provided) exists and is readable,
+    /// and that all module names exist in the dependency file.
+    pub fn validate(&self) -> Result<(), Error> {
         match self {
-            Self::List { dir: _, names, dep_file_path } => {
-                let Some(dep_path) = dep_file_path else {
-                    return Ok(());
-                };
-
-                let dep_map = {
-                    let data = std::fs::read(&dep_path).with_context(|_| {
+            Self::List { names, dep_file_path, .. } => {
+                if let Some(dep_path) = dep_file_path {
+                    let data = std::fs::read(dep_path).with_context(|_| {
                         error::ParseModuleDependencyFileSnafu { path: dep_path.clone() }
                     })?;
-                    parse_dep_file(&data)
-                };
-                let sorted =
-                    resolve_module_order(&dep_map, names).with_context(|_| error::ValidateSnafu)?;
-                *names = sorted;
+                    let dep_map = parse_dep_file(&data);
+
+                    for name in names {
+                        if !dep_map.contains_key(name) {
+                            return Err(Error::InvalidConfig {
+                                message: format!("Module not found in dep file: {name}"),
+                            });
+                        }
+                    }
+                }
                 Ok(())
             }
-            Self::Scan { dir: _, dep_file_path, names } => {
-                let dep_map = {
-                    let data = std::fs::read(&dep_file_path).with_context(|_| {
-                        error::ParseModuleDependencyFileSnafu { path: dep_file_path.clone() }
+            Self::Scan { names, dep_file_path, .. } => {
+                let data = std::fs::read(dep_file_path).with_context(|_| {
+                    error::ParseModuleDependencyFileSnafu { path: dep_file_path.clone() }
+                })?;
+                let dep_map = parse_dep_file(&data);
+
+                if let Some(names_vec) = names {
+                    for name in names_vec {
+                        if !dep_map.contains_key(name) {
+                            return Err(Error::InvalidConfig {
+                                message: format!("Module not found in dep file: {name}"),
+                            });
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Resolves module dependencies and sorts the module names in topological
+    /// order.
+    ///
+    /// If a `dep_file_path` is provided, reads the dependency file and sorts
+    /// the module names accordingly. This modifies the internal state of
+    /// the config.
+    pub fn resolve_dependencies(&mut self) -> Result<(), Error> {
+        match self {
+            Self::List { names, dep_file_path, .. } => {
+                if let Some(dep_path) = dep_file_path {
+                    let path_clone = dep_path.clone();
+                    let data = std::fs::read(&*dep_path).with_context(|_| {
+                        error::ParseModuleDependencyFileSnafu { path: path_clone }
                     })?;
-                    parse_dep_file(&data)
-                };
+                    let dep_map = parse_dep_file(&data);
+                    let sorted = resolve_module_order(&dep_map, names)
+                        .with_context(|_| error::ValidateSnafu)?;
+                    *names = sorted;
+                }
+                Ok(())
+            }
+            Self::Scan { names, dep_file_path, .. } => {
+                let path_clone = dep_file_path.clone();
+                let data = std::fs::read(&*dep_file_path)
+                    .with_context(|_| error::ParseModuleDependencyFileSnafu { path: path_clone })?;
+                let dep_map = parse_dep_file(&data);
                 if let Some(names_vec) = names {
                     let targets = names_vec.clone();
                     let sorted = resolve_module_order(&dep_map, &targets)
@@ -77,7 +123,9 @@ impl ModulesConfig {
 }
 
 impl From<ModulesConfig> for ocelot_bootstrap::ModulesConfig {
-    fn from(config: ModulesConfig) -> Self {
+    fn from(mut config: ModulesConfig) -> Self {
+        drop(config.resolve_dependencies());
+
         match config {
             ModulesConfig::List { dir, names, .. } => {
                 Self::List { dir: dir.map(PathBuf::from), names }
@@ -99,7 +147,7 @@ impl From<ModulesConfig> for ocelot_bootstrap::ModulesConfig {
 ///
 /// Returns a map from module basename (e.g., `virtio_net.ko.xz`) to a list of
 /// dependency basenames.
-pub fn parse_dep_file(data: &[u8]) -> HashMap<String, Vec<String>> {
+fn parse_dep_file(data: &[u8]) -> HashMap<String, Vec<String>> {
     let text = String::from_utf8_lossy(data);
     let mut map = HashMap::new();
 
@@ -125,62 +173,40 @@ pub fn parse_dep_file(data: &[u8]) -> HashMap<String, Vec<String>> {
 /// Resolve a valid module loading order from a dependency map and a list of
 /// target modules.
 ///
-/// Performs topological sort using petgraph. If a cycle is detected, returns
-/// a `CyclicDependency` error with the full cycle path.
+/// Performs topological sort using Kosaraju's SCC. If a cycle is detected,
+/// returns a `CyclicDependency` error with the full cycle path.
 ///
 /// Only the targets and their transitive dependencies are included in the
 /// result. Extra entries in the dependency map are ignored.
-pub fn resolve_module_order(
+fn resolve_module_order(
     dep_map: &HashMap<String, Vec<String>>,
     targets: &[String],
 ) -> Result<Vec<String>, ValidationError> {
     let needed = collect_transitive_deps(dep_map, targets)?;
 
-    let mut graph = Graph::<String, ()>::new();
-    let mut indices: HashMap<String, NodeIndex> = HashMap::new();
+    let mut graph = DiGraph::<String>::new();
 
     for name in &needed {
-        let _ = indices.insert(name.clone(), graph.add_node(name.clone()));
+        let _ = graph.add_node(name, name.clone());
     }
 
     for name in &needed {
-        let from = indices[name];
         if let Some(deps) = dep_map.get(name) {
             for dep in deps {
                 if needed.contains(dep) {
-                    let to = indices[dep];
-                    let _ = graph.add_edge(from, to, ());
+                    graph.add_edge(name, dep);
                 }
             }
         }
     }
 
-    match algo::toposort(&graph, None) {
-        Ok(sorted) => {
-            // toposort returns dependents first; we need dependencies first.
-            let mut order: Vec<String> = sorted.into_iter().map(|idx| graph[idx].clone()).collect();
-            order.reverse();
+    graph.detect_cycle().map_or_else(
+        || {
+            let order = graph.topological_order();
             Ok(order)
-        }
-        Err(cycle_err) => {
-            let node = cycle_err.node_id();
-            let sccs = algo::kosaraju_scc(&graph);
-            let scc = sccs.iter().find(|scc| scc.contains(&node)).cloned();
-
-            let Some(scc) = scc else {
-                return Err(ValidationError::CyclicDependency { cycle: vec![graph[node].clone()] });
-            };
-
-            utils::find_cycle_in_scc(&graph, &scc, node).map_or_else(
-                || Err(ValidationError::CyclicDependency { cycle: vec![graph[node].clone()] }),
-                |cycle_nodes| {
-                    let cycle: Vec<String> =
-                        cycle_nodes.into_iter().map(|idx| graph[idx].clone()).collect();
-                    Err(ValidationError::CyclicDependency { cycle })
-                },
-            )
-        }
-    }
+        },
+        |cycle| Err(ValidationError::CyclicDependency { cycle }),
+    )
 }
 
 /// Collect all transitive dependencies for a set of target modules.
@@ -217,7 +243,226 @@ fn basename(path: &str) -> String { path.rsplit('/').next().unwrap_or(path).to_s
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_dep_file, resolve_module_order};
+    use serde_yaml::from_str;
+
+    use super::{ModulesConfig, parse_dep_file, resolve_module_order};
+
+    #[test]
+    fn test_deserialize_list_full() {
+        let yaml = r"
+mode: list
+dir: /lib/modules
+names:
+  - foo
+  - bar
+depFilePath: /path/modules.dep
+";
+        let config: ModulesConfig = from_str(yaml).unwrap();
+        assert!(
+            matches!(config, ModulesConfig::List { dir: Some(d), names, dep_file_path: Some(p) } if d == "/lib/modules" && names == vec!["foo", "bar"] && p == "/path/modules.dep")
+        );
+    }
+
+    #[test]
+    fn test_deserialize_list_minimal() {
+        let yaml = r"
+mode: list
+names:
+  - foo
+";
+        let config: ModulesConfig = from_str(yaml).unwrap();
+        assert!(
+            matches!(config, ModulesConfig::List { dir: None, names, dep_file_path: None } if names == vec!["foo"])
+        );
+    }
+
+    #[test]
+    fn test_deserialize_list_dir_null() {
+        let yaml = r"
+mode: list
+dir: null
+names:
+  - foo
+";
+        let config: ModulesConfig = from_str(yaml).unwrap();
+        assert!(matches!(config, ModulesConfig::List { dir: None, names: _, dep_file_path: None }));
+    }
+
+    #[test]
+    fn test_deserialize_list_names_empty() {
+        let yaml = r"
+mode: list
+names: []
+";
+        let config: ModulesConfig = from_str(yaml).unwrap();
+        assert!(matches!(config, ModulesConfig::List { names, .. } if names.is_empty()));
+    }
+
+    #[test]
+    fn test_deserialize_scan_full() {
+        let yaml = r"
+mode: scan
+dir: /lib/modules
+depFilePath: /path/modules.dep
+names:
+  - foo
+  - bar
+";
+        let config: ModulesConfig = from_str(yaml).unwrap();
+        assert!(
+            matches!(config, ModulesConfig::Scan { dir, dep_file_path, names } if dir == "/lib/modules" && dep_file_path == "/path/modules.dep" && names == Some(vec!["foo".to_string(), "bar".to_string()]))
+        );
+    }
+
+    #[test]
+    fn test_deserialize_scan_minimal() {
+        let yaml = r"
+mode: scan
+dir: /lib/modules
+depFilePath: /path/modules.dep
+";
+        let config: ModulesConfig = from_str(yaml).unwrap();
+        assert!(
+            matches!(config, ModulesConfig::Scan { dir, dep_file_path, names } if dir == "/lib/modules" && dep_file_path == "/path/modules.dep" && names.is_none())
+        );
+    }
+
+    #[test]
+    fn test_deserialize_scan_names_null() {
+        let yaml = r"
+mode: scan
+dir: /lib/modules
+depFilePath: /path/modules.dep
+names: null
+";
+        let config: ModulesConfig = from_str(yaml).unwrap();
+        assert!(matches!(config, ModulesConfig::Scan { names: None, .. }));
+    }
+
+    #[test]
+    fn test_deserialize_list_unknown_field() {
+        let yaml = r"
+mode: list
+names:
+  - foo
+unknown: true
+";
+        let result: Result<ModulesConfig, _> = from_str(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_list_missing_names() {
+        let yaml = r"
+mode: list
+";
+        let result: Result<ModulesConfig, _> = from_str(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_scan_missing_dir() {
+        let yaml = r"
+mode: scan
+depFilePath: /path/modules.dep
+";
+        let result: Result<ModulesConfig, _> = from_str(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_scan_missing_dep_file_path() {
+        let yaml = r"
+mode: scan
+dir: /lib/modules
+";
+        let result: Result<ModulesConfig, _> = from_str(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_invalid_mode() {
+        let yaml = r"
+mode: invalid
+names:
+  - foo
+";
+        let result: Result<ModulesConfig, _> = from_str(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_list_no_depfile() {
+        let config = ModulesConfig::List {
+            dir: None,
+            names: vec!["foo.ko.xz".to_string()],
+            dep_file_path: None,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_list_with_valid_depfile() {
+        let data = br"kernel/foo.ko.xz:";
+        let _map = parse_dep_file(data);
+
+        let config = ModulesConfig::List {
+            dir: None,
+            names: vec!["foo.ko.xz".to_string()],
+            dep_file_path: None,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_scan_requires_depfile() {
+        let config = ModulesConfig::Scan {
+            dir: "/lib/modules".to_string(),
+            dep_file_path: "/nonexistent/path/modules.dep".to_string(),
+            names: None,
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_dependencies_list_no_depfile() {
+        let mut config = ModulesConfig::List {
+            dir: None,
+            names: vec!["foo.ko.xz".to_string(), "bar.ko.xz".to_string()],
+            dep_file_path: None,
+        };
+        let result = config.resolve_dependencies();
+        assert!(result.is_ok());
+        if let ModulesConfig::List { names, .. } = config {
+            assert_eq!(names, vec!["foo.ko.xz".to_string(), "bar.ko.xz".to_string()]);
+        }
+    }
+
+    #[test]
+    fn test_resolve_dependencies_list_no_depfile_preserves_order() {
+        let mut config = ModulesConfig::List {
+            dir: None,
+            names: vec!["a.ko.xz".to_string()],
+            dep_file_path: None,
+        };
+        let result = config.resolve_dependencies();
+        assert!(result.is_ok());
+        if let ModulesConfig::List { names, .. } = config {
+            assert_eq!(names, vec!["a.ko.xz".to_string()]);
+        }
+    }
+
+    #[test]
+    fn test_resolve_dependencies_scan_no_names() {
+        let mut config = ModulesConfig::Scan {
+            dir: "/lib/modules".to_string(),
+            dep_file_path: "/nonexistent/modules.dep".to_string(),
+            names: None,
+        };
+        let result = config.resolve_dependencies();
+        assert!(result.is_err());
+    }
 
     #[test]
     fn test_parse_empty_depfile() {

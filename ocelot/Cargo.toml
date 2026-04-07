@@ -29,7 +29,6 @@ tokio = { workspace = true }
 clap          = { workspace = true }
 clap_complete = { workspace = true }
 nix           = { workspace = true }
-petgraph      = { workspace = true }
 procfs        = { workspace = true }
 resolve-path  = { workspace = true }
 snafu         = { workspace = true }

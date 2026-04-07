@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 /// Bootstrap-specific configuration for early boot initialization.
 #[derive(Clone, Debug)]
@@ -179,7 +179,7 @@ pub struct PreSwitchPhase {
     /// Hook specifications.
     pub hooks: Vec<HookSpec>,
     /// Environment variables to set.
-    pub environment: Vec<(String, String)>,
+    pub environment: HashMap<String, String>,
     /// Symlinks to create.
     pub symlinks: Vec<Symlink>,
     /// Sysctl configuration (unsupported yet).
@@ -204,7 +204,7 @@ pub struct PostSwitchPhase {
     /// Hook specifications.
     pub hooks: Vec<HookSpec>,
     /// Environment variables to set.
-    pub environment: Vec<(String, String)>,
+    pub environment: HashMap<String, String>,
     /// Symlinks to create.
     pub symlinks: Vec<Symlink>,
     /// Sysctl configuration (unsupported yet).
@@ -282,7 +282,7 @@ pub struct HookSpec {
     pub name: String,
     pub command: String,
     pub arguments: Vec<String>,
-    pub timeout: u32,
+    pub timeout: Duration,
     pub on_failure: MountFailurePolicy,
 }
 
@@ -382,7 +382,7 @@ pub enum HandoffMode {
 /// Shutdown configuration.
 #[derive(Clone, Debug, Default)]
 pub struct Shutdown {
-    pub timeout: u32,
+    pub timeout: Duration,
     pub sync: bool,
     pub umount_all: bool,
 }

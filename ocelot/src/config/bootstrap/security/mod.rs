@@ -2,4 +2,4 @@ mod apparmor;
 mod config;
 mod selinux;
 
-pub use config::SecurityConfig;
+pub use self::config::SecurityConfig;

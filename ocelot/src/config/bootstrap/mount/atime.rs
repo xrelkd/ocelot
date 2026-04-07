@@ -9,7 +9,7 @@ use serde::Deserialize;
 ///
 /// The default behavior is relatime (relative atime), which is POSIX-compliant
 /// and provides good performance for most workloads.
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AtimeMode {
     /// Default atime behavior (typically relatime on Linux).
