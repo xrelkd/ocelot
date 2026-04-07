@@ -6,7 +6,7 @@ use nix::mount::MsFlags;
 use ocelot_bootstrap::MountSpec;
 use tempfile::tempdir;
 
-use super::*;
+use super::{BootstrapConfig, BootstrapSuperviseConfig, HandoffMode};
 use crate::config::bootstrap::mount::MountSpecConfig;
 
 // ============================================================================

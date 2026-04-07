@@ -203,7 +203,7 @@ impl MountFlags {
 mod tests {
     use nix::mount::MsFlags;
 
-    use super::*;
+    use super::{AtimeMode, MountFlags, MountSpecConfig};
 
     #[test]
     fn test_mount_flags_builder() {
