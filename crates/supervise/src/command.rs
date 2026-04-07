@@ -98,6 +98,9 @@ impl Command {
     #[must_use]
     pub const fn is_discard_stderr(&self) -> bool { self.discard_stderr }
 
+    #[must_use]
+    pub const fn get_program(&self) -> &PathBuf { &self.program }
+
     /// Execute the command using execve, which replaces the current process
     /// image with the new.
     ///

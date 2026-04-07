@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
@@ -18,8 +20,11 @@ pub enum Error {
     #[snafu(display("Failed to convert RawFd to AsyncFd, error: {source}"))]
     RegisterFd { source: std::io::Error },
 
-    #[snafu(display("Failed to execute child process"))]
-    ExecuteChild,
+    #[snafu(display("Failed to execute child process {}, error: {source}", program.display()))]
+    ExecuteChild { program: PathBuf, source: std::io::Error },
+
+    #[snafu(display("Got extra bytes while reading from pipe, length: {len}"))]
+    GetExtraBytes { len: usize },
 
     #[snafu(display("Failed to receive dependency: {source}"))]
     ReceiveDependency { source: tokio::sync::broadcast::error::RecvError },
