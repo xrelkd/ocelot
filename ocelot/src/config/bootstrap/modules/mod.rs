@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use serde::Deserialize;
@@ -48,14 +48,9 @@ impl ModulesConfig {
     /// and that all module names exist in the dependency file.
     pub fn validate(&self) -> Result<(), Error> {
         match self {
-            Self::List { names, dep_file_path, .. } => {
+            Self::List { names, dep_file_path, directory } => {
                 if let Some(dep_path) = dep_file_path {
-                    let dep_map = {
-                        let data = std::fs::read(dep_path).with_context(|_| {
-                            error::ParseModuleDependencyFileSnafu { path: dep_path.clone() }
-                        })?;
-                        parse_dep_data(&data)
-                    };
+                    let dep_map = parse_dep_file(directory, dep_path)?;
                     for name in names {
                         if !dep_map.contains_key(name) {
                             return Err(Error::InvalidConfig {
@@ -66,14 +61,8 @@ impl ModulesConfig {
                 }
                 Ok(())
             }
-            Self::Scan { names, dep_file_path, .. } => {
-                let dep_map = {
-                    let data = std::fs::read(dep_file_path).with_context(|_| {
-                        error::ParseModuleDependencyFileSnafu { path: dep_file_path.clone() }
-                    })?;
-                    parse_dep_data(&data)
-                };
-
+            Self::Scan { names, dep_file_path, directory } => {
+                let dep_map = parse_dep_file(directory, dep_file_path)?;
                 if let Some(names_vec) = names {
                     for name in names_vec {
                         if !dep_map.contains_key(name) {
@@ -96,26 +85,16 @@ impl ModulesConfig {
     /// the config.
     pub fn resolve_dependencies(&mut self) -> Result<(), Error> {
         match self {
-            Self::List { names, dep_file_path, .. } => {
+            Self::List { names, dep_file_path, directory } => {
                 if let Some(dep_path) = dep_file_path {
-                    let dep_map = {
-                        let data = std::fs::read(&dep_path).with_context(|_| {
-                            error::ParseModuleDependencyFileSnafu { path: dep_path.clone() }
-                        })?;
-                        parse_dep_data(&data)
-                    };
+                    let dep_map = parse_dep_file(directory, dep_path)?;
                     *names = resolve_module_order(&dep_map, names)
                         .with_context(|_| error::ValidateSnafu)?;
                 }
                 Ok(())
             }
-            Self::Scan { names, dep_file_path, .. } => {
-                let dep_map = {
-                    let data = std::fs::read(&dep_file_path).with_context(|_| {
-                        error::ParseModuleDependencyFileSnafu { path: dep_file_path.clone() }
-                    })?;
-                    parse_dep_data(&data)
-                };
+            Self::Scan { names, dep_file_path, directory } => {
+                let dep_map = parse_dep_file(directory, dep_file_path)?;
                 if let Some(names_vec) = names {
                     *names_vec = resolve_module_order(&dep_map, &names_vec.clone())
                         .with_context(|_| error::ValidateSnafu)?;
@@ -172,6 +151,21 @@ fn parse_dep_data(data: &[u8]) -> HashMap<String, Vec<String>> {
     }
 
     map
+}
+
+fn parse_dep_file(
+    directory: impl AsRef<Path>,
+    dep_file_path: impl AsRef<Path>,
+) -> Result<HashMap<String, Vec<String>>, Error> {
+    let dep_file_path = dep_file_path.as_ref();
+    let dep_file_path = if dep_file_path.is_absolute() {
+        dep_file_path.to_path_buf()
+    } else {
+        directory.as_ref().join(dep_file_path)
+    };
+    let data = std::fs::read(&dep_file_path)
+        .with_context(|_| error::ParseModuleDependencyFileSnafu { path: dep_file_path.clone() })?;
+    Ok(parse_dep_data(&data))
 }
 
 /// Resolve a valid module loading order from a dependency map and a list of
