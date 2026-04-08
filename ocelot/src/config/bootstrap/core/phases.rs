@@ -39,31 +39,11 @@ pub struct PreSwitchConfig {
 }
 
 /// `SwitchRootConfig`: Switch-root configuration (serialization type).
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SwitchRootConfig {
-    #[serde(default)]
-    pub method: SwitchRootMethod,
-    #[serde(default)]
-    pub old_root_dir: Option<String>,
-    #[serde(default = "default_true")]
-    pub cleanup_old_root: bool,
-    #[serde(default = "default_true")]
-    pub move_special: bool,
+    pub root_file_system: MountSpecConfig,
 }
-
-/// Switch-root method.
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SwitchRootMethod {
-    #[serde(rename = "pivotRoot")]
-    #[default]
-    PivotRoot,
-    #[serde(rename = "chroot")]
-    Chroot,
-}
-
-const fn default_true() -> bool { true }
 
 /// `PostSwitchConfig`: Post-switch configuration (serialization type).
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -114,15 +94,7 @@ impl From<PreSwitchConfig> for ocelot_bootstrap::PreSwitchPhase {
 
 impl From<SwitchRootConfig> for ocelot_bootstrap::SwitchRootPhase {
     fn from(config: SwitchRootConfig) -> Self {
-        Self {
-            method: match config.method {
-                SwitchRootMethod::PivotRoot => ocelot_bootstrap::SwitchRootMethod::PivotRoot,
-                SwitchRootMethod::Chroot => ocelot_bootstrap::SwitchRootMethod::Chroot,
-            },
-            old_root_dir: config.old_root_dir,
-            cleanup_old_root: config.cleanup_old_root,
-            move_special: config.move_special,
-        }
+        Self { root_file_system: ocelot_bootstrap::MountSpec::from(config.root_file_system) }
     }
 }
 
@@ -130,7 +102,7 @@ impl From<PostSwitchConfig> for ocelot_bootstrap::PostSwitchPhase {
     fn from(config: PostSwitchConfig) -> Self {
         Self {
             modules: config.modules.map(ocelot_bootstrap::ModulesConfig::from),
-            network: config.network.map(Into::into),
+            network: config.network.map(ocelot_bootstrap::NetworkConfig::from),
             mounts: config.mounts.into_iter().map(ocelot_bootstrap::MountSpec::from).collect(),
             hooks: config.hooks.into_iter().map(ocelot_bootstrap::HookSpec::from).collect(),
             environment: config.environment,
