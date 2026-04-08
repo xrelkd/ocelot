@@ -86,10 +86,10 @@ pub fn exec_supervise(
 /// Returns an error if the shell execution fails.
 pub fn exec_shell(
     console_device: &str,
-    ShellConfig { program, arguments: args, .. }: &ShellConfig,
+    ShellConfig { program, arguments, .. }: &ShellConfig,
 ) -> Result<(), Error> {
     let exit_code = {
-        let args = args.iter().map(String::as_str).collect::<Vec<&str>>();
+        let args = arguments.iter().map(String::as_str).collect::<Vec<&str>>();
         ocelot_entry::execute_interactive_with_session(program, &args, console_device, false, None)
             .context(error::ExecuteShellSnafu)?
     };
