@@ -51,6 +51,9 @@ pub enum Error {
     #[snafu(display("Failed to create file '{}': {source}", path.display()))]
     CreateFile { path: PathBuf, source: std::io::Error },
 
+    #[snafu(display("Failed to set permissions for '{}' with mode '{permissions:?}': {source}", target.display()))]
+    SetPermissions { permissions: std::fs::Permissions, target: PathBuf, source: std::io::Error },
+
     #[snafu(display("Failed to set sysctl value, file '{}', value: {value}: {source}", path.display()))]
     SetSysctl { path: PathBuf, value: String, source: std::io::Error },
 
