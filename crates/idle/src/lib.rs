@@ -59,11 +59,7 @@ pub use self::error::Error;
 pub fn execute() -> Result<(), Error> {
     // Get the PID and warn if not running as PID 1
     let pid = unistd::getpid();
-    if pid.as_raw() == 1 {
-        tracing::info!("Start with PID 1");
-    } else {
-        tracing::warn!("Idle should be the first process (PID 1), current PID: {pid}");
-    }
+    tracing::info!("Start with PID {pid}");
 
     // Block signals we want to handle and create a signal fd
     let signal_fd = {
