@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::config::bootstrap::{mount::MountFailurePolicy, supervise::policy::OnFailurePolicy};
+use crate::config::bootstrap::supervise::policy::OnFailurePolicy;
 
 /// Configuration for boot script execution.
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -45,7 +45,7 @@ pub struct HookSpecConfig {
     #[serde(default)]
     pub timeout_secs: u64,
     #[serde(default)]
-    pub on_failure: MountFailurePolicy,
+    pub on_failure: HookFailurePolicy,
 }
 
 impl From<HookSpecConfig> for ocelot_bootstrap::HookSpec {
@@ -56,10 +56,20 @@ impl From<HookSpecConfig> for ocelot_bootstrap::HookSpec {
             arguments: config.arguments,
             timeout: Duration::from_secs(config.timeout_secs),
             on_failure: match config.on_failure {
-                MountFailurePolicy::Warn => ocelot_bootstrap::MountFailurePolicy::Warn,
-                MountFailurePolicy::Abort => ocelot_bootstrap::MountFailurePolicy::Abort,
-                MountFailurePolicy::Retry => ocelot_bootstrap::MountFailurePolicy::Retry,
+                HookFailurePolicy::Warn => ocelot_bootstrap::HookFailurePolicy::Warn,
+                HookFailurePolicy::Abort => ocelot_bootstrap::HookFailurePolicy::Abort,
+                HookFailurePolicy::Retry => ocelot_bootstrap::HookFailurePolicy::Retry,
             },
         }
     }
+}
+
+/// `HookFailurePolicy`: Hook failure policy (serialization type).
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HookFailurePolicy {
+    #[default]
+    Warn,
+    Abort,
+    Retry,
 }

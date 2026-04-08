@@ -3,6 +3,7 @@ use serde::Deserialize;
 
 use crate::config::bootstrap::mount::AtimeMode;
 
+#[expect(dead_code, reason = "MountFailurePolicy will be used in the future.")]
 /// `MountFailurePolicy`: Mount failure policy (serialization type).
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
