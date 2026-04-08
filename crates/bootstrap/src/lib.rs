@@ -80,7 +80,7 @@ pub fn execute(config: &Config) -> Result<(), Error> {
     phase::symlinks_pre(&config.pre_switch.symlinks)?;
     phase::environment_pre(&config.pre_switch.environment);
     if let Some(modules) = &config.pre_switch.modules {
-        phase::modules_pre(modules)?;
+        phase::modules_pre(modules);
     }
     if let Some(network) = &config.pre_switch.network {
         phase::network_pre(network)?;
@@ -106,7 +106,7 @@ pub fn execute(config: &Config) -> Result<(), Error> {
         phase::network_post(network)?;
     }
     if let Some(modules) = &config.post_switch.modules {
-        phase::modules_post(modules)?;
+        phase::modules_post(modules);
     }
     if let Some(security) = &config.post_switch.security {
         phase::security_post(security)?;

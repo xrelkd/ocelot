@@ -18,23 +18,38 @@ use crate::{config::ModulesConfig, error, error::Error};
 
 /// Loads kernel modules before `switch_root`.
 ///
-/// Supports both list mode (load specific modules by name) and scan mode
-/// (discover and load all modules in a directory).
-#[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
-pub fn pre(config: &ModulesConfig) -> Result<(), Error> {
+/// This function loads kernel modules during the early bootstrap phase,
+/// before the root filesystem is switched. Errors are logged as warnings
+/// and do not stop the boot process.
+///
+/// # Examples
+/// ```ignore
+/// // Requires root privileges and actual kernel modules
+/// use crate::config::ModulesConfig;
+/// let config = ModulesConfig::default();
+/// pre(&config);
+/// ```
+pub fn pre(config: &ModulesConfig) {
     load_modules(config);
     tracing::debug!("Pre-switch: loaded kernel modules");
-    Ok(())
 }
 
 /// Loads kernel modules after `switch_root`.
 ///
-/// Currently a placeholder - post-switch module loading is not yet implemented.
-#[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
-pub fn post(config: &ModulesConfig) -> Result<(), Error> {
+/// This function loads kernel modules during the late bootstrap phase,
+/// after the root filesystem is switched. Errors are logged as warnings
+/// and do not stop the boot process.
+///
+/// # Examples
+/// ```ignore
+/// // Requires root privileges and actual kernel modules
+/// use crate::config::ModulesConfig;
+/// let config = ModulesConfig::default();
+/// post(&config);
+/// ```
+pub fn post(config: &ModulesConfig) {
     load_modules(config);
     tracing::debug!("Post-switch: loaded kernel modules");
-    Ok(())
 }
 
 /// Loads kernel modules based on the configuration.
