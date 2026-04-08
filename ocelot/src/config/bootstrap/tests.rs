@@ -138,7 +138,6 @@ fn test_bootstrap_config_template_shell() {
     let config: BootstrapConfig = serde_yaml::from_slice(&template).unwrap();
     assert_eq!(config.console, "console");
     assert_eq!(config.log_level, tracing::Level::INFO);
-    assert!(!config.pre_switch.mounts.is_empty());
     assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Shell));
     assert!(config.post_switch.handoff.shell.is_some());
     assert!(config.post_switch.handoff.supervise.is_none());
@@ -157,7 +156,6 @@ fn test_bootstrap_config_template_supervise() {
     let config: BootstrapConfig = serde_yaml::from_slice(&template).unwrap();
     assert_eq!(config.console, "console");
     assert_eq!(config.log_level, tracing::Level::INFO);
-    assert!(!config.pre_switch.mounts.is_empty());
     assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Supervise));
     assert!(config.post_switch.handoff.supervise.is_some());
     assert!(config.post_switch.handoff.shell.is_none());

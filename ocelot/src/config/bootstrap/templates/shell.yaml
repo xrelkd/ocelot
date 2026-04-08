@@ -11,31 +11,14 @@ logLevel: info
 
 # Pre-switch phase
 preSwitch:
-  # Mount the root filesystem (required)
-  mounts:
-    - type: virtiofs
-      tag: rootfs
-      target: /newroot
-      overlay: false
-      # Optional mount flags as boolean fields (all default to true):
-      # readOnly: true          # MS_RDONLY
-      # noExec: true            # MS_NOEXEC
-      # noSuid: true            # MS_NOSUID
-      # noDev: true             # MS_NODEV
-      # sync: true              # MS_SYNCHRONOUS
-      # dirSync: true           # MS_DIRSYNC
-      # mandatoryLocks: true    # MS_MANDLOCK
-      # posixAcl: true          # MS_POSIXACL
-      # atime: noAtime          # AtimeMode: noAtime, relAtime, strictAtime, lazyTime
+  # Mount the root filesystem
+  mounts: []
   environment: {}
   symlinks: []
   modules: null
-  network: null
   hooks: []
   sysctl: {}
   tmpfiles: null
-  security: null
-  clock: null
 
 # Optional configuration
 
@@ -44,8 +27,18 @@ switchRoot:
   rootFileSystem:
     type: virtiofs
     tag: rootfs
-    target: /newroot
+    target: /
     overlay: false
+    # Optional mount flags as boolean fields (all default to true):
+    readOnly: true # MS_RDONLY
+    noExec: true # MS_NOEXEC
+    noSuid: true # MS_NOSUID
+    noDev: true # MS_NODEV
+    sync: true # MS_SYNCHRONOUS
+    dirSync: true # MS_DIRSYNC
+    mandatoryLocks: true # MS_MANDLOCK
+    posixAcl: true # MS_POSIXACL
+    atime: noAtime # AtimeMode: noAtime, relAtime, strictAtime, lazyTime
 
 # Post-switch phase
 postSwitch:
@@ -54,11 +47,8 @@ postSwitch:
   mounts: []
   hooks: []
   modules: null
-  network: null
   sysctl: {}
   tmpfiles: null
-  security: null
-  clock: null
 
   # Handoff configuration
   handoff:
@@ -66,10 +56,3 @@ postSwitch:
     shell:
       program: /bin/sh
       arguments: []
-      # workingDirectory: null
-
-  # Shutdown configuration (used after shell exits)
-  shutdown:
-    timeoutSecs: 30
-    sync: true
-    umountAll: true
