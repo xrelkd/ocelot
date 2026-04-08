@@ -4,8 +4,11 @@
 /// process.
 use std::process::Command;
 
+use snafu::ResultExt;
+
 use crate::{
     config::{HookFailurePolicy, HookSpec},
+    error,
     error::Error,
 };
 
@@ -36,9 +39,10 @@ pub fn post(specs: &[HookSpec]) -> Result<(), Error> {
 fn invoke_hook(
     HookSpec { name, command, arguments, on_failure, .. }: &HookSpec,
 ) -> Result<(), Error> {
-    let output = Command::new(command).args(arguments).output().map_err(|err| Error::Hook {
-        message: format!("Failed to execute hook '{name}', error: {err}"),
-    })?;
+    let output = Command::new(command)
+        .args(arguments)
+        .output()
+        .with_context(|_| error::SpawnHookSnafu { name: name.clone() })?;
 
     if output.status.success() {
         return Ok(());
@@ -51,30 +55,25 @@ fn invoke_hook(
                 output.status.code().unwrap_or(-1),
                 String::from_utf8_lossy(&output.stderr)
             );
+            Ok(())
         }
-        HookFailurePolicy::Abort => {
-            return Err(Error::Hook {
-                message: format!(
-                    "Hook '{name}' failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            });
-        }
+        HookFailurePolicy::Abort => Err(Error::ExecuteHook {
+            name: name.clone(),
+            error: String::from_utf8_lossy(&output.stderr).to_string(),
+        }),
         HookFailurePolicy::Retry => {
-            let output2 =
-                Command::new(command).args(arguments).output().map_err(|err| Error::Hook {
-                    message: format!("Failed to execute hook '{name}' (retry), error: {err}"),
-                })?;
-
-            if !output2.status.success() {
-                return Err(Error::Hook {
-                    message: format!(
-                        "Hook '{name}' failed after retry: {}",
-                        String::from_utf8_lossy(&output2.stderr)
-                    ),
-                });
+            let output = Command::new(command)
+                .args(arguments)
+                .output()
+                .with_context(|_| error::SpawnHookSnafu { name: name.clone() })?;
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(Error::ExecuteHook {
+                    name: name.clone(),
+                    error: String::from_utf8_lossy(&output.stderr).to_string(),
+                })
             }
         }
     }
-    Ok(())
 }

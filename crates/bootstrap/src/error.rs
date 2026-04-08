@@ -84,9 +84,12 @@ pub enum Error {
     #[snafu(display("Failed to fork child process: {source}"))]
     SpawnChild { source: nix::Error },
 
-    #[snafu(display("Hook error: {message}"))]
-    Hook { message: String },
-
     #[snafu(display("Failed to encode argument '{value}': contains null bytes"))]
     EncodeArgument { value: String, source: std::ffi::NulError },
+
+    #[snafu(display("Failed to invoke hook {name}, error: {source}"))]
+    SpawnHook { name: String, source: std::io::Error },
+
+    #[snafu(display("Failed to execute hook {name}, error: {error}"))]
+    ExecuteHook { name: String, error: String },
 }
