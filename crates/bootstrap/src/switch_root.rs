@@ -6,8 +6,7 @@ use std::{
 use snafu::ResultExt;
 
 use crate::{
-    ShellConfig,
-    config::Config,
+    ShellConfig, SwitchRootPhase,
     error::{self, Error},
     mount,
     shutdown::shutdown,
@@ -21,12 +20,12 @@ use crate::{
 /// # Errors
 ///
 /// Returns an error if mount operations or `chroot` fails.
-pub fn only(config: &Config) -> Result<(), Error> {
+pub fn only(switch_root: &SwitchRootPhase) -> Result<(), Error> {
     let new_root = PathBuf::from("/new_root");
 
     ensure_dir(&new_root)?;
     {
-        let mut root_file_system = config.switch_root.root_file_system.clone();
+        let mut root_file_system = switch_root.root_file_system.clone();
         root_file_system.target.clone_from(&new_root);
         let _unused = mount::mount(&root_file_system)?;
     }

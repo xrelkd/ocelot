@@ -78,9 +78,15 @@ pub enum Error {
     #[snafu(display("Failed to execute interactive shell: {source}"))]
     ExecuteShell { source: ocelot_entry::Error },
 
+    #[snafu(display("Failed to execute command: {source}"))]
+    ExecuteCommand { program: String, arguments: Vec<String>, source: nix::Error },
+
     #[snafu(display("Failed to fork child process: {source}"))]
     SpawnChild { source: nix::Error },
 
     #[snafu(display("Hook error: {message}"))]
     Hook { message: String },
+
+    #[snafu(display("Failed to encode argument '{value}': contains null bytes"))]
+    EncodeArgument { value: String, source: std::ffi::NulError },
 }

@@ -440,6 +440,11 @@ pub enum HandoffMode {
     Supervise(ocelot_supervise::OrchestratorConfig),
     /// Spawn an interactive shell.
     Shell(ShellConfig),
+    /// Replace the current process with a new one using `exec`.
+    ///
+    /// This will terminate the bootstrap process and transfer full control
+    /// to the specified program.
+    Exec(ExecConfig),
 }
 
 /// Shutdown configuration.
@@ -475,6 +480,19 @@ pub struct ShellConfig {
     /// Shell program to execute.
     pub program: String,
     /// Arguments for the shell program.
+    pub arguments: Vec<String>,
+}
+
+/// Configuration for direct execution mode.
+///
+/// When configured, bootstrap replaces itself with the specified program
+/// using `exec` after `switch_root`. Unlike shell mode, this is intended
+/// for running a single, specific process as the final stage of bootstrap.
+#[derive(Clone, Debug)]
+pub struct ExecConfig {
+    /// Path to the program to execute.
+    pub program: String,
+    /// Arguments passed to the program.
     pub arguments: Vec<String>,
 }
 
