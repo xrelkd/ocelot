@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 /// Bootstrap-specific configuration for early boot initialization.
 #[derive(Clone, Debug)]
@@ -38,7 +38,7 @@ pub enum RootConfig {
     /// Mounts a raw block device as the root filesystem.
     Block {
         /// Device path (e.g., `/dev/vda2`).
-        device: std::path::PathBuf,
+        device: PathBuf,
         /// Filesystem type (e.g., `ext4`, `xfs`).
         fstype: String,
         /// Whether to use overlay filesystem on top.
@@ -106,49 +106,21 @@ impl RootConfig {
 
 /// Configuration for kernel module loading.
 ///
-/// Supports two mutually exclusive modes:
-/// - `List`: Load specific modules by name from a directory
-/// - `Scan`: Auto-discover and load all `.ko`/`.ko.xz`/`.ko.gz` files from a
-///   directory
-///
-/// # Dependency Ordering
-///
-/// The `names` list in [`ModulesConfig::List`] is assumed to be in correct
-/// dependency order — dependencies before dependents. This ordering is
-/// validated by the ocelot binary's config layer when a `modules.dep` file
-/// is provided. If no dependency file is configured, the user is responsible
-/// for specifying the correct order.
+/// A simple struct with directory and paths fields.
+/// Scanning is handled at the caller — the caller generates the paths list
+/// and passes it to this configuration.
 #[derive(Clone, Debug)]
-pub enum ModulesConfig {
-    /// Load specific modules by name.
-    ///
-    /// When `dir` is `None`, defaults to `/lib/modules`.
-    ///
-    /// # Ordering
-    /// Modules are loaded in the order specified in `names`. This list is
-    /// expected to be in correct dependency order (dependencies before
-    /// dependents), as validated by the ocelot config layer when a
-    /// `modules.dep` file is provided.
-    List {
-        /// Directory containing kernel modules.
-        dir: Option<std::path::PathBuf>,
-        names: Vec<String>,
-    },
-    /// Scan directory for all `.ko`/`.ko.xz`/`.ko.gz` files and load each.
-    ///
-    /// # Ordering
-    /// Modules are loaded in the order specified in `names` (populated by
-    /// the ocelot config layer via dependency resolution from a
-    /// `modules.dep` file).
-    Scan {
-        /// Directory to scan for kernel modules.
-        dir: std::path::PathBuf,
-        names: Option<Vec<String>>,
-    },
+pub struct ModulesConfig {
+    /// Directory containing kernel modules.
+    pub directory: PathBuf,
+    /// List of module names/paths to load.
+    pub module_file_names: Vec<String>,
 }
 
 impl Default for ModulesConfig {
-    fn default() -> Self { Self::List { dir: None, names: Vec::new() } }
+    fn default() -> Self {
+        Self { directory: PathBuf::from("/lib/modules"), module_file_names: Vec::new() }
+    }
 }
 
 /// Switch-root phase configuration.
@@ -239,7 +211,7 @@ pub struct MountSpec {
     /// Mount source (device, tag, or virtual).
     pub source: MountSource,
     /// Mount target path.
-    pub target: std::path::PathBuf,
+    pub target: PathBuf,
     /// Filesystem type (e.g., `ext4`, `virtiofs`, `tmpfs`).
     pub fstype: String,
     /// Mount flags (e.g., `MS_RDONLY`, `MS_NOEXEC`).
@@ -256,7 +228,7 @@ impl Default for MountSpec {
     fn default() -> Self {
         Self {
             source: MountSource::Virtual,
-            target: std::path::PathBuf::new(),
+            target: PathBuf::new(),
             fstype: String::new(),
             flags: nix::mount::MsFlags::empty(),
             options: None,
@@ -386,7 +358,7 @@ impl From<HashMap<String, String>> for Sysctl {
 #[derive(Clone, Debug, Default)]
 pub struct Tmpfile {
     /// Path to create.
-    pub path: std::path::PathBuf,
+    pub path: PathBuf,
     /// File permissions in octal (e.g., `"644"`).
     pub mode: String,
     /// Type of file (e.g., `f`, `d`, `L`).
@@ -441,9 +413,9 @@ pub struct Clock {
 #[derive(Clone, Debug, Default)]
 pub struct Symlink {
     /// Source path (target of symlink).
-    pub source: std::path::PathBuf,
+    pub source: PathBuf,
     /// Destination path (where symlink is created).
-    pub target: std::path::PathBuf,
+    pub target: PathBuf,
 }
 
 /// Handoff configuration.
@@ -630,13 +602,8 @@ mod tests {
     #[test]
     fn test_module_config_default() {
         let config = ModulesConfig::default();
-        match config {
-            ModulesConfig::List { dir, names } => {
-                assert!(dir.is_none());
-                assert!(names.is_empty());
-            }
-            ModulesConfig::Scan { .. } => panic!("expected List variant"),
-        }
+        assert_eq!(config.directory, std::path::PathBuf::from("/lib/modules"));
+        assert!(config.module_file_names.is_empty());
     }
 
     #[test]
