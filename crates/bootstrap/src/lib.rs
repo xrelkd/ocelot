@@ -10,11 +10,11 @@ mod switch_root;
 pub use self::{
     cmdline::get_config_path,
     config::{
-        Apparmor, BootScriptConfig, Clock, Config, Handoff, HandoffMode, HookSpec, InterfaceConfig,
-        ModulesConfig, MountFailurePolicy, MountSource, MountSpec, NetworkConfig, NetworkMode,
-        OnFailureConfig, OnFailurePolicy, OverlaySpec, PostSwitchPhase, PreSwitchPhase, RootConfig,
-        Security, Selinux, ShellConfig, Shutdown, SwitchRootPhase, Symlink, SymlinkSpec, Sysctl,
-        Tmpfile, VirtiofsMount,
+        Apparmor, BootScriptConfig, Clock, Config, Handoff, HandoffMode, HookFailurePolicy,
+        HookSpec, InterfaceConfig, ModulesConfig, MountFailurePolicy, MountSource, MountSpec,
+        NetworkConfig, NetworkMode, OnFailureConfig, OnFailurePolicy, OverlaySpec, PostSwitchPhase,
+        PreSwitchPhase, RootConfig, Security, Selinux, ShellConfig, Shutdown, SwitchRootPhase,
+        Symlink, SymlinkSpec, Sysctl, Tmpfile, VirtiofsMount,
     },
     error::Error,
     shutdown::shutdown,

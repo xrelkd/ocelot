@@ -259,6 +259,20 @@ pub enum MountFailurePolicy {
     Retry,
 }
 
+/// Hook failure policy.
+///
+/// Determines what happens when a hook operation fails.
+#[derive(Clone, Debug, Default)]
+pub enum HookFailurePolicy {
+    /// Log a warning and continue.
+    #[default]
+    Warn,
+    /// Abort the boot process.
+    Abort,
+    /// Retry the mount operation once.
+    Retry,
+}
+
 /// Overlay filesystem specification.
 ///
 /// Configures the layers of an overlay mount (lower, upper, work directories).
@@ -286,7 +300,7 @@ pub struct HookSpec {
     /// Timeout for command execution.
     pub timeout: Duration,
     /// Policy when hook fails.
-    pub on_failure: MountFailurePolicy,
+    pub on_failure: HookFailurePolicy,
 }
 
 /// Network configuration.
