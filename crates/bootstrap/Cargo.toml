@@ -1,6 +1,6 @@
 [package]
 name                   = "ocelot-bootstrap"
-description            = "Bootstrap init system for ocelot"
+description            = "Bootstrap init system"
 version.workspace      = true
 authors.workspace      = true
 homepage.workspace     = true
