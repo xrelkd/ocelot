@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use snafu::Snafu;
 
+/// Errors that can occur during bootstrap execution.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {

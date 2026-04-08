@@ -8,6 +8,11 @@ use crate::{
     error::Error,
 };
 
+/// Mounts a filesystem according to the given specification.
+///
+/// # Errors
+///
+/// Returns an error if the mount operation fails.
 pub fn mount(spec: &MountSpec) -> Result<PathBuf, Error> {
     let target_path =
         if spec.target.as_os_str().is_empty() { Path::new("/") } else { &spec.target };

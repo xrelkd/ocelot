@@ -1,5 +1,10 @@
+/// Configures `SELinux` and `AppArmor` security modules during
+/// the bootstrap process.
 use crate::{config::Security, error::Error};
 
+/// Configures security modules before `switch_root`.
+///
+/// Currently a placeholder - pre-switch security is not yet implemented.
 #[expect(dead_code, reason = "pre-switch security not yet implemented")]
 #[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
 pub fn pre(_config: &Security) -> Result<(), Error> {
@@ -7,6 +12,9 @@ pub fn pre(_config: &Security) -> Result<(), Error> {
     Ok(())
 }
 
+/// Configures security modules after `switch_root`.
+///
+/// Applies `SELinux` and `AppArmor` configuration if enabled.
 #[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
 pub fn post(config: &Security) -> Result<(), Error> {
     // Apply SELinux configuration

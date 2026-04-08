@@ -1,3 +1,7 @@
+/// Hook execution phase functions.
+///
+/// These functions execute custom commands at specific points in the bootstrap
+/// process.
 use std::process::Command;
 
 use crate::{
@@ -5,6 +9,11 @@ use crate::{
     error::Error,
 };
 
+/// Executes hook commands before `switch_root`.
+///
+/// Runs each hook in sequence. The behavior on failure depends on the hook's
+/// [`MountFailurePolicy`]: `Warn` logs a warning, `Abort` returns an error,
+/// and `Retry` attempts the hook one more time.
 pub fn pre(specs: &[HookSpec]) -> Result<(), Error> {
     for spec in specs {
         let output = Command::new(&spec.command).args(&spec.arguments).output().map_err(|e| {
@@ -61,6 +70,9 @@ pub fn pre(specs: &[HookSpec]) -> Result<(), Error> {
     Ok(())
 }
 
+/// Executes hook commands after `switch_root`.
+///
+/// Currently a placeholder - post-switch hooks are not yet implemented.
 #[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
 pub fn post(_specs: &[HookSpec]) -> Result<(), Error> {
     tracing::debug!("Post-switch: hooks (not implemented)");

@@ -1,3 +1,7 @@
+/// Sysctl configuration phase functions.
+///
+/// These functions configure kernel parameters via sysctl during the bootstrap
+/// process.
 use std::path::Path;
 
 use snafu::ResultExt;
@@ -8,6 +12,9 @@ use crate::{
     error::{CreateDirectorySnafu, Error},
 };
 
+/// Configures sysctl parameters before `switch_root`.
+///
+/// Writes key-value pairs to `/proc/sys/` as kernel parameters.
 pub fn pre(Sysctl { key_values }: &Sysctl) -> Result<(), Error> {
     for (key, value) in key_values {
         let sysctl_path = format!("/proc/sys/{}", key.replace('.', "/"));
@@ -28,6 +35,10 @@ pub fn pre(Sysctl { key_values }: &Sysctl) -> Result<(), Error> {
     Ok(())
 }
 
+/// Configures sysctl parameters after `switch_root`.
+///
+/// Currently a placeholder - post-switch sysctl configuration is not yet
+/// implemented.
 #[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
 pub fn post(_config: &Sysctl) -> Result<(), Error> {
     tracing::debug!("Post-switch: sysctl (not implemented)");

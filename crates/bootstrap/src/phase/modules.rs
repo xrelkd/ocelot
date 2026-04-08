@@ -1,3 +1,8 @@
+/// Kernel module loading phase functions.
+///
+/// These functions load kernel modules during the bootstrap process, supporting
+/// both list mode (specific modules by name) and scan mode (discover all
+/// modules in a directory).
 use std::{
     ffi::CString,
     fs::File,
@@ -11,6 +16,10 @@ use snafu::ResultExt;
 
 use crate::{config::ModulesConfig, error, error::Error};
 
+/// Loads kernel modules before `switch_root`.
+///
+/// Supports both list mode (load specific modules by name) and scan mode
+/// (discover and load all modules in a directory).
 #[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
 pub fn pre(config: &ModulesConfig) -> Result<(), Error> {
     load_modules(config);
@@ -18,6 +27,9 @@ pub fn pre(config: &ModulesConfig) -> Result<(), Error> {
     Ok(())
 }
 
+/// Loads kernel modules after `switch_root`.
+///
+/// Currently a placeholder - post-switch module loading is not yet implemented.
 #[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
 pub fn post(_config: &ModulesConfig) -> Result<(), Error> {
     tracing::debug!("Post-switch: modules (not implemented)");
