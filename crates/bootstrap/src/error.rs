@@ -10,7 +10,7 @@ pub enum Error {
     OpenConsole { path: PathBuf, source: std::io::Error },
 
     #[snafu(display("Failed to setup console: {source}"))]
-    ConsoleSetup { source: nix::Error },
+    SetupConsole { source: nix::Error },
 
     #[snafu(display("Isolate namespace: {source}"))]
     IsolateNamespace { source: nix::Error },
@@ -21,9 +21,6 @@ pub enum Error {
     #[snafu(display("Failed to unmount {}: {source}", path.display()))]
     Unmount { path: PathBuf, source: nix::Error },
 
-    #[snafu(display("Failed to pivot root {} -> {}: {source}", old_root.display(), new_root.display()))]
-    PivotRoot { new_root: PathBuf, old_root: PathBuf, source: nix::Error },
-
     #[snafu(display("Failed to change root directory '{}': {source}", path.display()))]
     ChangeRootDirectory { path: PathBuf, source: nix::Error },
 
@@ -32,12 +29,6 @@ pub enum Error {
 
     #[snafu(display("Failed to shut down system: {source}"))]
     Shutdown { source: nix::Error },
-
-    #[snafu(display("Failed to change working directory to '{}': {source}", path.display()))]
-    FailedToChangeWorkingDirectory { path: PathBuf, source: std::io::Error },
-
-    #[snafu(display("Failed to read /proc/filesystems: {source}"))]
-    ReadFilesystems { source: std::io::Error },
 
     #[snafu(display("Virtiofs not supported: {message}"))]
     VirtiofsNotSupported { message: &'static str },
@@ -66,11 +57,11 @@ pub enum Error {
     #[snafu(display("Failed to create memfd for kernel module '{}': {source}", path.display()))]
     CreateMemfd { path: PathBuf, source: std::io::Error },
 
-    #[snafu(display("Failed to init kernel module '{}': {source}", path.display()))]
+    #[snafu(display("Failed to initialize kernel module '{}': {source}", path.display()))]
     InitializeModule { path: PathBuf, source: nix::Error },
 
     #[snafu(display("Failed to execute boot script: {source}"))]
-    BootScript { source: ocelot_entry::Error },
+    ExecuteBootScript { source: ocelot_entry::Error },
 
     #[snafu(display("Failed to execute supervise orchestrator: {source}"))]
     ExecuteSupervise { source: ocelot_supervise::Error },

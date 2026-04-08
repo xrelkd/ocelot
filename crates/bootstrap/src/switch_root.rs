@@ -163,11 +163,11 @@ fn ensure_dir(path: impl AsRef<Path>) -> Result<(), Error> {
 fn clean_initramfs_mounts() {
     // Read /proc/mounts to find everything currently mounted
     if let Ok(mounts) = std::fs::read_to_string("/proc/mounts") {
-        let mut points: Vec<String> = mounts
+        let mut points = mounts
             .lines()
             .filter_map(|line| line.split_whitespace().nth(1).map(String::from))
             .filter(|p| p != "/")
-            .collect();
+            .collect::<Vec<_>>();
 
         // Sort by length descending (unmount deepest children first)
         points.sort_by_key(|b| Reverse(b.len()));

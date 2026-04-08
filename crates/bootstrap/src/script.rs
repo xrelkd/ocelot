@@ -1,6 +1,9 @@
 use std::{path::Path, time::Duration};
 
-use crate::config::{BootScriptConfig, OnFailurePolicy};
+use crate::{
+    Error,
+    config::{BootScriptConfig, OnFailurePolicy},
+};
 
 /// Executes the configured boot script.
 ///
@@ -14,7 +17,7 @@ use crate::config::{BootScriptConfig, OnFailurePolicy};
 /// Logs a warning and returns `Ok(())` if `on_failure` is `Warn`.
 pub fn execute_boot_script(
     BootScriptConfig { command, arguments, on_failure, working_directory }: &BootScriptConfig,
-) -> Result<(), crate::error::Error> {
+) -> Result<(), Error> {
     if let Some(working_dir) = working_directory {
         tracing::info!("Setting working directory for boot script: {working_dir}");
         if let Err(source) = std::env::set_current_dir(working_dir) {
@@ -39,16 +42,16 @@ pub fn execute_boot_script(
             tracing::warn!("Boot script exited with non-zero code: {exit_code}");
             match on_failure {
                 OnFailurePolicy::Warn => Ok(()),
-                OnFailurePolicy::Abort => Err(crate::error::Error::BootScript {
-                    source: ocelot_entry::Error::ExecuteChild,
-                }),
+                OnFailurePolicy::Abort => {
+                    Err(Error::ExecuteBootScript { source: ocelot_entry::Error::ExecuteChild })
+                }
             }
         }
         Err(source) => {
             tracing::error!("Failed to execute boot script: {source}");
             match on_failure {
                 OnFailurePolicy::Warn => Ok(()),
-                OnFailurePolicy::Abort => Err(crate::error::Error::BootScript { source }),
+                OnFailurePolicy::Abort => Err(Error::ExecuteBootScript { source }),
             }
         }
     }
