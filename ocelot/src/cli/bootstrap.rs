@@ -80,20 +80,14 @@ fn run_bootstrap(path: impl AsRef<Path>) -> Result<i32, Error> {
     let mut config = BootstrapConfig::load(path)?;
     config.validate()?;
     let handoff_mode = config.handoff_mode();
-    let log_level = config.log_level;
+    let log_level = match handoff_mode {
+        HandoffMode::Supervise => config.log_level,
+        HandoffMode::Shell => tracing::Level::INFO,
+    };
+    init_tracing_subscriber(log_level);
     let bootstrap_config = ocelot_bootstrap::Config::from(config);
-    match handoff_mode {
-        HandoffMode::Shell => {
-            init_tracing_subscriber(tracing::Level::INFO);
-            ocelot_bootstrap::execute_shell(&bootstrap_config)?;
-            ocelot_bootstrap::shutdown()?;
-        }
-        HandoffMode::Supervise => {
-            init_tracing_subscriber(log_level);
-            ocelot_bootstrap::execute_supervise(&bootstrap_config)?;
-            ocelot_bootstrap::shutdown()?;
-        }
-    }
+    ocelot_bootstrap::execute(&bootstrap_config)?;
+    ocelot_bootstrap::shutdown()?;
     Ok(0)
 }
 
