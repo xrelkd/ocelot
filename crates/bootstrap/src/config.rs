@@ -132,18 +132,6 @@ pub struct SwitchRootPhase {
     pub root_file_system: MountSpec,
 }
 
-/// Switch-root method.
-///
-/// Determines how the root filesystem is switched.
-#[derive(Clone, Debug, Default)]
-pub enum SwitchRootMethod {
-    /// Use `pivot_root` system call.
-    #[default]
-    PivotRoot,
-    /// Use `chroot` system call.
-    Chroot,
-}
-
 /// Pre-switch phase configuration.
 ///
 /// Configuration for operations performed before `switch_root` is executed.
