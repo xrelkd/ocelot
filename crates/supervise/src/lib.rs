@@ -50,11 +50,7 @@ use crate::orchestrator::Orchestrator;
 /// This function should not panic under normal operation.
 pub fn execute(config: OrchestratorConfig) -> Result<i32, Error> {
     let pid = nix::unistd::getpid();
-    if pid.as_raw() == 1 {
-        tracing::info!("Start with PID 1");
-    } else {
-        tracing::warn!("Supervise should be the first process (PID 1), current PID: {pid}");
-    }
+    tracing::info!("Start with PID {pid}");
 
     let runtime = tokio::runtime::Runtime::new().context(error::InitializeTokioRuntimeSnafu)?;
     let (_orchestrator, orchestrator_executor) = Orchestrator::new(config);
