@@ -1,6 +1,7 @@
 mod cmdline;
 mod config;
 mod error;
+mod mount;
 mod phase;
 mod script;
 mod shutdown;
@@ -64,7 +65,7 @@ pub fn execute_supervise(config: &Config) -> Result<(), Error> {
     }
 
     tracing::info!("Mounting virtual filesystems");
-    phase::mount_virtual_filesystems()?;
+    mount::mount_virtual_filesystems()?;
 
     tracing::info!("Executing pre-switch phase functions");
     if let Some(clock) = &config.pre_switch.clock {
@@ -99,8 +100,8 @@ pub fn execute_supervise(config: &Config) -> Result<(), Error> {
     }
 
     phase::sysctl_post(&config.post_switch.sysctl)?;
-
     phase::mounts_post(&config.post_switch.mounts)?;
+
     if let Some(network) = &config.post_switch.network {
         phase::network_post(network)?;
     }
@@ -148,7 +149,7 @@ pub fn execute_shell(config: &Config) -> Result<(), Error> {
     }
 
     tracing::info!("Mounting virtual filesystems");
-    phase::mount_virtual_filesystems()?;
+    mount::mount_virtual_filesystems()?;
 
     tracing::info!("Executing pre-switch phase functions");
     if let Some(clock) = &config.pre_switch.clock {

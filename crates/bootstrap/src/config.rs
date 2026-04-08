@@ -145,16 +145,9 @@ impl Default for ModulesConfig {
 }
 
 /// Switch-root phase configuration.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct SwitchRootPhase {
-    /// Method to use for switching root.
-    pub method: SwitchRootMethod,
-    /// Old root directory to clean up.
-    pub old_root_dir: Option<String>,
-    /// Whether to cleanup the old root.
-    pub cleanup_old_root: bool,
-    /// Whether to move special filesystems.
-    pub move_special: bool,
+    pub root_file_system: MountSpec,
 }
 
 /// Switch-root method.

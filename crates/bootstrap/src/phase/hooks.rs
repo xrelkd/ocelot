@@ -11,50 +11,52 @@ pub fn pre(specs: &[HookSpec]) -> Result<(), Error> {
             Error::Hook { message: format!("Failed to execute hook '{}': {}", spec.name, e) }
         })?;
 
-        if !output.status.success() {
-            match spec.on_failure {
-                MountFailurePolicy::Warn => {
-                    tracing::warn!(
-                        "Pre-switch hook '{}' failed (exit code: {}): {}",
+        if output.status.success() {
+            continue;
+        }
+
+        match spec.on_failure {
+            MountFailurePolicy::Warn => {
+                tracing::warn!(
+                    "Pre-switch hook '{}' failed (exit code: {}): {}",
+                    spec.name,
+                    output.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            MountFailurePolicy::Abort => {
+                return Err(Error::Hook {
+                    message: format!(
+                        "Hook '{}' failed: {}",
                         spec.name,
-                        output.status.code().unwrap_or(-1),
                         String::from_utf8_lossy(&output.stderr)
-                    );
-                }
-                MountFailurePolicy::Abort => {
-                    return Err(Error::Hook {
-                        message: format!(
-                            "Hook '{}' failed: {}",
-                            spec.name,
-                            String::from_utf8_lossy(&output.stderr)
-                        ),
-                    });
-                }
-                MountFailurePolicy::Retry => {
-                    let output2 = Command::new(&spec.command)
-                        .args(&spec.arguments)
-                        .output()
-                        .map_err(|e| Error::Hook {
+                    ),
+                });
+            }
+            MountFailurePolicy::Retry => {
+                let output2 =
+                    Command::new(&spec.command).args(&spec.arguments).output().map_err(|e| {
+                        Error::Hook {
                             message: format!(
                                 "Failed to execute hook '{}' (retry): {}",
                                 spec.name, e
                             ),
-                        })?;
+                        }
+                    })?;
 
-                    if !output2.status.success() {
-                        return Err(Error::Hook {
-                            message: format!(
-                                "Hook '{}' failed after retry: {}",
-                                spec.name,
-                                String::from_utf8_lossy(&output2.stderr)
-                            ),
-                        });
-                    }
+                if !output2.status.success() {
+                    return Err(Error::Hook {
+                        message: format!(
+                            "Hook '{}' failed after retry: {}",
+                            spec.name,
+                            String::from_utf8_lossy(&output2.stderr)
+                        ),
+                    });
                 }
             }
         }
 
-        tracing::debug!("Pre-switch: executed hook '{}'", spec.name);
+        tracing::info!("Pre-switch: executed hook '{}'", spec.name);
     }
     Ok(())
 }

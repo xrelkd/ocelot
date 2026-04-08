@@ -192,9 +192,9 @@ fn load_compressed_module(path: impl AsRef<Path>, format: DecompressFormat) -> R
     };
 
     let params = CString::new("").expect("empty string is valid CStr");
-    kmod::finit_module(&fd, &params, ModuleInitFlags::empty()).with_context(|_| error::MountSnafu {
-        operation: format!("kernel module '{}'", path.display()),
-    })
+    kmod::finit_module(&fd, &params, ModuleInitFlags::empty())
+        .with_context(|_| error::InitializeModuleSnafu { path: path.to_path_buf() })?;
+    Ok(())
 }
 
 #[inline]
@@ -203,9 +203,9 @@ fn load_uncompressed_module(path: impl AsRef<Path>) -> Result<(), Error> {
     let file =
         File::open(path).with_context(|_| error::OpenModuleSnafu { path: path.to_path_buf() })?;
     let params = CString::new("").expect("empty string is valid CStr");
-    kmod::finit_module(&file, &params, ModuleInitFlags::empty()).with_context(|_| {
-        error::MountSnafu { operation: format!("kernel module '{}'", path.display()) }
-    })
+    kmod::finit_module(&file, &params, ModuleInitFlags::empty())
+        .with_context(|_| error::InitializeModuleSnafu { path: path.to_path_buf() })?;
+    Ok(())
 }
 
 fn load_module_from_path(path: impl AsRef<Path>) -> Result<(), Error> {

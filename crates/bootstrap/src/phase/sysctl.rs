@@ -1,9 +1,10 @@
-use std::{fs, io::Write, path::Path};
+use std::path::Path;
 
 use snafu::ResultExt;
 
 use crate::{
     config::Sysctl,
+    error,
     error::{CreateDirectorySnafu, Error},
 };
 
@@ -13,20 +14,13 @@ pub fn pre(Sysctl { key_values }: &Sysctl) -> Result<(), Error> {
         let path = Path::new(&sysctl_path);
 
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
+            std::fs::create_dir_all(parent)
                 .with_context(|_| CreateDirectorySnafu { path: parent.to_path_buf() })?;
         }
 
-        // FIXME: AI: Use ResultExt::with_context
-        let mut file = fs::File::create(path).map_err(|e| Error::Mount {
-            operation: format!("write sysctl {key}"),
-            source: nix::Error::from_raw(e.raw_os_error().unwrap_or(1)),
-        })?;
-
-        // FIXME: AI: Use ResultExt::with_context
-        file.write_all(value.as_bytes()).map_err(|e| Error::Mount {
-            operation: format!("write sysctl {key}"),
-            source: nix::Error::from_raw(e.raw_os_error().unwrap_or(1)),
+        std::fs::write(path, value.as_bytes()).with_context(|_| error::SetSysctlSnafu {
+            path: path.to_path_buf(),
+            value: value.clone(),
         })?;
 
         tracing::debug!("Pre-switch: set sysctl {key} = {value}");

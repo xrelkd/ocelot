@@ -14,9 +14,7 @@ pub use self::{
     environment::{post as environment_post, pre as environment_pre},
     hooks::{post as hooks_post, pre as hooks_pre},
     modules::{post as modules_post, pre as modules_pre},
-    mounts::{
-        mount_move_special, mount_virtual_filesystems, post as mounts_post, pre as mounts_pre,
-    },
+    mounts::{post as mounts_post, pre as mounts_pre},
     network::{post as network_post, pre as network_pre},
     security::post as security_post,
     symlinks::{post as symlinks_post, pre as symlinks_pre},
