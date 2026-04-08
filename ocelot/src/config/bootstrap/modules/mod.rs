@@ -467,6 +467,61 @@ names:
     }
 
     #[test]
+    fn test_resolve_dependencies_idempotent() {
+        let dep_data = br"
+kernel/a.ko.xz:
+kernel/b.ko.xz: kernel/a.ko.xz
+";
+        let tmpdir = std::env::temp_dir();
+        let dep_file = tmpdir.join("modules.dep");
+        std::fs::write(&dep_file, dep_data).expect("write temp dep file");
+        let mut config = ModulesConfig::List {
+            directory: tmpdir,
+            names: vec!["kernel/b.ko.xz".to_string(), "kernel/a.ko.xz".to_string()],
+            dep_file_path: Some(dep_file.to_string_lossy().to_string()),
+        };
+        config.resolve_dependencies().expect("first resolve should succeed");
+        let after_first = match &config {
+            ModulesConfig::List { names, .. } => names.clone(),
+            ModulesConfig::Scan { .. } => panic!("expected List variant"),
+        };
+        config.resolve_dependencies().expect("second resolve should succeed");
+        let after_second = match &config {
+            ModulesConfig::List { names, .. } => names.clone(),
+            ModulesConfig::Scan { .. } => panic!("expected List variant"),
+        };
+        assert_eq!(after_first, after_second, "result should be stable after first call");
+        assert_eq!(after_second, vec!["kernel/a.ko.xz".to_string(), "kernel/b.ko.xz".to_string()]);
+    }
+
+    #[test]
+    fn test_resolve_dependencies_scan_idempotent() {
+        let dep_data = br"
+kernel/a.ko.xz:
+kernel/b.ko.xz: kernel/a.ko.xz
+";
+        let tmpdir = std::env::temp_dir();
+        let dep_file = tmpdir.join("modules.dep");
+        std::fs::write(&dep_file, dep_data).expect("write temp dep file");
+        let mut config = ModulesConfig::Scan {
+            directory: tmpdir,
+            dep_file_path: dep_file.to_string_lossy().to_string(),
+            names: Some(vec!["kernel/b.ko.xz".to_string(), "kernel/a.ko.xz".to_string()]),
+        };
+        config.resolve_dependencies().expect("first resolve should succeed");
+        let after_first = match &config {
+            ModulesConfig::Scan { names, .. } => names.clone(),
+            ModulesConfig::List { .. } => panic!("expected Scan variant"),
+        };
+        config.resolve_dependencies().expect("second resolve should succeed");
+        let after_second = match &config {
+            ModulesConfig::Scan { names, .. } => names.clone(),
+            ModulesConfig::List { .. } => panic!("expected Scan variant"),
+        };
+        assert_eq!(after_first, after_second, "result should be stable after first call");
+    }
+
+    #[test]
     fn test_resolve_dependencies_scan_no_names() {
         let mut config = ModulesConfig::Scan {
             directory: PathBuf::from("/lib/modules"),
