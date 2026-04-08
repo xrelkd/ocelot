@@ -1,12 +1,10 @@
 //! Unit tests for bootstrap configuration module.
 
-use std::collections::HashMap;
-
 use nix::mount::MsFlags;
 use ocelot_bootstrap::MountSpec;
 use tempfile::tempdir;
 
-use super::{BootstrapConfig, BootstrapSuperviseConfig, HandoffMode};
+use super::{BootstrapConfig, HandoffMode};
 use crate::config::bootstrap::mount::MountSpecConfig;
 
 // ============================================================================
@@ -14,42 +12,16 @@ use crate::config::bootstrap::mount::MountSpecConfig;
 // ============================================================================
 
 #[test]
-fn test_bootstrap_config_default() {
-    let config = BootstrapConfig::default();
-    assert_eq!(config.console, "console");
-    assert_eq!(config.log_level, tracing::Level::INFO);
-    assert!(config.pre_switch.modules.is_none());
-    assert!(config.pre_switch.network.is_none());
-    assert!(config.pre_switch.mounts.is_empty());
-    assert!(config.pre_switch.hooks.is_empty());
-    assert!(config.pre_switch.environment.is_empty());
-    assert!(config.pre_switch.symlinks.is_empty());
-    assert!(config.pre_switch.modules.is_none());
-    assert!(config.pre_switch.security.is_none());
-    assert!(config.pre_switch.clock.is_none());
-    // Check switch_root defaults
-    assert!(!config.switch_root.cleanup_old_root);
-    assert!(!config.switch_root.move_special);
-    assert!(config.post_switch.modules.is_none());
-    assert!(config.post_switch.network.is_none());
-    assert!(config.post_switch.mounts.is_empty());
-    assert!(config.post_switch.hooks.is_empty());
-    assert!(config.post_switch.symlinks.is_empty());
-    assert!(config.post_switch.modules.is_none());
-    assert!(config.post_switch.security.is_none());
-    assert!(config.post_switch.clock.is_none());
-    // Handoff defaults to Supervise mode with no config
-    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Supervise));
-    assert!(config.post_switch.handoff.supervise.is_none());
-    assert!(config.post_switch.handoff.shell.is_none());
-    assert!(config.post_switch.shutdown.is_none());
-}
-
-#[test]
 fn test_bootstrap_config_deserialize_minimal() {
     let yaml = b"
 console: myconsole
 logLevel: debug
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 ";
     let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     assert_eq!(config.console, "myconsole");
@@ -61,6 +33,12 @@ fn test_bootstrap_config_deserialize_full() {
     let yaml = b"
 console: ttyS0
 logLevel: warn
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 preSwitch:
   modules:
     mode: list
@@ -114,6 +92,12 @@ postSwitch:
 #[test]
 fn test_bootstrap_config_validate_handoff_neither_shell_nor_supervise() {
     let yaml = b"
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 postSwitch:
   handoff:
     mode: supervise
@@ -126,6 +110,12 @@ postSwitch:
 #[test]
 fn test_bootstrap_config_validate_handoff_both_shell_and_supervise_fails() {
     let yaml = b"
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 postSwitch:
   handoff:
     mode: supervise
@@ -137,16 +127,6 @@ postSwitch:
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
     assert!(result.is_err());
-}
-
-#[test]
-fn test_bootstrap_config_handoff_mode() {
-    let mut config = BootstrapConfig::default();
-    assert!(matches!(config.handoff_mode(), HandoffMode::Supervise));
-
-    // Change to shell via handoff config
-    config.post_switch.handoff.mode = HandoffMode::Shell;
-    assert!(matches!(config.handoff_mode(), HandoffMode::Shell));
 }
 
 #[test]
@@ -188,17 +168,6 @@ fn test_bootstrap_config_template_supervise() {
 }
 
 #[test]
-fn test_bootstrap_config_to_bootstrap_config() {
-    // Construct a valid config with supervise handoff
-    let mut config = BootstrapConfig::default();
-    config.post_switch.handoff.mode = HandoffMode::Supervise;
-    config.post_switch.handoff.supervise =
-        Some(BootstrapSuperviseConfig { processes: HashMap::default(), shutdown_timeout_secs: 30 });
-    let bootstrap_config = config.to_bootstrap_config();
-    assert_eq!(bootstrap_config.console, "console");
-}
-
-#[test]
 fn test_bootstrap_config_load() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("bootstrap.yaml");
@@ -206,6 +175,12 @@ fn test_bootstrap_config_load() {
     let yaml = b"
 console: testconsole
 logLevel: error
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 preSwitch:
   mounts:
     - type: virtiofs
@@ -246,6 +221,12 @@ fn test_bootstrap_config_load_invalid_yaml() {
 fn test_handoff_mode_conversion_in_bootstrap_config() {
     // Test that HandoffMode is correctly derived from config
     let yaml = b"
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 postSwitch:
   handoff:
     mode: shell
@@ -254,6 +235,12 @@ postSwitch:
     assert!(matches!(config.handoff_mode(), HandoffMode::Shell));
 
     let yaml2 = b"
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 postSwitch:
   handoff:
     mode: supervise
@@ -267,6 +254,12 @@ fn test_validate_supervise_with_valid_processes() {
     // This tests that a valid supervise configuration inside BootstrapConfig
     // validates correctly
     let yaml = b"
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 postSwitch:
   handoff:
     mode: supervise
@@ -287,6 +280,12 @@ postSwitch:
 #[test]
 fn test_validate_supervise_with_missing_dependency_fails() {
     let yaml = b"
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 postSwitch:
   handoff:
     mode: supervise
@@ -306,6 +305,12 @@ postSwitch:
 #[test]
 fn test_validate_supervise_with_cycle_fails() {
     let yaml = b"
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 postSwitch:
   handoff:
     mode: supervise
@@ -326,27 +331,6 @@ postSwitch:
     let result = config.validate();
     assert!(result.is_err());
 }
-
-#[test]
-fn test_validate_switch_root_methods() {
-    // Test pivotRoot (default)
-    let yaml_default = b"switchRoot:
-  method: pivotRoot
-";
-    let config: BootstrapConfig = serde_yaml::from_slice(yaml_default).unwrap();
-    assert_eq!(format!("{:?}", config.switch_root.method), "PivotRoot");
-
-    // Test chroot
-    let yaml_chroot = b"switchRoot:
-  method: chroot
-";
-    let config2: BootstrapConfig = serde_yaml::from_slice(yaml_chroot).unwrap();
-    assert_eq!(format!("{:?}", config2.switch_root.method), "Chroot");
-}
-
-// ============================================================================
-// MountSpecConfig Tests
-// ============================================================================
 
 #[test]
 fn test_mount_spec_config_virtiofs_all_flags() {

@@ -33,7 +33,6 @@ pub struct BootstrapConfig {
     #[serde(default)]
     pub pre_switch: PreSwitchConfig,
     /// Switch-root phase configuration.
-    #[serde(default)]
     pub switch_root: SwitchRootConfig,
     /// Post-switch phase configuration.
     #[serde(default)]
@@ -62,18 +61,6 @@ impl BootstrapConfig {
         self.post_switch.handoff.validate()?;
 
         Ok(())
-    }
-}
-
-impl Default for BootstrapConfig {
-    fn default() -> Self {
-        Self {
-            pre_switch: PreSwitchConfig::default(),
-            switch_root: SwitchRootConfig::default(),
-            post_switch: PostSwitchConfig::default(),
-            console: default_console(),
-            log_level: default_log_level(),
-        }
     }
 }
 

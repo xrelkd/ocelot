@@ -1,3 +1,8 @@
+//! Supervisor subcommand handler.
+//!
+//! This module handles the `ocelot supervise` subcommand,
+//! which runs a process supervisor with configuration file support.
+
 use std::{
     io::Write,
     path::{Path, PathBuf},
@@ -9,19 +14,29 @@ use snafu::ResultExt;
 
 use crate::{cli::init_tracing_subscriber, config, error, error::Error};
 
+/// Output format for command results.
 #[derive(Clone, Copy, Eq, PartialEq, clap::ValueEnum)]
 pub enum OutputFormat {
+    /// Human-readable output.
     Human,
+    /// JSON-formatted output.
     Json,
 }
 
+/// Configuration template complexity tiers.
 #[derive(Clone, Copy, Eq, PartialEq, clap::ValueEnum)]
 pub enum TemplateTier {
+    /// Minimal configuration with essential settings only.
     Minimal,
+    /// Basic configuration with commonly used settings.
     Basic,
+    /// Full configuration with all available settings.
     Full,
 }
 
+/// Available supervisor subcommands.
+///
+/// Note: Documentation is provided via Clap attributes for CLI help.
 #[derive(Clone, Subcommand)]
 pub enum Commands {
     #[clap(visible_alias = "r", about = "Run supervisor with configuration file")]

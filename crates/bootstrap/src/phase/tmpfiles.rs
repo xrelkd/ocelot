@@ -1,3 +1,6 @@
+/// Tmpfile creation phase functions.
+///
+/// These functions create temporary files during the bootstrap process.
 use std::{os::unix::fs::PermissionsExt, path::Path};
 
 use snafu::ResultExt;
@@ -7,6 +10,9 @@ use crate::{
     error::{self, Error},
 };
 
+/// Creates temporary files before `switch_root`.
+///
+/// Creates the file with the specified permissions and parent directories.
 pub fn pre(config: &Tmpfile) -> Result<(), Error> {
     let path = Path::new(&config.path);
 
@@ -33,6 +39,10 @@ pub fn pre(config: &Tmpfile) -> Result<(), Error> {
     Ok(())
 }
 
+/// Creates temporary files after `switch_root`.
+///
+/// Currently a placeholder - post-switch tmpfile creation is not yet
+/// implemented.
 #[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
 pub fn post(_config: &Tmpfile) -> Result<(), Error> {
     tracing::debug!("Post-switch: tmpfiles (not implemented)");

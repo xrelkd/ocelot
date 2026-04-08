@@ -1,52 +1,62 @@
+use std::{
+    cmp::Reverse,
+    path::{Path, PathBuf},
+};
+
 use snafu::ResultExt;
 
-use crate::{ShellConfig, config::Config, error, phase, shutdown::shutdown};
+use crate::{
+    ShellConfig,
+    config::Config,
+    error::{self, Error},
+    mount,
+    shutdown::shutdown,
+};
 
-/// Performs `switch_root` using `pivot_root` without exec.
+/// Performs `switch_root` using `chroot` without exec.
 ///
-/// This moves the special filesystems, performs `pivot_root` to switch to the
+/// This moves the special filesystems, performs `chroot` to switch to the
 /// new root filesystem, and cleans up the old root.
 ///
 /// # Errors
 ///
-/// Returns an error if mount operations or `pivot_root` fails.
-pub fn only(config: &Config) -> Result<(), error::Error> {
-    phase::mount_move_special(&[])?;
+/// Returns an error if mount operations or `chroot` fails.
+pub fn only(config: &Config) -> Result<(), Error> {
+    let new_root = PathBuf::from("/new_root");
+
+    ensure_dir(&new_root)?;
+    {
+        let mut root_file_system = config.switch_root.root_file_system.clone();
+        root_file_system.target.clone_from(&new_root);
+        let _unused = mount::mount(&root_file_system)?;
+    }
+    mount_move_special(&new_root, &[])?;
+
+    clean_initramfs_mounts();
+
+    if let Err(err) = recursive_remove_old_root(&new_root) {
+        tracing::warn!("Failed to clean up some files in initramfs: {err}");
+    }
+
+    nix::unistd::chdir(&new_root)
+        .with_context(|_| error::ChangeDirectorySnafu { path: new_root.clone() })?;
 
     nix::mount::mount(
+        Some("."),
+        &new_root,
         None::<&str>,
-        "/",
-        None::<&str>,
-        nix::mount::MsFlags::MS_REC | nix::mount::MsFlags::MS_PRIVATE,
+        nix::mount::MsFlags::MS_REC | nix::mount::MsFlags::MS_BIND,
         None::<&str>,
     )
-    .with_context(|_| error::MountSnafu { operation: "namespace isolation in switch_root" })?;
+    .with_context(|_| error::MountSnafu {
+        link_source: new_root.clone(),
+        target: PathBuf::new(),
+    })?;
 
-    let old_root_dir = config.switch_root.old_root_dir.as_deref().unwrap_or("/oldroot");
-    let cleanup_old_root = config.switch_root.cleanup_old_root;
-
-    match config.switch_root.method {
-        crate::config::SwitchRootMethod::PivotRoot => {
-            let _ =
-                nix::unistd::mkdir(old_root_dir, nix::sys::stat::Mode::from_bits_truncate(0o755));
-
-            nix::unistd::pivot_root(".", old_root_dir).context(error::SwitchRootSnafu)?;
-
-            nix::unistd::chdir("/").context(error::SwitchRootSnafu)?;
-
-            nix::mount::umount2(old_root_dir, nix::mount::MntFlags::MNT_DETACH)
-                .context(error::SwitchRootSnafu)?;
-
-            if cleanup_old_root {
-                drop(std::fs::remove_dir(old_root_dir));
-            }
-        }
-        crate::config::SwitchRootMethod::Chroot => {
-            nix::unistd::chdir("/newroot").context(error::SwitchRootSnafu)?;
-            nix::unistd::chroot(".").context(error::SwitchRootSnafu)?;
-            nix::unistd::chdir("/").context(error::SwitchRootSnafu)?;
-        }
-    }
+    nix::unistd::chroot(".")
+        .with_context(|_| error::ChangeRootDirectorySnafu { path: PathBuf::from(".") })?;
+    nix::unistd::chdir("/")
+        .with_context(|_| error::ChangeDirectorySnafu { path: PathBuf::from("/") })?;
 
     Ok(())
 }
@@ -61,7 +71,7 @@ pub fn only(config: &Config) -> Result<(), error::Error> {
 /// Returns an error if the supervise orchestrator fails to execute.
 pub fn exec_supervise(
     orchestrator_config: ocelot_supervise::OrchestratorConfig,
-) -> Result<(), error::Error> {
+) -> Result<(), Error> {
     let _exit_code =
         ocelot_supervise::execute(orchestrator_config).context(error::ExecuteSuperviseSnafu)?;
     Ok(())
@@ -78,7 +88,7 @@ pub fn exec_supervise(
 pub fn exec_shell(
     console_device: &str,
     ShellConfig { program, arguments: args, .. }: &ShellConfig,
-) -> Result<(), error::Error> {
+) -> Result<(), Error> {
     let exit_code = {
         let args = args.iter().map(String::as_str).collect::<Vec<&str>>();
         ocelot_entry::execute_interactive_with_session(program, &args, console_device, false, None)
@@ -94,4 +104,99 @@ pub fn exec_shell(
     Ok(())
 }
 
-// (removed deprecated functions)
+/// Moves virtual filesystems from the old root to /newroot.
+///
+/// The following mounts are moved: /proc, /sys, /dev (with its subtree),
+/// /run. The /dev subtree includes /dev/pts and /dev/shm which are moved
+/// automatically when /dev is moved, so they don't need to be moved separately.
+///
+/// # Errors
+///
+/// Returns an error if any mount move operation fails.
+fn mount_move_special(
+    new_root_dir: impl AsRef<Path>,
+    extra_targets: &[PathBuf],
+) -> Result<(), Error> {
+    let new_root = new_root_dir.as_ref().to_path_buf();
+
+    move_mount("/proc", PathBuf::from_iter([&new_root, &PathBuf::from("proc")]))?;
+    move_mount("/sys", PathBuf::from_iter([&new_root, &PathBuf::from("sys")]))?;
+    move_mount("/dev", PathBuf::from_iter([&new_root, &PathBuf::from("dev")]))?;
+    move_mount("/run", PathBuf::from_iter([&new_root, &PathBuf::from("run")]))?;
+
+    for target in extra_targets {
+        let newroot_target = PathBuf::from_iter([&new_root, target]);
+        move_mount(target, newroot_target)?;
+    }
+
+    Ok(())
+}
+
+fn move_mount(source: impl AsRef<Path>, target: impl AsRef<Path>) -> Result<(), Error> {
+    ensure_dir(&target)?;
+    let source = source.as_ref();
+    let target = target.as_ref();
+    nix::mount::mount(
+        Some(source),
+        target,
+        Option::<&str>::None,
+        nix::mount::MsFlags::MS_MOVE,
+        Option::<&str>::None,
+    )
+    .with_context(|_| error::MountSnafu {
+        link_source: source.to_path_buf(),
+        target: target.to_path_buf(),
+    })?;
+    Ok(())
+}
+
+fn ensure_dir(path: impl AsRef<Path>) -> Result<(), Error> {
+    let path = path.as_ref();
+
+    if path.exists() {
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(path)
+        .with_context(|_| error::CreateDirectorySnafu { path: path.to_path_buf() })
+}
+
+fn clean_initramfs_mounts() {
+    // Read /proc/mounts to find everything currently mounted
+    if let Ok(mounts) = std::fs::read_to_string("/proc/mounts") {
+        let mut points: Vec<String> = mounts
+            .lines()
+            .filter_map(|line| line.split_whitespace().nth(1).map(String::from))
+            .filter(|p| p != "/")
+            .collect();
+
+        // Sort by length descending (unmount deepest children first)
+        points.sort_by_key(|b| Reverse(b.len()));
+
+        for path in points {
+            // MNT_DETACH (Lazy) is safest in initramfs to avoid "device busy"
+            // errors
+            let _ = nix::mount::umount2(path.as_str(), nix::mount::MntFlags::MNT_DETACH);
+        }
+    }
+}
+
+fn recursive_remove_old_root(new_root_path: impl AsRef<Path>) -> std::io::Result<()> {
+    let new_root_path = new_root_path.as_ref();
+    let root = Path::new("/");
+    for entry in std::fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path == new_root_path {
+            continue;
+        }
+
+        if path.is_dir() {
+            drop(std::fs::remove_dir_all(&path));
+        } else {
+            drop(std::fs::remove_file(&path));
+        }
+    }
+    Ok(())
+}

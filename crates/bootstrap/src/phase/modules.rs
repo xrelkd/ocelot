@@ -1,3 +1,8 @@
+/// Kernel module loading phase functions.
+///
+/// These functions load kernel modules during the bootstrap process, supporting
+/// both list mode (specific modules by name) and scan mode (discover all
+/// modules in a directory).
 use std::{
     ffi::CString,
     fs::File,
@@ -11,124 +16,57 @@ use snafu::ResultExt;
 
 use crate::{config::ModulesConfig, error, error::Error};
 
-#[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
-pub fn pre(config: &ModulesConfig) -> Result<(), Error> {
+/// Loads kernel modules before `switch_root`.
+///
+/// This function loads kernel modules during the early bootstrap phase,
+/// before the root filesystem is switched. Errors are logged as warnings
+/// and do not stop the boot process.
+///
+/// # Examples
+/// ```ignore
+/// // Requires root privileges and actual kernel modules
+/// use crate::config::ModulesConfig;
+/// let config = ModulesConfig::default();
+/// pre(&config);
+/// ```
+pub fn pre(config: &ModulesConfig) {
     load_modules(config);
     tracing::debug!("Pre-switch: loaded kernel modules");
-    Ok(())
 }
 
-#[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
-pub fn post(_config: &ModulesConfig) -> Result<(), Error> {
-    tracing::debug!("Post-switch: modules (not implemented)");
-    Ok(())
+/// Loads kernel modules after `switch_root`.
+///
+/// This function loads kernel modules during the late bootstrap phase,
+/// after the root filesystem is switched. Errors are logged as warnings
+/// and do not stop the boot process.
+///
+/// # Examples
+/// ```ignore
+/// // Requires root privileges and actual kernel modules
+/// use crate::config::ModulesConfig;
+/// let config = ModulesConfig::default();
+/// post(&config);
+/// ```
+pub fn post(config: &ModulesConfig) {
+    load_modules(config);
+    tracing::debug!("Post-switch: loaded kernel modules");
 }
 
 /// Loads kernel modules based on the configuration.
 ///
 /// Dispatches to list mode or scan mode based on `ModulesConfig` variant.
 /// Errors are logged as warnings and do not stop the boot process.
-fn load_modules(config: &ModulesConfig) {
-    match config {
-        ModulesConfig::List { dir, names } => {
-            let dir = dir.as_deref().unwrap_or_else(|| Path::new("/lib/modules"));
-            for name in names {
-                #[expect(
-                    clippy::case_sensitive_file_extension_comparisons,
-                    reason = "Kernel module extensions are case-sensitive by convention (.ko, \
-                              .ko.xz, .ko.gz)"
-                )]
-                let path = if name.ends_with(".ko")
-                    || name.ends_with(".ko.xz")
-                    || name.ends_with(".ko.gz")
-                {
-                    dir.join(name)
-                } else {
-                    dir.join(format!("{name}.ko"))
-                };
-                tracing::info!("Loading kernel module: {name}");
-
-                match load_module_from_path(&path) {
-                    Ok(()) => tracing::info!("Successfully loaded module: {name}"),
-                    Err(source) => tracing::warn!("Failed to load module {name}, error: {source}"),
-                }
-            }
-        }
-        ModulesConfig::Scan { dir, names } => {
-            if let Some(filtered_names) = names {
-                for name in filtered_names {
-                    let path = dir.join(name);
-                    tracing::info!("Loading kernel module: {name}");
-
-                    match load_module_from_path(&path) {
-                        Ok(()) => tracing::info!("Successfully loaded module: {name}"),
-                        Err(source) => {
-                            tracing::warn!("Failed to load module {name}, error: {source}");
-                        }
-                    }
-                }
-            } else {
-                scan_and_load_modules(dir);
-            }
-        }
-    }
-}
-
-/// Scans a directory for kernel module files and loads each one.
-///
-/// Loads `.ko`, `.ko.xz`, and `.ko.gz` files. Errors are logged as warnings.
-fn scan_and_load_modules(dir: impl AsRef<Path>) {
-    let dir = dir.as_ref();
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(source) => {
-            tracing::info!(
-                "Module directory {} not found, skipping module loading: {source}",
-                dir.display()
-            );
-            return;
-        }
-    };
-
-    let mut loaded = 0;
-    let mut failed = 0;
-    let mut total = 0;
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-
-        let is_module = {
-            let path = Path::new(file_name);
-            path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("ko"))
-                || path
-                    .file_stem()
-                    .and_then(|stem| Path::new(stem).extension())
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("ko"))
-        };
-
-        if !is_module {
-            continue;
-        }
-
-        total += 1;
-        tracing::info!("Loading kernel module: {file_name}");
-
+fn load_modules(ModulesConfig { directory, module_file_names }: &ModulesConfig) {
+    for name in module_file_names {
+        tracing::info!("Loading kernel module: {name}");
+        let path = directory.join(name);
         match load_module_from_path(&path) {
-            Ok(()) => {
-                tracing::info!("Successfully loaded module: {file_name}");
-                loaded += 1;
-            }
+            Ok(()) => tracing::info!("Successfully loaded module: {}", path.display()),
             Err(source) => {
-                tracing::warn!("Failed to load module {file_name}, error: {source}");
-                failed += 1;
+                tracing::warn!("Failed to load module: {}, error: {source}", path.display());
             }
         }
     }
-
-    tracing::info!("Module scan complete: {loaded} loaded, {failed} failed, {total} total");
 }
 
 #[derive(Clone, Copy)]
@@ -145,9 +83,9 @@ fn decompress_module<W: Write>(
     match format {
         DecompressFormat::Xz => {
             let mut reader = BufReader::new(data);
-            lzma_rs::xz_decompress(&mut reader, writer).map_err(|e| match e {
-                lzma_rs::error::Error::IoError(e) => e,
-                e => std::io::Error::other(e),
+            lzma_rs::xz_decompress(&mut reader, writer).map_err(|error| match error {
+                lzma_rs::error::Error::IoError(error) => error,
+                error => std::io::Error::other(error),
             })?;
             Ok(())
         }
@@ -176,9 +114,8 @@ fn load_compressed_module(path: impl AsRef<Path>, format: DecompressFormat) -> R
                 .with_context(|_| error::CreateMemfdSnafu { path: path.to_path_buf() })?
         };
 
-        // SAFETY: memfd_create returns a valid owned file descriptor. We create a
-        // File from the raw fd to write data, then forget it so the OwnedFd retains
-        // ownership and closes the fd when dropped.
+        // NOTE: We create a File from the raw fd to write data, then forget it so the
+        // OwnedFd retains ownership and closes the fd when dropped.
         #[expect(unsafe_code, reason = "memfd_create returns a valid owned fd")]
         let mut file = unsafe { File::from_raw_fd(fd.as_raw_fd()) };
         decompress_module(&compressed, format, &mut file)
@@ -192,9 +129,9 @@ fn load_compressed_module(path: impl AsRef<Path>, format: DecompressFormat) -> R
     };
 
     let params = CString::new("").expect("empty string is valid CStr");
-    kmod::finit_module(&fd, &params, ModuleInitFlags::empty()).with_context(|_| error::MountSnafu {
-        operation: format!("kernel module '{}'", path.display()),
-    })
+    kmod::finit_module(&fd, &params, ModuleInitFlags::empty())
+        .with_context(|_| error::InitializeModuleSnafu { path: path.to_path_buf() })?;
+    Ok(())
 }
 
 #[inline]
@@ -203,9 +140,9 @@ fn load_uncompressed_module(path: impl AsRef<Path>) -> Result<(), Error> {
     let file =
         File::open(path).with_context(|_| error::OpenModuleSnafu { path: path.to_path_buf() })?;
     let params = CString::new("").expect("empty string is valid CStr");
-    kmod::finit_module(&file, &params, ModuleInitFlags::empty()).with_context(|_| {
-        error::MountSnafu { operation: format!("kernel module '{}'", path.display()) }
-    })
+    kmod::finit_module(&file, &params, ModuleInitFlags::empty())
+        .with_context(|_| error::InitializeModuleSnafu { path: path.to_path_buf() })?;
+    Ok(())
 }
 
 fn load_module_from_path(path: impl AsRef<Path>) -> Result<(), Error> {
@@ -226,35 +163,5 @@ fn load_module_from_path(path: impl AsRef<Path>) -> Result<(), Error> {
         load_compressed_module(path, DecompressFormat::Gz)
     } else {
         load_uncompressed_module(path)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::load_modules;
-    use crate::config::ModulesConfig;
-
-    #[test]
-    fn test_load_modules_empty_list() {
-        let config = ModulesConfig::List {
-            dir: Some(std::path::PathBuf::from("/lib/modules")),
-            names: Vec::new(),
-        };
-        load_modules(&config);
-    }
-
-    #[test]
-    fn test_load_modules_default_dir() {
-        let config = ModulesConfig::List { dir: None, names: Vec::new() };
-        load_modules(&config);
-    }
-
-    #[test]
-    fn test_scan_mode_empty_dir() {
-        let config = ModulesConfig::Scan {
-            dir: std::path::PathBuf::from("/nonexistent/modules"),
-            names: None,
-        };
-        load_modules(&config);
     }
 }

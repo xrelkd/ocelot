@@ -20,8 +20,8 @@ pub enum Error {
     #[snafu(display("Invalid configuration: {message}"))]
     InvalidConfig { message: String },
 
-    #[snafu(display("Failed to parse module dependency file '{path}': {source}"))]
-    ParseModuleDependencyFile { path: String, source: std::io::Error },
+    #[snafu(display("Failed to parse module dependency file '{}': {source}", path.display()))]
+    ParseModuleDependencyFile { path: PathBuf, source: std::io::Error },
 }
 
 impl From<ValidationError> for Error {

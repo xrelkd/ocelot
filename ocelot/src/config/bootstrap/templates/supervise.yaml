@@ -38,10 +38,11 @@ preSwitch:
 
 # Switch-root phase
 switchRoot:
-  method: pivotRoot
-  oldRootDir: /oldroot
-  cleanupOldRoot: true
-  moveSpecial: true
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 
 # Post-switch phase
 postSwitch:

@@ -663,6 +663,12 @@ processes:
 fn test_bootstrap_config_duplicate_env_vars_fails() {
     let yaml = b"
 console: ttyS0
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 preSwitch:
   environment:
     PATH: /usr/bin
@@ -685,6 +691,12 @@ postSwitch:
 #[test]
 fn test_bootstrap_config_mutual_exclusivity_both_fails() {
     let yaml = b"
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 postSwitch:
   handoff:
     mode: supervise
@@ -703,6 +715,12 @@ postSwitch:
 #[test]
 fn test_bootstrap_config_mutual_exclusivity_neither_fails() {
     let yaml = b"
+switchRoot:
+  rootFileSystem:
+    type: virtiofs
+    tag: rootfs
+    target: /newroot
+    overlay: false
 postSwitch:
   handoff:
     mode: supervise
