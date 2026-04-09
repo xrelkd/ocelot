@@ -472,11 +472,11 @@ names:
 kernel/a.ko.xz:
 kernel/b.ko.xz: kernel/a.ko.xz
 ";
-        let tmpdir = std::env::temp_dir();
-        let dep_file = tmpdir.join("modules.dep");
+        let tmpdir = tempfile::tempdir().expect("create temp file");
+        let dep_file = tmpdir.path().join("modules.dep");
         std::fs::write(&dep_file, dep_data).expect("write temp dep file");
         let mut config = ModulesConfig::List {
-            directory: tmpdir,
+            directory: tmpdir.path().to_path_buf(),
             names: vec!["kernel/b.ko.xz".to_string(), "kernel/a.ko.xz".to_string()],
             dep_file_path: Some(dep_file.to_string_lossy().to_string()),
         };
@@ -500,11 +500,11 @@ kernel/b.ko.xz: kernel/a.ko.xz
 kernel/a.ko.xz:
 kernel/b.ko.xz: kernel/a.ko.xz
 ";
-        let tmpdir = std::env::temp_dir();
-        let dep_file = tmpdir.join("modules.dep");
+        let tmpdir = tempfile::tempdir().expect("create temp file");
+        let dep_file = tmpdir.path().join("modules.dep");
         std::fs::write(&dep_file, dep_data).expect("write temp dep file");
         let mut config = ModulesConfig::Scan {
-            directory: tmpdir,
+            directory: tmpdir.path().to_path_buf(),
             dep_file_path: dep_file.to_string_lossy().to_string(),
             names: Some(vec!["kernel/b.ko.xz".to_string(), "kernel/a.ko.xz".to_string()]),
         };
