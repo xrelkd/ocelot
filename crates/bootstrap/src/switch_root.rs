@@ -90,7 +90,7 @@ pub fn exec_shell(
 ) -> Result<(), Error> {
     let exit_code = {
         let args = arguments.iter().map(String::as_str).collect::<Vec<&str>>();
-        ocelot_entry::execute_interactive_with_session(program, &args, console_device, false, None)
+        ocelot_entry::execute_interactive_with_session(program, &args, console_device, true, None)
             .context(error::ExecuteShellSnafu)?
     };
 
