@@ -124,4 +124,3 @@ cargo run -- completions zsh > /etc/zsh/completions/_ocelot
 cargo run -- completions bash > /etc/bash_completion.d/ocelot
 cargo run -- completions fish > ~/.config/fish/completions/ocelot.fish
 ```
-
