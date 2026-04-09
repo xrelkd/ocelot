@@ -675,7 +675,7 @@ preSwitch:
     PATH: /bin
 postSwitch:
   handoff:
-    mode: Supervise
+    mode: supervise
     processes:
       init:
         program: /sbin/init
@@ -701,7 +701,7 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: Shell
+    mode: shell
     program: /bin/sh
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
@@ -720,7 +720,7 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: Shell
+    mode: shell
     program: /bin/sh
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();

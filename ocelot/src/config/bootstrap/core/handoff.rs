@@ -7,16 +7,19 @@ use crate::config::{
 
 /// `HandoffMode`.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "mode")]
+#[serde(rename_all = "camelCase", deny_unknown_fields, tag = "mode")]
 pub enum HandoffMode {
+    #[serde(rename_all = "camelCase")]
     Supervise {
         #[serde(flatten)]
         config: BootstrapSuperviseConfig,
     },
+    #[serde(rename_all = "camelCase")]
     Shell {
         #[serde(flatten)]
         config: ShellConfig,
     },
+    #[serde(rename_all = "camelCase")]
     Exec {
         #[serde(flatten)]
         config: ExecConfig,
