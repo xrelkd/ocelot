@@ -6,51 +6,38 @@ use crate::config::{
 };
 
 /// `HandoffMode`.
-#[derive(Clone, Copy, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "mode")]
 pub enum HandoffMode {
-    #[default]
-    Supervise,
-    Shell,
+    Supervise {
+        #[serde(flatten)]
+        config: BootstrapSuperviseConfig,
+    },
+    Shell {
+        #[serde(flatten)]
+        config: ShellConfig,
+    },
+    Exec {
+        #[serde(flatten)]
+        config: ExecConfig,
+    },
 }
 
 /// `HandoffConfig`.
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct HandoffConfig {
-    #[serde(default)]
+    #[serde(flatten)]
     pub mode: HandoffMode,
     #[serde(default)]
     pub boot_script: Option<BootScriptConfig>,
-    #[serde(default)]
-    pub supervise: Option<BootstrapSuperviseConfig>,
-    #[serde(default)]
-    pub shell: Option<ShellConfig>,
 }
 
 impl HandoffConfig {
     pub fn validate(&self) -> Result<(), Error> {
-        // Enforce mutual exclusivity.
-        let has_supervise = self.supervise.is_some();
-        let has_shell = self.shell.is_some();
-        if has_supervise && has_shell {
-            return Err(Error::InvalidConfig {
-                message: "Cannot specify both shell and supervise".to_string(),
-            });
-        }
-        if !has_supervise && !has_shell {
-            return Err(Error::InvalidConfig {
-                message: "Must specify either shell or supervise".to_string(),
-            });
-        }
-
         // Mode-specific validation.
-        match self.mode {
-            HandoffMode::Supervise => {
-                let supervise = self.supervise.as_ref().expect("supervise is checked.");
-                supervise.validate()?;
-            }
-            HandoffMode::Shell => {}
+        match &self.mode {
+            HandoffMode::Supervise { config } => config.validate()?,
+            HandoffMode::Shell { .. } | HandoffMode::Exec { .. } => {}
         }
 
         Ok(())
@@ -60,21 +47,19 @@ impl HandoffConfig {
 impl From<HandoffConfig> for ocelot_bootstrap::Handoff {
     fn from(config: HandoffConfig) -> Self {
         let boot_script = config.boot_script.map(ocelot_bootstrap::BootScriptConfig::from);
-
-        // Mode-specific validation.
         let mode = match config.mode {
-            HandoffMode::Supervise => {
-                let supervise = config.supervise.expect("supervise is checked.");
+            HandoffMode::Supervise { config: supervise_config } => {
                 ocelot_bootstrap::HandoffMode::Supervise(
-                    ocelot_supervise::OrchestratorConfig::from(supervise),
+                    ocelot_supervise::OrchestratorConfig::from(supervise_config),
                 )
             }
-            HandoffMode::Shell => {
-                let shell = config.shell.expect("shell is checked.");
-                ocelot_bootstrap::HandoffMode::Shell(ocelot_bootstrap::ShellConfig::from(shell))
+            HandoffMode::Shell { config: shell_config } => ocelot_bootstrap::HandoffMode::Shell(
+                ocelot_bootstrap::ShellConfig::from(shell_config),
+            ),
+            HandoffMode::Exec { config: exec_config } => {
+                ocelot_bootstrap::HandoffMode::Exec(ocelot_bootstrap::ExecConfig::from(exec_config))
             }
         };
-
         Self { mode, boot_script }
     }
 }
@@ -91,4 +76,18 @@ pub struct ShellConfig {
 
 impl From<ShellConfig> for ocelot_bootstrap::ShellConfig {
     fn from(ShellConfig { program, arguments }: ShellConfig) -> Self { Self { program, arguments } }
+}
+
+/// `ExecConfig`.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecConfig {
+    #[serde(default)]
+    pub program: String,
+    #[serde(default)]
+    pub arguments: Vec<String>,
+}
+
+impl From<ExecConfig> for ocelot_bootstrap::ExecConfig {
+    fn from(ExecConfig { program, arguments }: ExecConfig) -> Self { Self { program, arguments } }
 }

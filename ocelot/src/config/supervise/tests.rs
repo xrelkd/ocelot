@@ -675,13 +675,15 @@ preSwitch:
     PATH: /bin
 postSwitch:
   handoff:
-    mode: supervise
-    shell:
-      program: /bin/sh
-    supervise:
-      processes:
-        init:
-          program: /sbin/init
+    mode: Supervise
+    processes:
+      init:
+        program: /sbin/init
+      app:
+        program: /usr/bin/app
+        dependsOn:
+          missing:
+            condition: Started
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
@@ -699,17 +701,12 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: supervise
-    shell:
-      program: /bin/sh
-    supervise:
-      processes:
-        init:
-          program: /sbin/init
+    mode: Shell
+    program: /bin/sh
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
-    assert!(result.is_err());
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -723,11 +720,12 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: supervise
+    mode: Shell
+    program: /bin/sh
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
-    assert!(result.is_err());
+    assert!(result.is_ok());
 }
 
 #[test]

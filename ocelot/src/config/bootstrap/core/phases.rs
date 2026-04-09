@@ -46,7 +46,7 @@ pub struct SwitchRootConfig {
 }
 
 /// `PostSwitchConfig`: Post-switch configuration (serialization type).
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PostSwitchConfig {
     #[serde(default)]
@@ -69,7 +69,6 @@ pub struct PostSwitchConfig {
     pub security: Option<SecurityConfig>,
     #[serde(default)]
     pub clock: Option<ClockConfig>,
-    #[serde(default)]
     pub handoff: HandoffConfig,
     #[serde(default)]
     pub shutdown: Option<ShutdownConfig>,

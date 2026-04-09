@@ -1,12 +1,12 @@
-# Ocelot Bootstrap Configuration (Supervise Mode)
+# Ocelot Bootstrap Configuration (Exec Mode)
 #
 # This template demonstrates the three-tier phased architecture for bootstrap.
-# Supervise mode hands off to the process supervisor after boot.
+# Exec mode executes a single program and exits (no interactive shell or supervisor).
 
-# Console device
+# Console device (default: "console")
 console: console
 
-# Log level
+# Log level (default: "info")
 logLevel: info
 
 # Pre-switch phase
@@ -44,20 +44,11 @@ postSwitch:
   mounts: []
   hooks: []
   modules: null
-  network: null
   sysctl: {}
   tmpfiles: null
-  security: null
-  clock: null
 
   # Handoff configuration
   handoff:
-    mode: Supervise
-    processes:
-      init:
-        program: /sbin/init
-    http-server:
-      program: /usr/bin/nginx
-      arguments:
-        - -g
-        - daemon off;
+    mode: Exec
+    program: /sbin/init
+    arguments: []
