@@ -18,6 +18,8 @@ tracing = { workspace = true }
 flate2  = { workspace = true }
 lzma-rs = { workspace = true }
 
+procfs = { workspace = true }
+
 nix   = { workspace = true }
 snafu = { workspace = true }
 

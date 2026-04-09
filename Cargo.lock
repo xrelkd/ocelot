@@ -750,6 +750,7 @@ dependencies = [
  "nix",
  "ocelot-entry",
  "ocelot-supervise",
+ "procfs",
  "snafu",
  "tracing",
 ]

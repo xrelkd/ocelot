@@ -1,7 +1,4 @@
-use std::{
-    cmp::Reverse,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use snafu::ResultExt;
 
@@ -161,21 +158,24 @@ fn ensure_dir(path: impl AsRef<Path>) -> Result<(), Error> {
 }
 
 fn clean_initramfs_mounts() {
-    // Read /proc/mounts to find everything currently mounted
-    if let Ok(mounts) = std::fs::read_to_string("/proc/mounts") {
-        let mut points = mounts
-            .lines()
-            .filter_map(|line| line.split_whitespace().nth(1).map(String::from))
-            .filter(|p| p != "/")
+    // Read /proc/mounts to find everything currently mounted using procfs crate
+    if let Ok(mounts) = procfs::mounts() {
+        let mut mount_points = mounts
+            .into_iter()
+            .filter_map(
+                |procfs::MountEntry { fs_file, .. }| {
+                    if fs_file == "/" { None } else { Some(fs_file) }
+                },
+            )
             .collect::<Vec<_>>();
 
         // Sort by length descending (unmount deepest children first)
-        points.sort_by_key(|b| Reverse(b.len()));
+        mount_points.sort_by_key(|point| std::cmp::Reverse(point.len()));
 
-        for path in points {
+        for mount_point in mount_points {
             // MNT_DETACH (Lazy) is safest in initramfs to avoid "device busy"
             // errors
-            let _ = nix::mount::umount2(path.as_str(), nix::mount::MntFlags::MNT_DETACH);
+            let _ = nix::mount::umount2(mount_point.as_str(), nix::mount::MntFlags::MNT_DETACH);
         }
     }
 }

@@ -107,7 +107,7 @@ setup-minimal mode="supervise": build-ocelot get-busybox
 # Assemble rootfs with Alpine
 setup-alpine mode="supervise": build-ocelot get-alpine-rootfs
     rm -rf {{ROOTFS}}/*
-    mkdir  -p {{ROOTFS}}/
+    mkdir -p {{ROOTFS}}/
     # Copy Alpine rootfs
     cp -r {{TARGET}}/alpine-rootfs/* {{ROOTFS}}/
     # Ensure required directories exist
@@ -122,6 +122,7 @@ setup-alpine mode="supervise": build-ocelot get-alpine-rootfs
 # Assemble rootfs with Docker image
 setup-docker-rootfs image mode="supervise": build-ocelot (get-docker-rootfs image)
     rm -rf {{ROOTFS}}/*
+    mkdir -p {{ROOTFS}}/
     # Copy Docker rootfs
     cp -r {{TARGET}}/docker-rootfs-{{image}}/* {{ROOTFS}}/
     # Ensure required directories exist
