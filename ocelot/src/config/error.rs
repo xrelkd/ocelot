@@ -1,19 +1,27 @@
+use std::path::PathBuf;
+
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
     #[snafu(display("Failed to resolve config file path: {}", file_path.display()))]
-    ResolveFilePath { file_path: std::path::PathBuf },
+    ResolveFilePath { file_path: PathBuf },
 
     #[snafu(display("Failed to open config file: {}", filename.display()))]
-    OpenConfig { filename: std::path::PathBuf, source: std::io::Error },
+    OpenConfig { filename: PathBuf, source: std::io::Error },
 
     #[snafu(display("Failed to parse config file: {}, error: {source}", filename.display()))]
-    ParseConfig { filename: std::path::PathBuf, source: serde_yaml::Error },
+    ParseConfig { filename: PathBuf, source: serde_yaml::Error },
 
     #[snafu(display("Configuration validation failed: {source}"))]
     Validate { source: ValidationError },
+
+    #[snafu(display("Invalid configuration: {message}"))]
+    InvalidConfig { message: String },
+
+    #[snafu(display("Failed to parse module dependency file '{}': {source}", path.display()))]
+    ParseModuleDependencyFile { path: PathBuf, source: std::io::Error },
 }
 
 impl From<ValidationError> for Error {
@@ -29,6 +37,9 @@ pub enum ValidationError {
 
     #[snafu(display("Process '{process}' depends on non-existent process '{depends_on}'"))]
     MissingDependency { process: String, depends_on: String },
+
+    #[snafu(display("Module '{name}' not found in dependency file"))]
+    ModuleNotFound { name: String },
 
     #[snafu(display("Unsupported config version '{version}'"))]
     InvalidVersion { version: String },
@@ -54,6 +65,10 @@ pub enum ValidationError {
     #[snafu(display("Process '{process}' has duplicate environment variables: {}",
         variables.iter().map(String::as_str).collect::<Vec<_>>().join(", ")))]
     DuplicateEnvironmentVariables { process: String, variables: Vec<String> },
+
+    #[snafu(display("Bootstrap configuration has duplicate environment variables: {}",
+        variables.iter().map(String::as_str).collect::<Vec<_>>().join(", ")))]
+    BootstrapDuplicateEnvironmentVariables { variables: Vec<String> },
 
     #[snafu(display("Invalid rotation configuration: {reason}"))]
     InvalidRotationConfiguration { reason: String },

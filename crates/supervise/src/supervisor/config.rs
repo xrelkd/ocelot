@@ -1,6 +1,7 @@
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use nix::sys::signal::Signal;
+pub use ocelot_rotating_file::{LogCompression, LogRotationConfig};
 
 use crate::{Command, supervisor::probe::Probe};
 
@@ -48,11 +49,10 @@ impl Config {
 
     #[must_use]
     pub fn command(&self) -> Command {
-        let mut cmd = Command::new(self.program.clone())
-            .args(self.arguments.clone())
-            .envs(self.environment_variables.clone());
+        let mut cmd =
+            Command::new(&self.program).args(&self.arguments).envs(&self.environment_variables);
         if let Some(dir) = &self.working_directory {
-            cmd = cmd.current_dir(dir.clone());
+            cmd = cmd.current_dir(dir);
         }
         if matches!(self.log_stdout.destination, LogDestination::Null) {
             cmd = cmd.discard_stdout(true);
@@ -92,32 +92,12 @@ pub enum DependencyCondition {
     LogReady,
 }
 
-/// Compression algorithm for rotated log files.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub enum LogCompression {
-    #[default]
-    None,
-    Gzip,
-    Lz4,
-}
-
 /// Destination for log output.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LogDestination {
     Null,
     Inherit,
     File { path: PathBuf },
-}
-
-/// Rotation configuration for log files.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct LogRotationConfig {
-    pub max_size_bytes: Option<u64>,
-    pub rotation_interval_secs: Option<u64>,
-    pub max_files: Option<u32>,
-    pub max_age_days: Option<u32>,
-    pub mode: Option<u32>,
-    pub compression: LogCompression,
 }
 
 /// Configuration for a single log stream (stdout or stderr).

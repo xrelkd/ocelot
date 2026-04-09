@@ -1,3 +1,8 @@
+//! Supervisor subcommand handler.
+//!
+//! This module handles the `ocelot supervise` subcommand,
+//! which runs a process supervisor with configuration file support.
+
 use std::{
     io::Write,
     path::{Path, PathBuf},
@@ -9,12 +14,29 @@ use snafu::ResultExt;
 
 use crate::{cli::init_tracing_subscriber, config, error, error::Error};
 
+/// Output format for command results.
 #[derive(Clone, Copy, Eq, PartialEq, clap::ValueEnum)]
 pub enum OutputFormat {
+    /// Human-readable output.
     Human,
+    /// JSON-formatted output.
     Json,
 }
 
+/// Configuration template complexity tiers.
+#[derive(Clone, Copy, Eq, PartialEq, clap::ValueEnum)]
+pub enum TemplateTier {
+    /// Minimal configuration with essential settings only.
+    Minimal,
+    /// Basic configuration with commonly used settings.
+    Basic,
+    /// Full configuration with all available settings.
+    Full,
+}
+
+/// Available supervisor subcommands.
+///
+/// Note: Documentation is provided via Clap attributes for CLI help.
 #[derive(Clone, Subcommand)]
 pub enum Commands {
     #[clap(visible_alias = "r", about = "Run supervisor with configuration file")]
@@ -27,7 +49,10 @@ pub enum Commands {
     },
 
     #[clap(about = "Output the configuration template in YAML format")]
-    ConfigTemplate,
+    ConfigTemplate {
+        #[clap(long, default_value = "basic")]
+        template: TemplateTier,
+    },
 
     #[clap(about = "Validate the configuration file")]
     Validate {
@@ -43,9 +68,14 @@ pub fn run(
     log_level: Option<tracing::Level>,
 ) -> Result<i32, Error> {
     match command {
-        Some(Commands::ConfigTemplate) => {
+        Some(Commands::ConfigTemplate { template }) => {
+            let template_bytes = match template {
+                TemplateTier::Minimal => config::SuperviseConfig::template_minimal(),
+                TemplateTier::Basic => config::SuperviseConfig::template_basic(),
+                TemplateTier::Full => config::SuperviseConfig::template_full(),
+            };
             std::io::stdout()
-                .write_all(config::SuperviseConfig::template_basic().as_slice())
+                .write_all(template_bytes.as_slice())
                 .context(error::WriteStdoutSnafu)?;
             Ok(0)
         }

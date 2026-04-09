@@ -1,0 +1,291 @@
+# Paths
+OC_ROOT        := justfile_directory() / "../.."
+OC_BIN         := OC_ROOT + "/target/x86_64-unknown-linux-musl/release/ocelot"
+TARGET         := justfile_directory() / "target"
+ROOTFS         := "rootfs"
+ROOTFS_DIR     := justfile_directory() / ROOTFS
+CONFIG         := justfile_directory() / "config"
+SHARED_DIR     := justfile_directory() / "shared"
+SCRIPTS        := justfile_directory() / "scripts"
+ALPINE_VERSION := "3.23"
+ALPINE_HOSTNAME := "alpine"
+# Kernel path: override via KERNEL env var, otherwise auto-detected at boot time
+KERNEL := env("KERNEL", "")
+
+# Default: show available commands
+default:
+    @just --list
+
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
+
+# Build ocelot with musl static linking
+build-ocelot:
+    cd {{OC_ROOT}} && cargo build --release --target x86_64-unknown-linux-musl -p ocelot
+
+# ---------------------------------------------------------------------------
+# Fetch dependencies
+# ---------------------------------------------------------------------------
+
+# Get busybox from nixpkgs static musl build (validates cached binary)
+get-busybox:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    NEED_FETCH=false
+    if [ ! -f {{TARGET}}/busybox/bin/busybox ]; then
+        NEED_FETCH=true
+    else
+        # Validate cached binary: must be static and have 300+ applets
+        APPLET_COUNT=$({{TARGET}}/busybox/bin/busybox --list 2>/dev/null | wc -l || echo 0)
+        IS_STATIC=$(file {{TARGET}}/busybox/bin/busybox | grep -c 'statically linked' || true)
+        if [ "$APPLET_COUNT" -lt 300 ] || [ "$IS_STATIC" -eq 0 ]; then
+            echo "Cached busybox invalid ($APPLET_COUNT applets, static=$IS_STATIC), re-fetching..." >&2
+            NEED_FETCH=true
+        fi
+    fi
+    if [ "$NEED_FETCH" = true ]; then
+        nix build 'nixpkgs#pkgsStatic.busybox' --out-link /tmp/busybox-qemu
+        mkdir -p {{TARGET}}/busybox/bin
+        cp /tmp/busybox-qemu/bin/busybox {{TARGET}}/busybox/bin/
+        chmod +x {{TARGET}}/busybox/bin/busybox
+    fi
+
+# Get Alpine rootfs from official release (skip if already exists)
+get-alpine-rootfs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d {{TARGET}}/alpine-rootfs/etc ]; then
+        mkdir -p {{TARGET}}/alpine-rootfs
+        ALPINE_VERSION={{ALPINE_VERSION}}
+        ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION}/releases/x86_64"
+        TARBALL=$(curl -sL "${ALPINE_URL}/" | grep -o 'alpine-minirootfs-[0-9.]*-x86_64.tar.gz' | head -1 || true)
+        if [ -z "$TARBALL" ]; then
+            TARBALL="alpine-minirootfs-${ALPINE_VERSION}-x86_64.tar.gz"
+        fi
+        curl -sL "${ALPINE_URL}/${TARBALL}" | tar -xzf - -C {{TARGET}}/alpine-rootfs
+    fi
+
+# Get Docker image and extract its filesystem (skip if already exists)
+get-docker-rootfs image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d {{TARGET}}/docker-rootfs-{{image}}/etc ]; then
+        mkdir -p {{TARGET}}/docker-rootfs-{{image}}
+
+        docker pull {{image}}
+        CONTAINER_ID=$(docker create {{image}})
+        docker export "$CONTAINER_ID" | tar -xf - -C {{TARGET}}/docker-rootfs-{{image}}
+        docker rm "$CONTAINER_ID"
+
+        echo "Rootfs for {{image}} has been created at {{TARGET}}/docker-rootfs-{{image}}"
+    fi
+
+# ---------------------------------------------------------------------------
+# Setup rootfs
+# ---------------------------------------------------------------------------
+
+# Assemble minimal rootfs (identical structure for initramfs and rootfs)
+setup-initramfs mode="supervise": build-ocelot get-busybox
+    rm -rf {{TARGET}}/initramfs-root/*
+    mkdir -p {{TARGET}}/initramfs-root/{bin,sbin,etc/ocelot,proc,sys,dev,run,tmp,mnt/shared,usr/local/bin,lib,var/log}
+    cp {{OC_BIN}} {{TARGET}}/initramfs-root/bin/ocelot
+    ln -sf bin/ocelot {{TARGET}}/initramfs-root/init
+    cp {{TARGET}}/busybox/bin/busybox {{TARGET}}/initramfs-root/bin/
+    cd {{TARGET}}/initramfs-root/bin && ./busybox --install .
+    cp {{CONFIG}}/{{mode}}.yaml {{TARGET}}/initramfs-root/etc/ocelot/bootstrap.yaml
+
+# Assemble rootfs with BusyBox
+setup-minimal mode="supervise": build-ocelot get-busybox
+    rm -rf {{ROOTFS}}/*
+    mkdir -p {{ROOTFS}}/{bin,sbin,etc/ocelot,proc,sys,dev,run,tmp,mnt/shared,usr/local/bin,lib,var/log}
+    cp {{OC_BIN}} {{ROOTFS}}/bin/ocelot
+    cp {{TARGET}}/busybox/bin/busybox {{ROOTFS}}/bin/
+    cd {{ROOTFS}}/bin && ./busybox --install .
+    cp {{CONFIG}}/{{mode}}.yaml {{ROOTFS}}/etc/ocelot/bootstrap.yaml
+
+# Assemble rootfs with Alpine
+setup-alpine mode="supervise": build-ocelot get-alpine-rootfs
+    rm -rf {{ROOTFS}}/*
+    mkdir -p {{ROOTFS}}/
+    # Copy Alpine rootfs
+    cp -r {{TARGET}}/alpine-rootfs/* {{ROOTFS}}/
+    # Ensure required directories exist
+    mkdir -p {{ROOTFS}}/{bin,sbin,etc/ocelot,proc,sys,dev,run,tmp,mnt/shared,usr/local/bin,lib,var/log}
+    # Copy ocelot binary
+    cp {{OC_BIN}} {{ROOTFS}}/bin/ocelot
+    # Ensure symlink for init (Alpine might not have it by default)
+    ln -sf bin/ocelot {{ROOTFS}}/init
+    # Copy Alpine bootstrap config
+    cp {{CONFIG}}/{{mode}}.yaml {{ROOTFS}}/etc/ocelot/bootstrap.yaml
+
+# Assemble rootfs with Docker image
+setup-docker-rootfs image mode="supervise": build-ocelot (get-docker-rootfs image)
+    rm -rf {{ROOTFS}}/*
+    mkdir -p {{ROOTFS}}/
+    # Copy Docker rootfs
+    cp -r {{TARGET}}/docker-rootfs-{{image}}/* {{ROOTFS}}/
+    # Ensure required directories exist
+    mkdir -p {{ROOTFS}}/{bin,sbin,etc/ocelot,proc,sys,dev,run,tmp,mnt/shared,usr/local/bin,lib,var/log}
+    # Copy ocelot binary
+    cp {{OC_BIN}} {{ROOTFS}}/bin/ocelot
+    # Ensure symlink for init (Docker image might not have it by default)
+    ln -sf bin/ocelot {{ROOTFS}}/init
+    # Copy Alpine bootstrap config (reuse for now, can be customized later)
+    cp {{CONFIG}}/{{mode}}.yaml {{ROOTFS}}/etc/ocelot/bootstrap.yaml
+
+
+# ---------------------------------------------------------------------------
+# Pack minimal initramfs (only ocelot + busybox for bootstrapping)
+# ---------------------------------------------------------------------------
+pack-minimal-initrd mode="supervise": (setup-initramfs mode)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    KERNEL_PATH="{{KERNEL}}"
+    if [ -z "$KERNEL_PATH" ]; then
+        if [ -f /run/current-system/kernel ]; then
+            KERNEL_PATH="/run/current-system/kernel"
+        elif ls /boot/vmlinuz-* 1>/dev/null 2>&1; then
+            KERNEL_PATH=$(ls -t /boot/vmlinuz-* | head -1)
+        else
+            echo "No kernel found. Set KERNEL env var or run: nix build nixpkgs#linuxPackages.kernel" >&2
+            exit 1
+        fi
+    fi
+    # Derive kernel modules path from kernel path
+    if [ -f /run/current-system/kernel ] && [ "$KERNEL_PATH" = "/run/current-system/kernel" ]; then
+        KVER=$(uname -r)
+        KMOD="/run/current-system/kernel-modules/lib/modules/${KVER}"
+    elif [ -L "$KERNEL_PATH" ]; then
+        STORE_PATH=$(readlink -f "$KERNEL_PATH")
+        KVER=$(basename "$STORE_PATH" | sed 's/-linux$//; s/-vmlinuz$//')
+        KMOD="${STORE_PATH%/*}/lib/modules/${KVER}"
+    else
+        KVER=$(uname -r)
+        KMOD="/run/current-system/kernel-modules/lib/modules/${KVER}"
+    fi
+    echo "Kernel: $KERNEL_PATH"
+    echo "Modules: $KMOD"
+    bash {{SCRIPTS}}/pack-initrd.sh {{TARGET}}/initramfs-root "$KMOD"
+    mv {{TARGET}}/initramfs-minimal.cpio.gz {{TARGET}}/initramfs.cpio.gz
+
+# ---------------------------------------------------------------------------
+# Boot QEMU
+# ---------------------------------------------------------------------------
+
+# Boot with BusyBox rootfs (9p shared root)
+# just boot-busybox           # supervise mode (default)
+# just boot-busybox shell     # shell mode
+# just boot-busybox supervise # supervise mode
+boot-busybox mode="supervise": (setup-minimal mode) (pack-minimal-initrd mode)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Bootstrap mode: {{mode}}"
+    KERNEL_PATH="{{KERNEL}}"
+    if [ -z "$KERNEL_PATH" ]; then
+        if [ -f /run/current-system/kernel ]; then
+            KERNEL_PATH="/run/current-system/kernel"
+        elif ls /boot/vmlinuz-* 1>/dev/null 2>&1; then
+            KERNEL_PATH=$(ls -t /boot/vmlinuz-* | head -1)
+        else
+            echo "No kernel found. Set KERNEL env var or run: nix build nixpkgs#linuxPackages.kernel" >&2
+            exit 1
+        fi
+    fi
+    echo "Using kernel: $KERNEL_PATH"
+    qemu-system-x86_64 \
+        -kernel "$KERNEL_PATH" \
+        -initrd {{TARGET}}/initramfs.cpio.gz \
+        -append "panic=1 console=ttyS0" \
+        -nographic \
+        -serial mon:stdio \
+        -no-reboot \
+        -m 1G \
+        -fsdev local,id=rootfs,path={{ROOTFS_DIR}},security_model=none \
+        -device virtio-9p-pci,fsdev=rootfs,mount_tag=rootfs \
+        -fsdev local,id=shared,path={{SHARED_DIR}},security_model=passthrough \
+        -device virtio-9p-pci,fsdev=shared,mount_tag=shared \
+        -netdev user,id=net0,hostname=ocelot-vm \
+        -device virtio-net-pci,netdev=net0
+
+# Boot with Alpine rootfs (9p shared root)
+# just boot-alpine           # supervise mode (default)
+# just boot-alpine shell     # shell mode
+# just boot-alpine supervise # supervise mode
+boot-alpine mode="supervise": (setup-alpine mode) (pack-minimal-initrd mode)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Bootstrap mode: {{mode}}"
+    KERNEL_PATH="{{KERNEL}}"
+    if [ -z "$KERNEL_PATH" ]; then
+        if [ -f /run/current-system/kernel ]; then
+            KERNEL_PATH="/run/current-system/kernel"
+        elif ls /boot/vmlinuz-* 1>/dev/null 2>&1; then
+            KERNEL_PATH=$(ls -t /boot/vmlinuz-* | head -1)
+        else
+            echo "No kernel found. Set KERNEL env var or run: nix build nixpkgs#linuxPackages.kernel" >&2
+            exit 1
+        fi
+    fi
+    echo "Using kernel: $KERNEL_PATH"
+    qemu-system-x86_64 \
+        -kernel "$KERNEL_PATH" \
+        -initrd {{TARGET}}/initramfs.cpio.gz \
+        -append "panic=1 console=ttyS0" \
+        -nographic \
+        -serial mon:stdio \
+        -no-reboot \
+        -m 1G \
+        -fsdev local,id=rootfs,path={{ROOTFS_DIR}},security_model=none \
+        -device virtio-9p-pci,fsdev=rootfs,mount_tag=rootfs \
+        -fsdev local,id=shared,path={{SHARED_DIR}},security_model=passthrough \
+        -device virtio-9p-pci,fsdev=shared,mount_tag=shared \
+        -netdev user,id=net0,hostname=ocelot-vm \
+        -device virtio-net-pci,netdev=net0
+
+# Boot with Docker image rootfs (9p shared root)
+# just boot-container ubuntu:24.05           # supervise mode (default)
+# just boot-container ubuntu:24.05 shell     # shell mode
+# just boot-container ubuntu:24.05 supervise # supervise mode
+boot-container image mode="supervise": (setup-docker-rootfs image mode) (pack-minimal-initrd mode)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Bootstrap mode: {{mode}}"
+    KERNEL_PATH="{{KERNEL}}"
+    if [ -z "$KERNEL_PATH" ]; then
+        if [ -f /run/current-system/kernel ]; then
+            KERNEL_PATH="/run/current-system/kernel"
+        elif ls /boot/vmlinuz-* 1>/dev/null 2>&1; then
+            KERNEL_PATH=$(ls -t /boot/vmlinuz-* | head -1)
+        else
+            echo "No kernel found. Set KERNEL env var or run: nix build nixpkgs#linuxPackages.kernel" >&2
+            exit 1
+        fi
+    fi
+    echo "Using kernel: $KERNEL_PATH"
+    qemu-system-x86_64 \
+        -kernel "$KERNEL_PATH" \
+        -initrd {{TARGET}}/initramfs.cpio.gz \
+        -append "panic=1 console=ttyS0" \
+        -nographic \
+        -serial mon:stdio \
+        -no-reboot \
+        -m 1G \
+        -fsdev local,id=rootfs,path={{ROOTFS_DIR}},security_model=none \
+        -device virtio-9p-pci,fsdev=rootfs,mount_tag=rootfs \
+        -fsdev local,id=shared,path={{SHARED_DIR}},security_model=passthrough \
+        -device virtio-9p-pci,fsdev=shared,mount_tag=shared \
+        -netdev user,id=net0,hostname=ocelot-vm \
+        -device virtio-net-pci,netdev=net0
+
+# ---------------------------------------------------------------------------
+# Maintenance
+# ---------------------------------------------------------------------------
+
+# Remove all build artifacts (keeps rootfs/ for editing)
+clean:
+    rm -rf {{TARGET}}
+
+# Remove everything including rootfs/
+clean-all: clean
+    rm -rf {{ROOTFS}}/*

@@ -1,3 +1,4 @@
+mod bootstrap;
 mod supervise;
 mod zombie_finder;
 
@@ -6,14 +7,13 @@ use std::{io::Write, path::PathBuf, time::Duration};
 use clap::{CommandFactory, Parser, Subcommand};
 use snafu::ResultExt;
 
-use crate::{error, error::Error, shadow};
+use crate::{error, error::Error};
 
 #[derive(Parser)]
 #[command(
     name = "ocelot",
     author,
     version,
-    long_version = shadow::CLAP_LONG_VERSION,
     about,
     long_about = None
 )]
@@ -73,6 +73,22 @@ pub enum Commands {
 
         #[clap(long = "log-level", env = "OCELOT_LOG_LEVEL")]
         log_level: Option<tracing::Level>,
+    },
+
+    #[clap(
+        visible_aliases = ["boot"],
+        about = "Run as initramfs init - mount rootfs and exec supervise",
+        long_about = "Acts as an initramfs init system for QEMU VMs. Loads kernel modules, mounts \
+                      the root filesystem, performs switch_root, and executes the supervise \
+                      orchestrator to manage application processes. If no subcommand is provided, \
+                      runs the bootstrap."
+    )]
+    Bootstrap {
+        #[clap(subcommand)]
+        command: Option<bootstrap::Commands>,
+
+        #[clap(short, long)]
+        file: Option<PathBuf>,
     },
 
     #[clap(
@@ -146,6 +162,9 @@ impl Cli {
             }
             Some(Commands::Supervise { command, file, log_level }) => {
                 return supervise::run(command, file, log_level);
+            }
+            Some(Commands::Bootstrap { command, file }) => {
+                return bootstrap::run(command, file);
             }
             Some(Commands::Zombie { log_level, interval_ms, count }) => {
                 init_tracing_subscriber(log_level);

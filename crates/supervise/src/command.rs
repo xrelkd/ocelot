@@ -16,7 +16,7 @@ use nix::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Command {
     program: PathBuf,
-    args: Vec<OsString>,
+    arguments: Vec<OsString>,
     env: HashMap<OsString, OsString>,
     working_directory: Option<PathBuf>,
     discard_stdout: bool,
@@ -27,7 +27,7 @@ impl Command {
     pub fn new<S: AsRef<OsStr>>(program: S) -> Self {
         Self {
             program: PathBuf::from(program.as_ref()),
-            args: vec![program.as_ref().to_os_string()],
+            arguments: vec![program.as_ref().to_os_string()],
             env: std::env::vars_os().collect(),
             working_directory: None,
             discard_stdout: false,
@@ -37,7 +37,7 @@ impl Command {
 
     #[must_use]
     pub fn arg<S: AsRef<OsStr>>(mut self, arg: S) -> Self {
-        self.args.push(arg.as_ref().to_os_string());
+        self.arguments.push(arg.as_ref().to_os_string());
         self
     }
 
@@ -47,7 +47,7 @@ impl Command {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        self.args.extend(args.into_iter().map(|s| s.as_ref().to_os_string()));
+        self.arguments.extend(args.into_iter().map(|s| s.as_ref().to_os_string()));
         self
     }
 
@@ -98,6 +98,9 @@ impl Command {
     #[must_use]
     pub const fn is_discard_stderr(&self) -> bool { self.discard_stderr }
 
+    #[must_use]
+    pub const fn get_program(&self) -> &PathBuf { &self.program }
+
     /// Execute the command using execve, which replaces the current process
     /// image with the new.
     ///
@@ -120,7 +123,7 @@ impl Command {
         let path_c =
             CString::new(self.program.as_os_str().as_bytes()).expect("Invalid program path");
 
-        let args_c = to_cstring_vec(&self.args);
+        let args_c = to_cstring_vec(&self.arguments);
 
         // Convert environment variables to "KEY=VALUE" format
         let env_c: Vec<CString> = self

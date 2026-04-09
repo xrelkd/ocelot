@@ -70,10 +70,13 @@ impl CommandExt for Command {
                         stderr_fd: stderr_reader,
                     }),
                     4 => {
-                        let _errno = i32::from_ne_bytes(buf);
-                        Err(Error::ExecuteChild)
+                        let errno = i32::from_ne_bytes(buf);
+                        let err = Err(std::io::Error::from_raw_os_error(errno));
+                        err.context(error::ExecuteChildSnafu {
+                            program: self.get_program().clone(),
+                        })
                     }
-                    _ => Err(Error::ExecuteChild),
+                    len => Err(Error::GetExtraBytes { len }),
                 }
             }
             ForkResult::Child => {

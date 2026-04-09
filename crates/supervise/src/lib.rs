@@ -2,11 +2,10 @@ mod command;
 mod error;
 mod orchestrator;
 mod reaper;
-mod rotating_file;
 mod splice_relay;
 mod supervisor;
 
-use nix::unistd;
+pub use ocelot_rotating_file::{LogCompression, LogRotationConfig, RotatingFile};
 use snafu::ResultExt;
 
 pub use self::{
@@ -19,9 +18,8 @@ pub use self::{
         Status as RelayStatus,
     },
     supervisor::{
-        DependencyRegistry, LogCompression, LogDestination, LogRotationConfig, LogStreamConfig,
-        Phase, ProcessStatus, RestartPolicy, Supervisor, SupervisorConfig, SupervisorExecutor,
-        config as supervisor_config,
+        DependencyRegistry, LogDestination, LogStreamConfig, Phase, ProcessStatus, RestartPolicy,
+        Supervisor, SupervisorConfig, SupervisorExecutor, config as supervisor_config,
         config::{DependencyCondition, ProcessDependency},
         probe as supervisor_probe,
         probe::{Probe, ProbeHandler},
@@ -51,13 +49,8 @@ use crate::orchestrator::Orchestrator;
 ///
 /// This function should not panic under normal operation.
 pub fn execute(config: OrchestratorConfig) -> Result<i32, Error> {
-    let pid = unistd::getpid();
-
-    if pid.as_raw() == 1 {
-        tracing::info!("Start with PID 1");
-    } else {
-        tracing::warn!("Supervise should be the first process (PID 1), current PID: {pid}");
-    }
+    let pid = nix::unistd::getpid();
+    tracing::info!("Start with PID {pid}");
 
     let runtime = tokio::runtime::Runtime::new().context(error::InitializeTokioRuntimeSnafu)?;
     let (_orchestrator, orchestrator_executor) = Orchestrator::new(config);

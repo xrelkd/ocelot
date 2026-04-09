@@ -1,0 +1,8 @@
+version: "1.0"
+processes:
+  http-server:
+    program: python3
+    arguments:
+      - -m
+      - http.server
+      - "55688"

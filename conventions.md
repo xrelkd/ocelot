@@ -114,6 +114,28 @@ use crate::strategy::parameter::OrderPriceConfig; // when inside strategy/
 - Prefer well-maintained crates with recent activity. Never use abandoned or unmaintained crates.
 - Run `cargo audit` before adding or upgrading dependencies.
 
+## Path Arguments Handling
+
+To ensure function interface flexibility and usability, all public or internal utility functions that accept file paths as input must use the `AsRef<Path>` generic constraint.
+
+✅ Recommended approach
+Rust
+
+use std::path::{Path, PathBuf};
+
+/// Reads the content of a configuration file
+pub fn load_config(path: impl AsRef<Path>) -> std::io::Result<String> {
+let path = path.as_ref();
+// Subsequently use path (&Path) uniformly for operations
+std::fs::read_to_string(path)
+}
+
+❌ Approaches to avoid
+Rust
+
+fn load_config(path: &str) // Drawback: requires manual string conversion when passing PathBuf
+fn load_config(path: PathBuf) // Drawback: forces ownership transfer, making calls cumbersome
+
 ## Style & Formatting
 
 ### rustfmt behavior

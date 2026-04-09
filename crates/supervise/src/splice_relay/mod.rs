@@ -84,21 +84,21 @@ impl SpliceRelay {
     ) -> Option<RelayRegistration> {
         let (id_sender, id_receiver) = oneshot::channel();
         let (notify_sender, notify_receiver) = oneshot::channel();
-        if let Err(err) = self.event_sender.send(Event::Register {
-            source,
-            destination,
-            id_sender,
-            start_notification: Some(notify_sender),
-        }) {
-            tracing::warn!("{err}");
-            None
-        } else {
-            self.waker.wake();
-            match id_receiver.await {
-                Ok(Some(id)) => Some(RelayRegistration { id, started: notify_receiver }),
-                _ => None,
-            }
-        }
+        self.event_sender
+            .send(Event::Register {
+                source,
+                destination,
+                id_sender,
+                start_notification: Some(notify_sender),
+            })
+            .map_err(|err| tracing::warn!("{err}"))
+            .ok()?;
+        self.waker.wake();
+        id_receiver
+            .await
+            .ok()
+            .flatten()
+            .map(|id| RelayRegistration { id, started: notify_receiver })
     }
 
     #[tracing::instrument(name = "SpliceRelay::remove", skip_all)]
@@ -111,13 +111,12 @@ impl SpliceRelay {
     #[tracing::instrument(name = "SpliceRelay::get_status", skip_all)]
     pub async fn get_status(&self) -> Option<Status> {
         let (sender, receiver) = oneshot::channel();
-        if let Err(err) = self.event_sender.send(Event::GetStatus { sender }) {
-            tracing::error!("{err}");
-            None
-        } else {
-            self.waker.wake();
-            receiver.await.ok()
-        }
+        self.event_sender
+            .send(Event::GetStatus { sender })
+            .map_err(|err| tracing::error!("{err}"))
+            .ok()?;
+        self.waker.wake();
+        receiver.await.ok()
     }
 
     #[tracing::instrument(name = "SpliceRelay::list", skip_all)]

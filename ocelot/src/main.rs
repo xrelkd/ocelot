@@ -1,12 +1,7 @@
 mod cli;
 mod config;
 mod error;
-mod shadow {
-    use shadow_rs::shadow;
-    shadow!(build);
-
-    pub use self::build::*;
-}
+mod graph;
 
 use std::path::Path;
 
@@ -24,6 +19,7 @@ fn main() {
     let cli = match bin_name {
         "pause" => Cli::parse_from([String::new(), "idle".to_string()].into_iter().chain(args)),
         "tini" => Cli::parse_from([String::new(), "entry".to_string()].into_iter().chain(args)),
+        "init" => Cli::parse_from([String::new(), "bootstrap".to_string()].into_iter().chain(args)),
         _ => Cli::default(),
     };
 

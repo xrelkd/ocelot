@@ -1,0 +1,290 @@
+//! Async log file rotation with size/time triggers and compression support.
+//!
+//! This crate provides [`RotatingFile`], an async writer that automatically
+//! rotates log files based on configurable size or time thresholds. Rotated
+//! files can be compressed using gzip or lz4.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use ocelot_rotating_file::{RotatingFile, LogRotationConfig, LogCompression};
+//! use tokio::io::AsyncWriteExt;
+//!
+//! # async fn example() -> std::io::Result<()> {
+//! let rotation = LogRotationConfig {
+//!     max_size_bytes: Some(10 * 1024 * 1024), // 10MB
+//!     rotation_interval_secs: Some(86400),    // 24h
+//!     max_files: Some(7),
+//!     max_age_days: Some(30),
+//!     mode: Some(0o644),
+//!     compression: LogCompression::Gzip,
+//! };
+//! let mut file = RotatingFile::new("app.log".into(), rotation).await?;
+//! file.write_all(b"Hello, world!\n").await?;
+//! # Ok(())
+//! # }
+//! ```
+
+mod compress;
+
+#[cfg(test)]
+mod tests;
+
+use std::{
+    os::unix::fs::OpenOptionsExt,
+    path::PathBuf,
+    pin::Pin,
+    task::{Context, Poll},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use nix::unistd::fsync;
+use tokio::{fs::File, io, io::AsyncWrite};
+
+/// Compression algorithm for rotated log files.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum LogCompression {
+    #[default]
+    None,
+    Gzip,
+    Lz4,
+}
+
+/// Rotation configuration for log files.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LogRotationConfig {
+    pub max_size_bytes: Option<u64>,
+    pub rotation_interval_secs: Option<u64>,
+    pub max_files: Option<u32>,
+    pub max_age_days: Option<u32>,
+    pub mode: Option<u32>,
+    pub compression: LogCompression,
+}
+
+/// A file writer that automatically rotates log files based on size and/or time
+/// constraints.
+///
+/// Rotation occurs before writing data that would exceed configured limits.
+/// Rotated files are renamed with a timestamp suffix and old files are deleted
+/// to maintain the maximum file count.
+pub struct RotatingFile {
+    base_path: PathBuf,
+    current_file: Option<File>,
+    rotation: LogRotationConfig,
+    current_size: u64,
+    last_rotation: SystemTime,
+}
+
+impl RotatingFile {
+    /// Creates a new `RotatingFile` with the given base path and rotation
+    /// configuration.
+    ///
+    /// Opens the file in append mode (creating it if it doesn't exist) and
+    /// initializes rotation tracking based on the file's current size and
+    /// modification time.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be opened or metadata cannot be
+    /// read.
+    pub async fn new(base_path: PathBuf, rotation: LogRotationConfig) -> io::Result<Self> {
+        let file = if let Some(mode) = rotation.mode {
+            tokio::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .mode(mode)
+                .open(&base_path)
+                .await?
+        } else {
+            tokio::fs::OpenOptions::new().append(true).create(true).open(&base_path).await?
+        };
+        let metadata = file.metadata().await?;
+        let current_size = metadata.len();
+        let last_rotation = metadata.modified().unwrap_or_else(|_| SystemTime::now());
+
+        let this =
+            Self { base_path, current_file: Some(file), rotation, current_size, last_rotation };
+
+        if this.rotation.max_age_days.is_some() {
+            this.cleanup_old_files().await?;
+        }
+
+        Ok(this)
+    }
+
+    async fn cleanup_old_files(&self) -> io::Result<()> {
+        let Some(parent) = self.base_path.parent() else {
+            return Ok(());
+        };
+        let Some(max_age_days) = self.rotation.max_age_days else {
+            return Ok(());
+        };
+        let now = SystemTime::now();
+        let mut entries = tokio::fs::read_dir(parent).await?;
+        let base_name = self.base_path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && name.starts_with(base_name)
+                && name.contains('.')
+                && let Ok(metadata) = entry.metadata().await
+                && let Ok(mod_time) = metadata.modified()
+            {
+                let age_days =
+                    now.duration_since(mod_time).map(|d| d.as_secs() / 86400).unwrap_or(0);
+                if age_days >= u64::from(max_age_days) {
+                    let _unused = tokio::fs::remove_file(&path).await;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn needs_rotation(&self, incoming_len: usize) -> bool {
+        let size_trigger = self
+            .rotation
+            .max_size_bytes
+            .is_some_and(|max| self.current_size + incoming_len as u64 > max);
+        let time_trigger = self.rotation.rotation_interval_secs.is_some_and(|interval| {
+            SystemTime::now()
+                .duration_since(self.last_rotation)
+                .map(|d| d.as_secs() > interval)
+                .unwrap_or(true)
+        });
+        size_trigger || time_trigger
+    }
+
+    fn perform_rotation_sync(&mut self) -> io::Result<()> {
+        {
+            let old_tokio_file = self
+                .current_file
+                .take()
+                .ok_or_else(|| io::Error::other("RotatingFile: no current file to rotate"))?;
+            fsync(&old_tokio_file)?;
+            drop(old_tokio_file);
+        }
+
+        {
+            let timestamp =
+                SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+
+            match self.rotation.compression {
+                LogCompression::None => {
+                    let rotated_path = format!("{}.{timestamp}", self.base_path.display());
+                    std::fs::rename(&self.base_path, &rotated_path)?;
+                }
+                LogCompression::Lz4 => {
+                    let rotated_path = format!("{}.{timestamp}.lz4", self.base_path.display());
+                    let mut source = std::fs::File::open(&self.base_path)?;
+                    let mut destination = std::fs::File::create(rotated_path)?;
+                    compress::compress_lz4(&mut source, &mut destination)?;
+                }
+                LogCompression::Gzip => {
+                    let rotated_path = format!("{}.{timestamp}.gz", self.base_path.display());
+                    let mut source = std::fs::File::open(&self.base_path)?;
+                    let mut destination = std::fs::File::create(rotated_path)?;
+                    compress::compress_gzip(&mut source, &mut destination)?;
+                }
+            }
+        }
+
+        if let (Some(max_files), Some(parent)) = (self.rotation.max_files, self.base_path.parent())
+        {
+            let entries = std::fs::read_dir(parent)?;
+            let max_files = max_files as usize;
+            let mut rotated_files = Vec::new();
+            let now = SystemTime::now();
+            for entry in entries {
+                let entry = entry?;
+                let path = entry.path();
+                if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && name.starts_with(
+                        self.base_path.file_name().and_then(|n| n.to_str()).unwrap_or_default(),
+                    )
+                    && name.contains('.')
+                    && let Ok(metadata) = entry.metadata()
+                    && let Ok(mod_time) = metadata.modified()
+                {
+                    let age_days =
+                        now.duration_since(mod_time).map(|d| d.as_secs() / 86400).unwrap_or(0);
+
+                    if self.rotation.max_age_days.is_some_and(|max| age_days > u64::from(max)) {
+                        let _unused = std::fs::remove_file(&path);
+                        continue;
+                    }
+
+                    rotated_files.push((mod_time, path));
+                }
+            }
+            rotated_files.sort_by_key(|(time, _path)| *time);
+            for (_, path) in
+                rotated_files.iter().take(rotated_files.len().saturating_sub(max_files))
+            {
+                let _unused = std::fs::remove_file(path);
+            }
+        }
+
+        self.current_file = {
+            let new_std_file = if let Some(mode) = self.rotation.mode {
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .mode(mode)
+                    .open(&self.base_path)?
+            } else {
+                std::fs::OpenOptions::new().append(true).create(true).open(&self.base_path)?
+            };
+            Some(File::from_std(new_std_file))
+        };
+        self.current_size = 0;
+        self.last_rotation = SystemTime::now();
+
+        Ok(())
+    }
+}
+
+impl AsyncWrite for RotatingFile {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        let this = self.as_mut().get_mut();
+
+        if this.needs_rotation(buf.len())
+            && let Err(e) = this.perform_rotation_sync()
+        {
+            return Poll::Ready(Err(e));
+        }
+
+        let Some(file) = &mut this.current_file else {
+            return Poll::Ready(Err(io::Error::other(
+                "RotatingFile: current file is None after rotation",
+            )));
+        };
+
+        let result = Pin::new(file).poll_write(cx, buf);
+        if let Poll::Ready(Ok(n)) = result {
+            this.current_size += n as u64;
+        }
+        result
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        this.current_file.as_mut().map_or(Poll::Ready(Ok(())), |file| {
+            let pin = Pin::new(file);
+            pin.poll_flush(cx)
+        })
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        this.current_file.as_mut().map_or(Poll::Ready(Ok(())), |file| {
+            let pin = Pin::new(file);
+            pin.poll_shutdown(cx)
+        })
+    }
+}

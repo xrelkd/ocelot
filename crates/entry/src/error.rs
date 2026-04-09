@@ -11,8 +11,17 @@ pub enum Error {
     ///
     /// This error occurs when the command or any argument cannot be converted
     /// to a C string because it contains null bytes (`\0`).
+    #[snafu(display("Invalid input: {input} contains null bytes"))]
     InvalidInput { input: String, source: std::ffi::NulError },
 
+    /// Failed to open console device.
+    ///
+    /// This error occurs when the console device file cannot be opened
+    /// for reading and writing.
+    #[snafu(display("Failed to open console device '{path}': {source}"))]
+    OpenConsole { path: String, source: std::io::Error },
+
+    // Child process errors
     /// Failed to fork the child process.
     ///
     /// This error indicates that the `fork()` system call failed, which could
@@ -20,35 +29,36 @@ pub enum Error {
     #[snafu(display("Failed to spawn child process, error: {source}"))]
     SpawnChild { source: nix::Error },
 
+    /// Failed to execute the child process.
+    ///
+    /// This error is returned when the child process successfully forks but
+    /// `execvp()` fails to replace the process image.
+    #[snafu(display("Failed to execute child process"))]
+    ExecuteChild,
+
     /// Failed to wait for a child process.
     ///
     /// This error occurs when calling `waitpid()` to reap a zombie process
     /// or obtain the exit status.
-    #[snafu(display("Failed to wait for child process (nix), error: {source}"))]
+    #[snafu(display("Failed to wait for child process, error: {source}"))]
     WaitPid { source: nix::Error },
 
-    /// Child process failed to execute the command.
+    // Pipe I/O errors
+    /// Failed to create a pipe.
     ///
-    /// This error is returned when the child process successfully forks but
-    /// `execvp()` fails to replace the process image. The original error from
-    /// `execvp` is logged but not returned directly.
-    #[snafu(display("Failed to execute child process"))]
-    ExecuteChild,
+    /// This error occurs when `pipe2()` fails to create a pipe file descriptor
+    /// pair for communication between parent and child.
+    #[snafu(display("Failed to create pipe, error: {source}"))]
+    CreatePipe { source: nix::Error },
 
     /// Failed to read from a pipe.
     ///
     /// This error indicates an I/O error when reading from a file descriptor,
     /// typically during the error pipe communication after fork.
-    #[snafu(display("Failed to read from Pipe, error: {source}"))]
+    #[snafu(display("Failed to read from pipe, error: {source}"))]
     ReadPipe { source: nix::Error },
 
-    /// Failed to create a pipe.
-    ///
-    /// This error occurs when `pipe2()` fails to create a pipe file descriptor
-    /// pair for communication between parent and child.
-    #[snafu(display("Failed to construct Pipe, error: {source}"))]
-    CreatePipe { source: nix::Error },
-
+    // Signal handling errors
     /// Failed to set the signal mask.
     ///
     /// This error occurs when `sigprocmask()` fails to block or unblock
@@ -63,6 +73,21 @@ pub enum Error {
     #[snafu(display("Failed to create signal fd, error: {source}"))]
     CreateSignalFd { source: nix::errno::Errno },
 
+    /// Failed to convert a signal number from u32 to i32.
+    ///
+    /// This error occurs when converting a signal number from `u32` (as
+    /// provided by the kernel) to `i32` for use with the `Signal` enum.
+    #[snafu(display("Failed to convert signal number from u32 to i32: {value}"))]
+    ConvertSignal { value: u32, source: std::num::TryFromIntError },
+
+    /// Failed to parse a signal number.
+    ///
+    /// This error occurs when reading a signal from the signal fd and the
+    /// signal number cannot be converted to a valid `Signal` enum variant.
+    #[snafu(display("Failed to parse signal number: {signal_num}, error: {source}"))]
+    ParseSignal { signal_num: i32, source: nix::errno::Errno },
+
+    // Epoll I/O multiplexing errors
     /// Failed to create an epoll instance.
     ///
     /// This error indicates that `epoll_create1()` failed to allocate kernel
@@ -74,15 +99,8 @@ pub enum Error {
     ///
     /// This error occurs when `epoll_ctl()` with `EPOLL_CTL_ADD` fails to
     /// register a file descriptor with the epoll instance.
-    #[snafu(display("Failed to add fd to epoll: {source}"))]
+    #[snafu(display("Failed to add fd to epoll, error: {source}"))]
     AddEpoll { source: nix::Error },
-
-    /// Failed to convert a timeout to poll timeout.
-    ///
-    /// This error occurs when converting a `Duration` to `PollTimeout` for
-    /// use with `epoll_wait()`.
-    #[snafu(display("Failed to convert timeout to poll timeout: {source}"))]
-    ConvertTimeout { source: nix::poll::PollTimeoutTryFromError },
 
     /// Failed to wait for epoll events.
     ///
@@ -91,17 +109,10 @@ pub enum Error {
     #[snafu(display("Failed to wait for epoll events, error: {source}"))]
     WaitEpoll { source: nix::Error },
 
-    /// Failed to parse signal number.
+    /// Failed to convert a duration to poll timeout.
     ///
-    /// This error occurs when reading a signal from the signal fd and the
-    /// signal number cannot be converted to a valid `Signal` enum variant.
-    #[snafu(display("Failed to parse signal number: {signal_num}"))]
-    ParseSignal { signal_num: i32, source: nix::errno::Errno },
-
-    /// Failed to convert u32 to i32.
-    ///
-    /// This error occurs when converting a signal number from `u32` (as
-    /// provided by the kernel) to `i32` for use with the `Signal` enum.
-    #[snafu(display("Failed to convert u32 to i32: {value}"))]
-    ConvertU32 { value: u32, source: std::num::TryFromIntError },
+    /// This error occurs when converting a `Duration` to `PollTimeout` for
+    /// use with `epoll_wait()`.
+    #[snafu(display("Failed to convert timeout to poll timeout, error: {source}"))]
+    ConvertTimeout { source: nix::poll::PollTimeoutTryFromError },
 }

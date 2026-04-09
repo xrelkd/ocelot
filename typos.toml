@@ -6,10 +6,12 @@ extend-ignore-identifiers-re = [
 
 [default.extend-words]
 # Rust keywords and common abbreviations
-crate = "crate"
-Crate = "Crate"
-de    = "de"
-ser   = "ser"
+crate  = "crate"
+Crate  = "Crate"
+de     = "de"
+ser    = "ser"
+flate  = "flate"
+flate2 = "flate2"
 
 # Cloud provider abbreviations
 AKS = "AKS"

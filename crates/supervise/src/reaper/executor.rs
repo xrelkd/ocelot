@@ -59,10 +59,8 @@ impl Executor {
                 Event::ReapProcess => {
                     for process in reap_processes() {
                         let ReapedProcess { pid, .. } = process;
-                        if let Some(RegisteredProcess { sender, .. }) =
-                            registered_processes.remove(&pid)
-                        {
-                            let _ = sender.send(process);
+                        if let Some(registered) = registered_processes.remove(&pid) {
+                            let _ = registered.sender.send(process);
                         }
                     }
                 }
@@ -102,11 +100,9 @@ impl Executor {
 
                 // Reap any processes that have already exited.
                 for process @ ReapedProcess { pid, .. } in reap_processes() {
-                    if let Some(RegisteredProcess { sender, .. }) =
-                        registered_processes.remove(&pid)
-                    {
+                    if let Some(registered) = registered_processes.remove(&pid) {
                         let _unused = deadlines.remove(&pid);
-                        let _ = sender.send(process);
+                        let _ = registered.sender.send(process);
                     }
                 }
 
@@ -163,8 +159,11 @@ fn reap_processes() -> Vec<ReapedProcess> {
                 Some(ReapedProcess { pid, exit_code })
             }
             WaitStatus::Signaled(pid, sig, _) => {
-                tracing::info!("Reaped child process {pid} terminated by signal {sig}");
-                None
+                let exit_code = 128 + sig as i32;
+                tracing::info!(
+                    "Reaped child process {pid} terminated by signal {sig} (exit code {exit_code})"
+                );
+                Some(ReapedProcess { pid, exit_code })
             }
             _ => None,
         }
