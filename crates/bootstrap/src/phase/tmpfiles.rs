@@ -5,32 +5,13 @@ use std::{os::unix::fs::PermissionsExt, path::Path};
 
 use snafu::ResultExt;
 
-use crate::{
-    config::Tmpfile,
-    error::{self, Error},
-};
+use crate::{config::Tmpfile, error, error::Error};
 
 /// Creates temporary files before `switch_root`.
 ///
 /// Creates the file with the specified permissions and parent directories.
 pub fn pre(config: &Tmpfile) -> Result<(), Error> {
-    let path = Path::new(&config.path);
-
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|_| error::CreateDirectorySnafu { path: parent.to_path_buf() })?;
-    }
-
-    let mode = u32::from_str_radix(&config.mode, 8).unwrap_or(0o644);
-
-    // Create the file (empty)
-    let _file = std::fs::File::create(path)
-        .with_context(|_| error::CreateDirectorySnafu { path: config.path.clone() })?;
-
-    // Set file permissions
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
-        .with_context(|_| error::CreateDirectorySnafu { path: config.path.clone() })?;
-
+    create_file(config)?;
     tracing::debug!(
         "Pre-switch: created tmpfile {} with mode {}",
         config.path.display(),
@@ -43,8 +24,35 @@ pub fn pre(config: &Tmpfile) -> Result<(), Error> {
 ///
 /// Currently a placeholder - post-switch tmpfile creation is not yet
 /// implemented.
-#[expect(clippy::unnecessary_wraps, reason = "Phase function may return errors in future")]
-pub fn post(_config: &Tmpfile) -> Result<(), Error> {
-    tracing::debug!("Post-switch: tmpfiles (not implemented)");
+pub fn post(config: &Tmpfile) -> Result<(), Error> {
+    create_file(config)?;
+    tracing::debug!(
+        "Post-switch: created tmpfile {} with mode {}",
+        config.path.display(),
+        config.mode
+    );
+    Ok(())
+}
+
+fn create_file(config: &Tmpfile) -> Result<(), Error> {
+    let path = Path::new(&config.path);
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|_| error::CreateDirectorySnafu { path: parent.to_path_buf() })?;
+    }
+
+    let mode = u32::from_str_radix(&config.mode, 8).unwrap_or(0o644);
+
+    // Create the file (empty)
+    let _file = std::fs::File::create(path)
+        .with_context(|_| error::CreateFileSnafu { path: config.path.clone() })?;
+
+    // Set file permissions
+    let permissions = std::fs::Permissions::from_mode(mode);
+    std::fs::set_permissions(path, permissions.clone()).with_context(|_| {
+        error::SetPermissionsSnafu { permissions, target: config.path.clone() }
+    })?;
+
     Ok(())
 }

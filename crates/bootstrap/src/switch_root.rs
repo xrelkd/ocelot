@@ -6,8 +6,7 @@ use std::{
 use snafu::ResultExt;
 
 use crate::{
-    ShellConfig,
-    config::Config,
+    ShellConfig, SwitchRootPhase,
     error::{self, Error},
     mount,
     shutdown::shutdown,
@@ -21,12 +20,12 @@ use crate::{
 /// # Errors
 ///
 /// Returns an error if mount operations or `chroot` fails.
-pub fn only(config: &Config) -> Result<(), Error> {
+pub fn only(switch_root: &SwitchRootPhase) -> Result<(), Error> {
     let new_root = PathBuf::from("/new_root");
 
     ensure_dir(&new_root)?;
     {
-        let mut root_file_system = config.switch_root.root_file_system.clone();
+        let mut root_file_system = switch_root.root_file_system.clone();
         root_file_system.target.clone_from(&new_root);
         let _unused = mount::mount(&root_file_system)?;
     }
@@ -87,10 +86,10 @@ pub fn exec_supervise(
 /// Returns an error if the shell execution fails.
 pub fn exec_shell(
     console_device: &str,
-    ShellConfig { program, arguments: args, .. }: &ShellConfig,
+    ShellConfig { program, arguments, .. }: &ShellConfig,
 ) -> Result<(), Error> {
     let exit_code = {
-        let args = args.iter().map(String::as_str).collect::<Vec<&str>>();
+        let args = arguments.iter().map(String::as_str).collect::<Vec<&str>>();
         ocelot_entry::execute_interactive_with_session(program, &args, console_device, false, None)
             .context(error::ExecuteShellSnafu)?
     };
@@ -164,11 +163,11 @@ fn ensure_dir(path: impl AsRef<Path>) -> Result<(), Error> {
 fn clean_initramfs_mounts() {
     // Read /proc/mounts to find everything currently mounted
     if let Ok(mounts) = std::fs::read_to_string("/proc/mounts") {
-        let mut points: Vec<String> = mounts
+        let mut points = mounts
             .lines()
             .filter_map(|line| line.split_whitespace().nth(1).map(String::from))
             .filter(|p| p != "/")
-            .collect();
+            .collect::<Vec<_>>();
 
         // Sort by length descending (unmount deepest children first)
         points.sort_by_key(|b| Reverse(b.len()));

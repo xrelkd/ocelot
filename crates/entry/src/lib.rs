@@ -180,13 +180,13 @@ where
                     handle_signal(&signal_fd, &mut state)?;
                 }
                 CHILD_STDOUT_TOKEN => {
-                    let binding = std::io::stdout();
-                    let stdout = binding.as_fd();
+                    let stdout = std::io::stdout();
+                    let stdout = stdout.as_fd();
                     let _eof = forward_data(&child_stdout_fd, &stdout);
                 }
                 CHILD_STDERR_TOKEN => {
-                    let binding = std::io::stderr();
-                    let stderr = binding.as_fd();
+                    let stderr = std::io::stderr();
+                    let stderr = stderr.as_fd();
                     let _eof = forward_data(&child_stderr_fd, &stderr);
                 }
                 _ => {}
@@ -346,11 +346,7 @@ pub fn execute_interactive_with_session(
 
 fn check_pid() {
     let pid = unistd::getpid();
-    if pid.as_raw() == 1 {
-        tracing::info!("Start with PID 1");
-    } else {
-        tracing::warn!("Entry should be the first process (PID 1), current PID: {pid}");
-    }
+    tracing::info!("Start with PID {pid}");
 }
 
 fn create_signal_fd() -> Result<SignalFd, Error> {

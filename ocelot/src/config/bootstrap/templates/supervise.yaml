@@ -11,38 +11,31 @@ logLevel: info
 
 # Pre-switch phase
 preSwitch:
-  mounts:
-    - type: virtiofs
-      tag: rootfs
-      target: /newroot
-      overlay: false
-      # Optional mount flags (all default to true):
-      # readOnly: true
-      # noExec: true
-      # noSuid: true
-      # noDev: true
-      # sync: true
-      # dirSync: true
-      # mandatoryLocks: true
-      # posixAcl: true
-      # atime: noAtime  # Default, noAtime, relAtime, strictAtime, lazyTime
+  mounts: []
   environment: {}
   symlinks: []
   modules: null
-  network: null
   hooks: []
   sysctl: {}
   tmpfiles: null
-  security: null
-  clock: null
 
 # Switch-root phase
 switchRoot:
   rootFileSystem:
     type: virtiofs
     tag: rootfs
-    target: /newroot
+    target: /
     overlay: false
+    # Optional mount flags as boolean fields (all default to true):
+    readOnly: true # MS_RDONLY
+    noExec: true # MS_NOEXEC
+    noSuid: true # MS_NOSUID
+    noDev: true # MS_NODEV
+    sync: true # MS_SYNCHRONOUS
+    dirSync: true # MS_DIRSYNC
+    mandatoryLocks: true # MS_MANDLOCK
+    posixAcl: true # MS_POSIXACL
+    atime: noAtime # AtimeMode: noAtime, relAtime, strictAtime, lazyTime
 
 # Post-switch phase
 postSwitch:
@@ -69,4 +62,3 @@ postSwitch:
           arguments:
             - -g
             - daemon off;
-      # shell not used

@@ -7,18 +7,23 @@ mod script;
 mod shutdown;
 mod switch_root;
 
+use std::ffi::CString;
+
+use snafu::ResultExt;
+
 pub use self::{
     cmdline::get_config_path,
     config::{
-        Apparmor, BootScriptConfig, Clock, Config, Handoff, HandoffMode, HookSpec, InterfaceConfig,
-        ModulesConfig, MountFailurePolicy, MountSource, MountSpec, NetworkConfig, NetworkMode,
-        OnFailureConfig, OnFailurePolicy, OverlaySpec, PostSwitchPhase, PreSwitchPhase, RootConfig,
-        Security, Selinux, ShellConfig, Shutdown, SwitchRootPhase, Symlink, SymlinkSpec, Sysctl,
-        Tmpfile, VirtiofsMount,
+        Apparmor, BootScriptConfig, Clock, Config, Handoff, HandoffMode, HookFailurePolicy,
+        HookSpec, InterfaceConfig, ModulesConfig, MountFailurePolicy, MountSource, MountSpec,
+        NetworkConfig, NetworkMode, OnFailureConfig, OnFailurePolicy, OverlaySpec, PostSwitchPhase,
+        PreSwitchPhase, RootConfig, Security, Selinux, ShellConfig, Shutdown, SwitchRootPhase,
+        Symlink, SymlinkSpec, Sysctl, Tmpfile, VirtiofsMount,
     },
     error::Error,
     shutdown::shutdown,
 };
+use crate::config::ExecConfig;
 
 /// Executes the bootstrap flow for supervise mode.
 ///
@@ -89,7 +94,7 @@ pub fn execute(config: &Config) -> Result<(), Error> {
     phase::hooks_pre(&config.pre_switch.hooks)?;
 
     tracing::info!("Switching root");
-    switch_root::only(config)?;
+    switch_root::only(&config.switch_root)?;
 
     tracing::info!("Executing post-switch phase functions");
     phase::hooks_post(&config.post_switch.hooks)?;
@@ -131,7 +136,26 @@ pub fn execute(config: &Config) -> Result<(), Error> {
             tracing::info!("Spawning interactive shell");
             switch_root::exec_shell(&config.console, shell)?;
         }
+        HandoffMode::Exec(exec @ ExecConfig { program, .. }) => {
+            tracing::info!("Replace init with `{program}` using `execvp`");
+            invoke_exec(exec)?;
+        }
     }
 
+    Ok(())
+}
+
+#[inline]
+fn invoke_exec(ExecConfig { program, arguments }: &ExecConfig) -> Result<(), Error> {
+    let c_cmd = CString::new(program.as_str())
+        .with_context(|_| error::EncodeArgumentSnafu { value: program.clone() })?;
+    let c_args = std::iter::once(Ok(c_cmd.clone()))
+        .chain(arguments.iter().map(|arg| {
+            CString::new(arg.clone()).with_context(|_| error::EncodeArgumentSnafu { value: arg })
+        }))
+        .collect::<Result<Vec<_>, Error>>()?;
+    let _ = nix::unistd::execvp(&c_cmd, &c_args).with_context(move |_| {
+        error::ExecuteCommandSnafu { program: program.clone(), arguments: arguments.clone() }
+    })?;
     Ok(())
 }

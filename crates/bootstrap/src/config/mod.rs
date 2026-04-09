@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 /// Bootstrap-specific configuration for early boot initialization.
@@ -259,6 +262,20 @@ pub enum MountFailurePolicy {
     Retry,
 }
 
+/// Hook failure policy.
+///
+/// Determines what happens when a hook operation fails.
+#[derive(Clone, Debug, Default)]
+pub enum HookFailurePolicy {
+    /// Log a warning and continue.
+    #[default]
+    Warn,
+    /// Abort the boot process.
+    Abort,
+    /// Retry the mount operation once.
+    Retry,
+}
+
 /// Overlay filesystem specification.
 ///
 /// Configures the layers of an overlay mount (lower, upper, work directories).
@@ -286,7 +303,7 @@ pub struct HookSpec {
     /// Timeout for command execution.
     pub timeout: Duration,
     /// Policy when hook fails.
-    pub on_failure: MountFailurePolicy,
+    pub on_failure: HookFailurePolicy,
 }
 
 /// Network configuration.
@@ -426,6 +443,11 @@ pub enum HandoffMode {
     Supervise(ocelot_supervise::OrchestratorConfig),
     /// Spawn an interactive shell.
     Shell(ShellConfig),
+    /// Replace the current process with a new one using `exec`.
+    ///
+    /// This will terminate the bootstrap process and transfer full control
+    /// to the specified program.
+    Exec(ExecConfig),
 }
 
 /// Shutdown configuration.
@@ -461,6 +483,19 @@ pub struct ShellConfig {
     /// Shell program to execute.
     pub program: String,
     /// Arguments for the shell program.
+    pub arguments: Vec<String>,
+}
+
+/// Configuration for direct execution mode.
+///
+/// When configured, bootstrap replaces itself with the specified program
+/// using `exec` after `switch_root`. Unlike shell mode, this is intended
+/// for running a single, specific process as the final stage of bootstrap.
+#[derive(Clone, Debug)]
+pub struct ExecConfig {
+    /// Path to the program to execute.
+    pub program: String,
+    /// Arguments passed to the program.
     pub arguments: Vec<String>,
 }
 
@@ -517,98 +552,4 @@ pub enum OnFailurePolicy {
     Warn,
     /// Return an error and abort the boot process.
     Abort,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{ModulesConfig, OnFailureConfig, OnFailurePolicy, RootConfig};
-
-    #[test]
-    fn test_root_config_virtiofs_overlay() {
-        let config =
-            RootConfig::Virtiofs { tag: "rootfs".to_string(), overlay: true, options: None };
-        assert!(config.overlay());
-        assert_eq!(config.source(), "rootfs");
-        assert_eq!(config.fstype(), "virtiofs");
-        assert!(config.mount_options().is_none());
-    }
-
-    #[test]
-    fn test_root_config_virtiofs_no_overlay() {
-        let config = RootConfig::Virtiofs {
-            tag: "rootfs".to_string(),
-            overlay: false,
-            options: Some("ro".to_string()),
-        };
-        assert!(!config.overlay());
-        assert_eq!(config.source(), "rootfs");
-        assert_eq!(config.fstype(), "virtiofs");
-        assert_eq!(config.mount_options(), Some("ro"));
-    }
-
-    #[test]
-    fn test_root_config_block() {
-        let config = RootConfig::Block {
-            device: std::path::PathBuf::from("/dev/vda2"),
-            fstype: "ext4".to_string(),
-            overlay: true,
-            options: None,
-        };
-        assert!(config.overlay());
-        assert_eq!(config.source(), "/dev/vda2");
-        assert_eq!(config.fstype(), "ext4");
-        assert!(config.mount_options().is_none());
-    }
-
-    #[test]
-    fn test_root_config_ninep_default_fstype() {
-        let config = RootConfig::NineP {
-            tag: "rootfs".to_string(),
-            fstype: None,
-            overlay: false,
-            options: None,
-        };
-        assert!(!config.overlay());
-        assert_eq!(config.source(), "rootfs");
-        assert_eq!(config.fstype(), "9p");
-        assert!(config.mount_options().is_none());
-    }
-
-    #[test]
-    fn test_root_config_ninep_custom_fstype() {
-        let config = RootConfig::NineP {
-            tag: "rootfs".to_string(),
-            fstype: Some("9p2000.L".to_string()),
-            overlay: false,
-            options: Some("trans=virtio".to_string()),
-        };
-        assert!(!config.overlay());
-        assert_eq!(config.fstype(), "9p2000.L");
-        assert_eq!(config.mount_options(), Some("trans=virtio"));
-    }
-
-    #[test]
-    fn test_module_config_default() {
-        let config = ModulesConfig::default();
-        assert_eq!(config.directory, std::path::PathBuf::from("/lib/modules"));
-        assert!(config.module_file_names.is_empty());
-    }
-
-    #[test]
-    fn test_on_failure_config_default() {
-        let config = OnFailureConfig::default();
-        assert!(config.shell.is_none());
-    }
-
-    #[test]
-    fn test_on_failure_policy_default() {
-        let policy = OnFailurePolicy::default();
-        assert!(matches!(policy, OnFailurePolicy::Warn));
-    }
-
-    #[test]
-    fn test_on_failure_policy_variants() {
-        assert!(matches!(OnFailurePolicy::Warn, OnFailurePolicy::Warn));
-        assert!(matches!(OnFailurePolicy::Abort, OnFailurePolicy::Abort));
-    }
 }
