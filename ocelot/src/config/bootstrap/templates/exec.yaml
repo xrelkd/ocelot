@@ -49,6 +49,6 @@ postSwitch:
 
   # Handoff configuration
   handoff:
-    mode: Exec
+    mode: exec
     program: /sbin/init
     arguments: []

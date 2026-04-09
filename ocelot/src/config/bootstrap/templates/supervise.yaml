@@ -52,12 +52,17 @@ postSwitch:
 
   # Handoff configuration
   handoff:
-    mode: Supervise
+    mode: supervise
     processes:
-      init:
-        program: /sbin/init
-    http-server:
-      program: /usr/bin/nginx
-      arguments:
-        - -g
-        - daemon off;
+      sshd:
+        program: /usr/sbin/sshd
+        arguments:
+          - -f
+          - /etc/ssh/sshd_config
+          - -D
+          - -e
+      http-server:
+        program: /usr/bin/nginx
+        arguments:
+          - -g
+          - daemon off;

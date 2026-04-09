@@ -24,7 +24,7 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: Shell
+    mode: shell
     program: /bin/sh
 ";
     let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
@@ -70,7 +70,7 @@ postSwitch:
   environment:
     HOME: /root
   handoff:
-    mode: Shell
+    mode: shell
     program: /bin/bash
     arguments:
       - -l
@@ -101,7 +101,7 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: Exec
+    mode: exec
     program: /bin/sh
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
@@ -179,7 +179,7 @@ preSwitch:
       overlay: false
 postSwitch:
   handoff:
-    mode: Shell
+    mode: shell
     program: /bin/sh
 ";
     std::fs::write(&path, yaml).unwrap();
@@ -218,7 +218,7 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: Shell
+    mode: shell
 ";
     let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Shell { .. }));
@@ -232,7 +232,7 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: Supervise
+    mode: supervise
 ";
     let config2: BootstrapConfig = serde_yaml::from_slice(yaml2).unwrap();
     assert!(matches!(config2.post_switch.handoff.mode, HandoffMode::Supervise { .. }));
@@ -251,7 +251,7 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: Supervise
+    mode: supervise
     processes:
       init:
         program: /sbin/init
@@ -276,7 +276,7 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: Supervise
+    mode: supervise
     processes:
       app:
         program: /usr/bin/app
@@ -300,7 +300,7 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: Supervise
+    mode: supervise
     processes:
       a:
         program: /usr/bin/a
