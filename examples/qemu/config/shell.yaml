@@ -1,0 +1,43 @@
+# Ocelot Bootstrap Configuration (Shell Mode)
+console: console
+
+logLevel: info
+
+preSwitch:
+  modules:
+    mode: list
+    directory: /lib/modules
+    names:
+      - kernel/fs/9p/9p.ko.xz
+      - kernel/net/9p/9pnet.ko.xz
+      - kernel/net/9p/9pnet_fd.ko.xz
+      - kernel/net/9p/9pnet_virtio.ko.xz
+      - kernel/fs/netfs/netfs.ko.xz
+      - kernel/drivers/virtio/virtio.ko.xz
+      - kernel/drivers/virtio/virtio_pci.ko.xz
+      - kernel/drivers/virtio/virtio_pci_legacy_dev.ko.xz
+      - kernel/drivers/virtio/virtio_pci_modern_dev.ko.xz
+      - kernel/drivers/virtio/virtio_ring.ko.xz
+    depFilePath: modules.dep
+  sysctl: {}
+
+switchRoot:
+  rootFileSystem:
+    type: 9p
+    tag: rootfs
+    target: /
+    fstype: 9p
+    overlay: false
+
+postSwitch:
+  mounts:
+    - type: 9p
+      tag: shared
+      target: /mnt/shared
+      fstype: 9p
+      overlay: false
+
+  handoff:
+    mode: shell
+    program: /bin/sh
+    arguments: ["-i", "-l"]
