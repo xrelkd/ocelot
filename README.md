@@ -498,6 +498,10 @@ For full configuration documentation, see:
 - **[Supervise Configuration](docs/supervise-config.md)**
 - **[Bootstrap Configuration](docs/bootstrap-config.md)**
 
+## Examples
+
+See the [examples](examples/) directory for practical demonstrations of Ocelot usage, including QEMU virtual machine initialization.
+
 ---
 
 ## Contributing
