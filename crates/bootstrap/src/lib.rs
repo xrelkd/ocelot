@@ -7,7 +7,7 @@ mod script;
 mod shutdown;
 mod switch_root;
 
-use std::ffi::CString;
+use std::{ffi::CString, os::fd::AsRawFd};
 
 use snafu::ResultExt;
 
@@ -137,7 +137,7 @@ pub fn execute(config: &Config) -> Result<(), Error> {
         }
         HandoffMode::Exec(exec @ ExecConfig { program, .. }) => {
             tracing::info!("Replace init with `{program}` using `execvp`");
-            invoke_exec(exec)?;
+            invoke_exec(&config.console, exec)?;
         }
     }
 
@@ -145,7 +145,30 @@ pub fn execute(config: &Config) -> Result<(), Error> {
 }
 
 #[inline]
-fn invoke_exec(ExecConfig { program, arguments }: &ExecConfig) -> Result<(), Error> {
+fn invoke_exec(console: &str, ExecConfig { program, arguments }: &ExecConfig) -> Result<(), Error> {
+    let console_file = {
+        let console_path =
+            if console.starts_with('/') { console.to_string() } else { format!("/dev/{console}") };
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&console_path)
+            .with_context(|_| error::OpenConsoleSnafu { path: console_path.clone() })?
+    };
+
+    let _ = nix::unistd::setsid();
+
+    #[expect(unsafe_code, reason = "dup2_raw, and ioctl are safe with valid arguments")]
+    unsafe {
+        // Set controlling terminal via TIOCSCTTY
+        let _ = nix::libc::ioctl(console_file.as_raw_fd(), nix::libc::TIOCSCTTY, 1);
+
+        // Redirect stdin/stdout/stderr
+        let _ = nix::libc::dup2(console_file.as_raw_fd(), nix::libc::STDIN_FILENO);
+        let _ = nix::libc::dup2(console_file.as_raw_fd(), nix::libc::STDOUT_FILENO);
+        let _ = nix::libc::dup2(console_file.as_raw_fd(), nix::libc::STDERR_FILENO);
+    }
+
     let c_cmd = CString::new(program.as_str())
         .with_context(|_| error::EncodeArgumentSnafu { value: program.clone() })?;
     let c_args = std::iter::once(Ok(c_cmd.clone()))
