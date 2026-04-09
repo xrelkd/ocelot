@@ -52,7 +52,6 @@ postSwitch:
 
   # Handoff configuration
   handoff:
-    mode: shell
-    shell:
-      program: /bin/sh
-      arguments: []
+    mode: Shell
+    program: /bin/sh
+    arguments: []

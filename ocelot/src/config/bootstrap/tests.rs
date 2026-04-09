@@ -22,6 +22,10 @@ switchRoot:
     tag: rootfs
     target: /newroot
     overlay: false
+postSwitch:
+  handoff:
+    mode: Shell
+    program: /bin/sh
 ";
     let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     assert_eq!(config.console, "myconsole");
@@ -66,11 +70,10 @@ postSwitch:
   environment:
     HOME: /root
   handoff:
-    mode: shell
-    shell:
-      program: /bin/bash
-      arguments:
-        - -l
+    mode: Shell
+    program: /bin/bash
+    arguments:
+      - -l
 ";
     let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     assert_eq!(config.console, "ttyS0");
@@ -83,14 +86,12 @@ postSwitch:
     assert!(config.post_switch.modules.is_some());
     assert!(config.post_switch.mounts.is_empty());
     assert_eq!(config.post_switch.environment.len(), 1);
-    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Shell));
-    assert!(config.post_switch.handoff.shell.is_some());
-    assert!(config.post_switch.handoff.supervise.is_none());
+    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Shell { .. }));
     assert!(config.post_switch.shutdown.is_none());
 }
 
 #[test]
-fn test_bootstrap_config_validate_handoff_neither_shell_nor_supervise() {
+fn test_bootstrap_config_validate_exec_mode_works() {
     let yaml = b"
 switchRoot:
   rootFileSystem:
@@ -100,33 +101,12 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: supervise
+    mode: Exec
+    program: /bin/sh
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_bootstrap_config_validate_handoff_both_shell_and_supervise_fails() {
-    let yaml = b"
-switchRoot:
-  rootFileSystem:
-    type: virtiofs
-    tag: rootfs
-    target: /newroot
-    overlay: false
-postSwitch:
-  handoff:
-    mode: supervise
-    shell:
-      program: /bin/sh
-    supervise:
-      processes: {}
-";
-    let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
-    let result = config.validate();
-    assert!(result.is_err());
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -138,9 +118,7 @@ fn test_bootstrap_config_template_shell() {
     let config: BootstrapConfig = serde_yaml::from_slice(&template).unwrap();
     assert_eq!(config.console, "console");
     assert_eq!(config.log_level, tracing::Level::INFO);
-    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Shell));
-    assert!(config.post_switch.handoff.shell.is_some());
-    assert!(config.post_switch.handoff.supervise.is_none());
+    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Shell { .. }));
 
     // Validate the parsed config
     let mut validated = config;
@@ -156,9 +134,23 @@ fn test_bootstrap_config_template_supervise() {
     let config: BootstrapConfig = serde_yaml::from_slice(&template).unwrap();
     assert_eq!(config.console, "console");
     assert_eq!(config.log_level, tracing::Level::INFO);
-    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Supervise));
-    assert!(config.post_switch.handoff.supervise.is_some());
-    assert!(config.post_switch.handoff.shell.is_none());
+    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Supervise { .. }));
+
+    // Validate the parsed config
+    let mut validated = config;
+    assert!(validated.validate().is_ok());
+}
+
+#[test]
+fn test_bootstrap_config_template_exec() {
+    let template = BootstrapConfig::template_exec();
+    assert!(!template.is_empty());
+
+    // Deserialize and validate
+    let config: BootstrapConfig = serde_yaml::from_slice(&template).unwrap();
+    assert_eq!(config.console, "console");
+    assert_eq!(config.log_level, tracing::Level::INFO);
+    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Exec { .. }));
 
     // Validate the parsed config
     let mut validated = config;
@@ -187,9 +179,8 @@ preSwitch:
       overlay: false
 postSwitch:
   handoff:
-    mode: shell
-    shell:
-      program: /bin/sh
+    mode: Shell
+    program: /bin/sh
 ";
     std::fs::write(&path, yaml).unwrap();
 
@@ -197,7 +188,7 @@ postSwitch:
     assert_eq!(config.console, "testconsole");
     assert_eq!(config.log_level, tracing::Level::ERROR);
     assert_eq!(config.pre_switch.mounts.len(), 1);
-    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Shell));
+    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Shell { .. }));
 }
 
 #[test]
@@ -227,10 +218,10 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: shell
+    mode: Shell
 ";
     let config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
-    assert!(matches!(config.handoff_mode(), HandoffMode::Shell));
+    assert!(matches!(config.post_switch.handoff.mode, HandoffMode::Shell { .. }));
 
     let yaml2 = b"
 switchRoot:
@@ -241,15 +232,15 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: supervise
+    mode: Supervise
 ";
     let config2: BootstrapConfig = serde_yaml::from_slice(yaml2).unwrap();
-    assert!(matches!(config2.handoff_mode(), HandoffMode::Supervise));
+    assert!(matches!(config2.post_switch.handoff.mode, HandoffMode::Supervise { .. }));
 }
 
 #[test]
 fn test_validate_supervise_with_valid_processes() {
-    // This tests that a valid supervise configuration inside BootstrapConfig
+    // This tests that a valid Supervise configuration inside BootstrapConfig
     // validates correctly
     let yaml = b"
 switchRoot:
@@ -260,16 +251,15 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: supervise
-    supervise:
-      processes:
-        init:
-          program: /sbin/init
-        server:
-          program: /usr/bin/server
-          dependsOn:
-            init:
-              condition: Started
+    mode: Supervise
+    processes:
+      init:
+        program: /sbin/init
+      server:
+        program: /usr/bin/server
+        dependsOn:
+          init:
+            condition: Started
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     assert!(config.validate().is_ok());
@@ -286,14 +276,13 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: supervise
-    supervise:
-      processes:
-        app:
-          program: /usr/bin/app
-          dependsOn:
-            missing:
-              condition: Started
+    mode: Supervise
+    processes:
+      app:
+        program: /usr/bin/app
+        dependsOn:
+          missing:
+            condition: Started
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();
@@ -311,19 +300,18 @@ switchRoot:
     overlay: false
 postSwitch:
   handoff:
-    mode: supervise
-    supervise:
-      processes:
-        a:
-          program: /usr/bin/a
-          dependsOn:
-            b:
-              condition: Started
-        b:
-          program: /usr/bin/b
-          dependsOn:
-            a:
-              condition: Started
+    mode: Supervise
+    processes:
+      a:
+        program: /usr/bin/a
+        dependsOn:
+          b:
+            condition: Started
+      b:
+        program: /usr/bin/b
+        dependsOn:
+          a:
+            condition: Started
 ";
     let mut config: BootstrapConfig = serde_yaml::from_slice(yaml).unwrap();
     let result = config.validate();

@@ -7,10 +7,7 @@ use tracing::Level;
 
 use crate::config::{
     Error,
-    bootstrap::core::{
-        handoff::HandoffMode,
-        phases::{PostSwitchConfig, PreSwitchConfig, SwitchRootConfig},
-    },
+    bootstrap::core::phases::{PostSwitchConfig, PreSwitchConfig, SwitchRootConfig},
 };
 
 /// Bootstrap configuration file structure.
@@ -35,7 +32,6 @@ pub struct BootstrapConfig {
     /// Switch-root phase configuration.
     pub switch_root: SwitchRootConfig,
     /// Post-switch phase configuration.
-    #[serde(default)]
     pub post_switch: PostSwitchConfig,
 }
 
@@ -82,13 +78,13 @@ impl BootstrapConfig {
         ocelot_bootstrap::Config::from(self.clone())
     }
 
-    pub const fn handoff_mode(&self) -> HandoffMode { self.post_switch.handoff.mode }
-
     pub fn template_shell() -> Vec<u8> { include_bytes!("../templates/shell.yaml").to_vec() }
 
     pub fn template_supervise() -> Vec<u8> {
         include_bytes!("../templates/supervise.yaml").to_vec()
     }
+
+    pub fn template_exec() -> Vec<u8> { include_bytes!("../templates/exec.yaml").to_vec() }
 }
 
 impl From<BootstrapConfig> for ocelot_bootstrap::Config {

@@ -44,6 +44,7 @@ pub enum Commands {
 pub enum TemplateMode {
     Shell,
     Supervise,
+    Exec,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, clap::ValueEnum)]
@@ -58,6 +59,7 @@ pub fn run(command: Option<Commands>, file: Option<PathBuf>) -> Result<i32, Erro
             let template_bytes = match mode {
                 TemplateMode::Shell => BootstrapConfig::template_shell(),
                 TemplateMode::Supervise => BootstrapConfig::template_supervise(),
+                TemplateMode::Exec => BootstrapConfig::template_exec(),
             };
             std::io::stdout()
                 .write_all(template_bytes.as_slice())
@@ -79,10 +81,10 @@ pub fn run(command: Option<Commands>, file: Option<PathBuf>) -> Result<i32, Erro
 fn run_bootstrap(path: impl AsRef<Path>) -> Result<i32, Error> {
     let mut config = BootstrapConfig::load(path)?;
     config.validate()?;
-    let handoff_mode = config.handoff_mode();
-    let log_level = match handoff_mode {
-        HandoffMode::Supervise => config.log_level,
-        HandoffMode::Shell => tracing::Level::INFO,
+
+    let log_level = match config.post_switch.handoff.mode {
+        HandoffMode::Supervise { .. } => config.log_level,
+        HandoffMode::Shell { .. } | HandoffMode::Exec { .. } => tracing::Level::INFO,
     };
     init_tracing_subscriber(log_level);
     let bootstrap_config = ocelot_bootstrap::Config::from(config);
