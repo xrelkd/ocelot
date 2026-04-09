@@ -173,7 +173,7 @@ Hands off to the process supervisor to manage application processes:
 ```yaml
 postSwitch:
   handoff:
-    mode: Supervise
+    mode: supervise
     processes:
       init:
         program: /sbin/init
@@ -191,7 +191,7 @@ Spawns an interactive shell:
 ```yaml
 postSwitch:
   handoff:
-    mode: Shell
+    mode: shell
     program: /bin/sh
 ```
 
@@ -202,7 +202,7 @@ Replaces the bootstrap process with a specific program:
 ```yaml
 postSwitch:
   handoff:
-    mode: Exec
+    mode: exec
     program: /usr/bin/nginx
     arguments:
       - -g
@@ -216,7 +216,7 @@ A boot script can be executed before handoff:
 ```yaml
 postSwitch:
   handoff:
-    mode: Supervise
+    mode: supervise
     bootScript:
       path: /path/to/a/script.sh
       # Hook failure policy: Warn, Abort, or Retry
@@ -253,7 +253,7 @@ switchRoot:
 
 postSwitch:
   handoff:
-    mode: Shell
+    mode: shell
     program: /bin/sh
 ```
 
@@ -288,7 +288,7 @@ postSwitch:
     net.core.somaxconn: 1024
 
   handoff:
-    mode: Supervise
+    mode: supervise
     processes:
       init:
         program: /sbin/init
