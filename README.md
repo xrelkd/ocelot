@@ -4,6 +4,10 @@
 A minimalist process supervisor and init system written in the <a href="https://www.rust-lang.org/" target="_blank">Rust Programming Language</a>. It is specifically designed to act as a lightweight PID 1 process in containerized environments, ensuring that zombie processes are reaped and system signals are handled gracefully.
 </p>
 
+> [!Note]
+> Ocelot is designed for specific use cases like container initialization and minimal supervision scenarios.
+> It is not intended to replace comprehensive init systems like systemd in general-purpose operating systems.
+
 <p align="center">
     <a href="https://github.com/xrelkd/ocelot/releases"><img src="https://img.shields.io/github/v/release/xrelkd/ocelot.svg"></a>
     <a href="https://deps.rs/repo/github/xrelkd/ocelot"><img src="https://deps.rs/repo/github/xrelkd/ocelot/status.svg"></a>
