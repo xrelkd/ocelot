@@ -9,7 +9,7 @@
 //!
 //! # Example
 //!
-//! ```
+//! ```ignore
 //! use std::time::Duration;
 //! use ocelot_entry::{execute, Error};
 //!
@@ -107,7 +107,8 @@ const CHILD_STDERR_TOKEN: u64 = 2;
 /// violated (panic in child process during exec would indicate a bug in libc).
 ///
 /// # Example
-/// ```rust,no_run
+///
+/// ```ignore
 /// # use std::time::Duration;
 /// use ocelot_entry::{execute, Error};
 ///

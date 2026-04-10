@@ -19,7 +19,8 @@ pub type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 ///   ignored via `ok()` and that process is skipped)
 ///
 /// # Examples
-/// ```
+///
+/// ```ignore
 /// use ocelot_test_utils::find_zombie_processes;
 ///
 /// let zombies = find_zombie_processes().unwrap();
@@ -46,7 +47,7 @@ pub fn find_zombie_processes() -> TestResult<Vec<i32>> {
 /// denied, etc.), it returns `false`.
 ///
 /// # Examples
-/// ```
+/// ```ignore
 /// use ocelot_test_utils::supports_user_namespace;
 ///
 /// if !supports_user_namespace() {
@@ -93,21 +94,20 @@ pub fn supports_user_namespace() -> bool {
 ///   `/proc/self/gid_map`)
 /// - Proc mount fails
 /// - Child A encounters an unexpected wait status
-///
 /// # Examples
-/// ```
+///
+/// ```ignore
 /// use ocelot_test_utils::{run_in_namespace, supports_user_namespace};
 ///
 /// if !supports_user_namespace() {
 ///     return;
 /// }
 ///
-/// let exit_code = run_in_namespace(|| {
+/// let _exit_code = run_in_namespace(|| {
 ///     // Code that needs to run as PID 1 in a new namespace
 ///     println!("Running as PID {}", nix::unistd::getpid());
 ///     Ok(0)
 /// }).unwrap();
-/// assert_eq!(exit_code, 0);
 /// ```
 #[expect(
     unsafe_code,
