@@ -50,13 +50,16 @@ graph TD
 
 ## Table of Contents
 
-- [Usage](#-usage)
+- [Quick Start](#quick-start)
+- [Which Command Should I Use?](#which-command-should-i-use)
+- [FAQ](#faq)
+- [Concept](#concept)
   - [The `idle` Command](#the-idle-command-kubernetes-pause-equivalent)
   - [The `entry` Command](#the-entry-command-minimal-init--supervisor)
   - [The `supervise` Command](#the-supervise-command-advanced-process-supervisor)
   - [The `bootstrap` Command](#the-bootstrap-command)
   - [The `zombie` Command](#the-zombie-command)
-- [Command Line Interface](#-command-line-interface)
+- [Command Line Interface](#command-line-interface)
   - [Environment Variables](#environment-variables)
   - [Main Command](#main-command)
   - [idle](#idle)
@@ -65,17 +68,95 @@ graph TD
   - [bootstrap](#bootstrap)
   - [zombie](#zombie)
   - [zombie-finder](#zombie-finder)
-- [Installation](#-installation)
+- [Resource Usage](#resource-usage)
+- [Installation](#installation)
   - [From Source](#from-source)
+  - [Static Binary Build](#static-binary-build)
   - [Shell Completions](#shell-completions)
-- [Running in Docker](#-running-in-docker)
-- [Configuration Reference](#-configuration-reference)
+- [Running in Docker](#running-in-docker)
+- [Configuration Reference](#configuration-reference)
+- [Examples](#examples)
 - [Contributing](#contributing)
 - [License](#license)
 
 ---
 
-## 🛠 Usage
+## Quick Start
+
+### Add Ocelot to your container
+
+First, copy Ocelot from the container registry into your Dockerfile:
+
+```dockerfile
+COPY --from=ghcr.io/xrelkd/ocelot:latest /usr/bin/ocelot /usr/bin/ocelot
+```
+
+### Run with a supervised application
+
+```bash
+# Single app with signal forwarding
+docker run -it --entrypoint ocelot your-image entry -- your-app
+
+# Multiple processes with health probes
+docker run -it --entrypoint "ocelot supervise run --file /etc/ocelot/supervisor.yaml" your-image
+```
+
+> **First time?** Start with `entry` for simple apps, or `supervise` for complex multi-process workloads.
+
+## Which Command Should I Use?
+
+| Command     | Use Case                                                              | Example                      |
+| ----------- | --------------------------------------------------------------------- | ---------------------------- |
+| `idle`      | Just reap zombies and hold namespaces (Kubernetes pause equivalent)   | Pod infrastructure container |
+| `entry`     | Run one main app with signal forwarding and zombie reaping            | Single-process containers    |
+| `supervise` | Multiple processes with health probes, restart policies, dependencies | Complex microservices        |
+| `bootstrap` | VM boot / initramfs initialization                                    | QEMU VMs, embedded systems   |
+| `zombie`    | Testing/debugging zombie process handling                             | Local testing only           |
+
+### Decision Flow
+
+```text
+Do you need to run applications?
+├─ No → Use `idle` (just hold namespaces)
+└─ Yes → How many?
+    ├─ One → Does it need health checks / restart?
+    │   ├─ No → Use `entry`
+    │   └─ Yes → Use `supervise`
+    └─ Many → Use `supervise`
+
+Need to boot a VM?
+└─ Use `bootstrap`
+```
+
+## FAQ
+
+### Do I need Ocelot in my container?
+
+If your container runs only a single process and your application handles signals properly, you may not need Ocelot. However, Ocelot is recommended when:
+
+- You run multiple processes (e.g., sidecar containers, log collectors)
+- You want built-in zombie reaping without modifying your application
+- You need health checks and restart policies
+
+### What's the binary size?
+
+Ocelot compiles to a static binary of approximately **2-3 MB**, making it lightweight for container deployments. You can further reduce size with `--release` and stripping debug symbols.
+
+### Does it work with Kubernetes?
+
+Yes! Ocelot works seamlessly with Kubernetes:
+
+- Use `idle` as a pause container replacement
+- Use `entry` or `supervise` as your container's entrypoint
+- Works with liveness/readiness probes (when using `supervise`)
+
+### Does Ocelot support Windows containers?
+
+Not currently. Ocelot is designed for Linux containers and VMs.
+
+---
+
+## 🛠 Concept
 
 ### The `idle` Command (Kubernetes Pause Equivalent)
 
@@ -92,8 +173,8 @@ The `idle` command is the core functionality for container init responsibilities
 The `entry` command provides a robust entry point for containerized workloads, serving as a minimal init system (PID 1). It is designed to manage the full lifecycle of a primary application while ensuring the container remains stable and responsive. Its key responsibilities include:
 
 - **Process Supervision**: Spawns a child process via fork/exec and tracks its execution state, returning the correct Unix exit codes (including signal offsets).
-- **Signal Forwarding & Proxying**: Intercepts SIGINT and SIGTERM from the container runtime and propagates them to the child process to facilitate graceful shutdowns.
-- **Zombie Reaping**: Monitors SIGCHLD to proactively reap orphaned or "zombie" processes, preventing process table exhaustion within the PID namespace.
+- **Signal Forwarding & Proxying**: Intercepts `SIGINT` and `SIGTERM` from the container runtime and propagates them to the child process to facilitate graceful shutdowns.
+- **Zombie Reaping**: Monitors `SIGCHLD` to proactively reap orphaned or "zombie" processes, preventing process table exhaustion within the PID namespace.
 - **Graceful Timeout Enforcement**: Implements a configurable "kill-timer" that allows the child process a window to exit cleanly before forcibly terminating it with SIGKILL.
 
 ---
@@ -110,19 +191,10 @@ The `supervise` command is an advanced multi-process supervisor designed for man
   - `Never`: Do not restart on exit
   - `OnFailure`: Restart on non-zero exit (with configurable max retries and backoff)
   - `Always`: Always restart on exit
-- **Graceful Shutdown**: Configurable termination signals (SIGTERM, SIGKILL, etc.) and grace periods
+- **Graceful Shutdown**: Configurable termination signals (`SIGTERM`, `SIGKILL`, etc.) and grace periods
 - **Dependency Management**: Orchestrates process startup and shutdown ordering through the orchestrator
 - **Process State Tracking**: Monitors and tracks the state of each managed process
 - **Configuration Validation**: Validate configuration files without starting the supervisor using `ocelot supervise validate <config-file>`. Supports JSON output with `--output json` for automation.
-
-You can validate a configuration file with:
-
-```bash
-ocelot supervise validate config.yaml
-
-# For machine-readable output (e.g., in CI)
-ocelot supervise validate --output json config.yaml
-```
 
 ---
 
@@ -131,7 +203,7 @@ ocelot supervise validate --output json config.yaml
 The `bootstrap` command acts as an initramfs init system for QEMU VMs. It provides a three-tier phased initialization architecture:
 
 - **Pre-switch Phase**: Mounts virtual filesystems, loads kernel modules, configures system settings
-- **Switch-root Phase**: Mounts the root filesystem and performs `pivot_root`
+- **Switch-root Phase**: Mounts the root filesystem and performs `switch_root`
 - **Post-switch Phase**: Continues configuration and hands off to `supervise` orchestrator, `shell`, or `exec` program
 
 Key features include:
@@ -142,22 +214,14 @@ Key features include:
 - Boot script execution
 - Handoff modes: supervise orchestrator, interactive shell, or exec program
 
-You can validate a bootstrap configuration file with:
-
-```bash
-ocelot bootstrap validate config.yaml
-
-# For machine-readable output (e.g., in CI)
-ocelot bootstrap validate --output json config.yaml
-```
-
 ---
 
 ### The `zombie` Command
 
 The `zombie` command is a specialized systems utility that illustrates a classic edge case in Unix process management.
 
-**WARNING**: This command is intended for local testing and educational use. Generating an excessive number of zombie processes can exhaust the system's process ID (PID) limit, potentially preventing new processes from starting.
+> [!WARNING] This command is intended for local testing and educational use.
+> Generating an excessive number of zombie processes can exhaust the system's process ID (PID) limit, potentially preventing new processes from starting.
 
 #### Core Behavior
 
@@ -190,6 +254,10 @@ The application is built to be "fire-and-forget":
 ### Main Command
 
 ```text
+# Show version
+$ ocelot --version
+
+# Show usage
 $ ocelot --help
 Process supervisor and init system written in Rust Programming Language
 
@@ -201,6 +269,7 @@ Commands:
   idle           Run as a minimalist PID 1 to reap zombies and hold namespaces [aliases: noop, pause]
   entry          Spawns and supervises a child process as a minimalist PID 1 with signal forwarding and zombie reaping [aliases: wrap]
   supervise      Run supervisor with configuration file
+  bootstrap      Run as initramfs init - mount rootfs and exec supervise [aliases: boot]
   zombie         Creates zombie processes by forking child processes that immediately exit, while the parent process sleeps. This is useful for testing how systems handle zombie processes.
   zombie-finder  Scan system for zombie processes
   help           Print this message or the help of the given subcommand(s)
@@ -215,18 +284,11 @@ Options:
 ### idle
 
 ```text
+# Show usage
 $ ocelot idle --help
-Acts as a 'pause' container equivalent. It enters an infinite loop waiting for signals. When SIGCHLD is received, it reaps exited child processes to prevent zombies. This is essential when running in environments where this process is the sub-grid anchor (PID 1).
 
-Usage: ocelot idle [OPTIONS]
-
-Options:
-      --log-level <LOG_LEVEL>
-          [env: OCELOT_LOG_LEVEL=]
-          [default: info]
-
-  -h, --help
-          Print help (see a summary with '-h')
+# Run
+$ ocelot idle
 ```
 
 ---
@@ -234,24 +296,11 @@ Options:
 ### entry
 
 ```text
+# Show usage
 $ ocelot entry --help
-Acts as a process supervisor and init system for containerized workloads. It forks and executes a child process, then assumes responsibility for the PID 1 lifecycle. It ensures system stability by proactively reaping zombie processes via SIGCHLD and proxies termination signals (SIGINT/SIGTERM) to the child. If the child fails to exit within a grace period, it enforces a SIGKILL to ensure the container terminates. This is essential for preventing process leaks and ensuring clean shutdowns in orchestrated environments.
 
-Usage: ocelot entry [OPTIONS] [COMMANDS]...
-
-Arguments:
-  [COMMANDS]...
-
-Options:
-      --log-level <LOG_LEVEL>
-          [env: OCELOT_LOG_LEVEL=]
-          [default: info]
-
-      --timeout-ms <TIMEOUT_MS>
-          Specify a timeout in milliseconds for the command to execute.
-
-  -h, --help
-          Print help (see a summary with '-h')
+# Run with a child process
+$ ocelot entry sleep 10
 ```
 
 ---
@@ -259,155 +308,56 @@ Options:
 ### supervise
 
 ```text
+# Show usage
 $ ocelot supervise --help
-Run supervisor with configuration file. If no subcommand is provided, runs the supervisor. Use 'config-template' to output the default configuration.
 
-Usage: ocelot supervise [OPTIONS] [COMMAND]
+# Generate the configuration file
+$ ocelot supervise config-template > /path/to/the/configuration/file
 
-Commands:
-  run              Run supervisor with configuration file [aliases: r]
-  config-template  Output the configuration template in YAML format
-  validate         Validate the configuration file
-  help             Print this message or the help of the given subcommand(s)
+# Open your favorite editor and edit the configuration file
+$ vim /path/to/the/configuration/file
 
-Options:
-  -f, --file <FILE>
+# Validate the configuration file
+$ ocelot supervise validate /path/to/the/configuration/file
 
-
-      --log-level <LOG_LEVEL>
-          [env: OCELOT_LOG_LEVEL=]
-
-  -h, --help
-          Print help (see a summary with '-h')
+# Run supervisor with configuration file
+$ ocelot supervise run --file /path/to/the/configuration/file
 ```
 
-#### validate
-
-```text
-$ ocelot supervise validate --help
-Validate the configuration file
-
-Usage: ocelot supervise validate [OPTIONS] <FILE>
-
-Arguments:
-  <FILE>
-
-Options:
-      --output <OUTPUT>  [default: human] [possible values: human, json]
-  -h, --help             Print help
-```
-
-```text
-$ ocelot supervise run --help
-Run supervisor with configuration file
-
-Usage: ocelot supervise run [OPTIONS] --file <FILE>
-
-Options:
-  -f, --file <FILE>
-      --log-level <LOG_LEVEL>  [env: OCELOT_LOG_LEVEL=] [default: info]
-  -h, --help                   Print help
-```
-
-```text
-$ ocelot supervise config-template
-Output the configuration template in YAML format
-
-Usage: ocelot supervise config-template
-
-Options:
-  -h, --help  Print help
-```
+> [!Note] For configuration details, see the [Configuration Reference](#configuration-reference) section.
 
 ---
 
 ### bootstrap
 
 ```text
+# Show usage
 $ ocelot bootstrap --help
-Acts as an initramfs init system for QEMU VMs. Loads kernel modules, mounts the root filesystem, performs switch_root, and executes the supervise orchestrator to manage application processes. If no subcommand is provided, runs the bootstrap.
 
-Usage: ocelot bootstrap [OPTIONS] [COMMAND]
+# Generate the configuration file
+$ ocelot bootstrap config-template > /path/to/the/configuration/file
 
-Commands:
-  run              Run bootstrap with configuration file [aliases: r]
-  config-template  Output the configuration template in YAML format
-  validate         Validate the configuration file
-  help             Print this message or the help of the given subcommand(s)
+# Open your favorite editor and edit the configuration file
+$ vim /path/to/the/configuration/file
 
-Options:
-  -f, --file <FILE>
-
-
-      -h, --help
-              Print help (see a summary with '-h')
-```
-
-#### run
-
-```text
-$ ocelot bootstrap run --help
-Run bootstrap with configuration file
-
-Usage: ocelot bootstrap run --file <FILE>
-
-Options:
-  -f, --file <FILE>
-  -h, --help         Print help
-```
-
-#### config-template
-
-```text
-$ ocelot bootstrap config-template --help
-Output the configuration template in YAML format
-
-Usage: ocelot bootstrap config-template [OPTIONS]
-
-Options:
-      --mode <MODE>  [default: shell] [possible values: shell, supervise, exec]
-  -h, --help         Print help
-```
-
-#### validate
-
-```text
-$ ocelot bootstrap validate --help
-Validate the configuration file
-
-Usage: ocelot bootstrap validate [OPTIONS] <FILE>
-
-Arguments:
-  <FILE>
-
-Options:
-      --output <OUTPUT>  [default: human] [possible values: human, json]
-  -h, --help             Print help
+# Validate the configuration file
+$ ocelot bootstrap validate /path/to/the/configuration/file
 ```
 
 ---
 
+> [!Note] For configuration details, see the [Configuration Reference](#configuration-reference) section.
+
+> [!Note] For examples of `initramfs` setup and QEMU VM booting, see the [Examples](#examples) section.
+
 ### zombie
 
 ```text
+# Show usage
 $ ocelot zombie --help
-This command creates zombie processes by repeatedly forking child processes that immediately exit, while the parent process sleeps for a specified interval. The parent process continues to spawn new child processes until an optional limit is reached or it receives a termination signal. This is useful for testing how systems handle zombie processes and ensuring that they are properly reaped.
 
-Usage: ocelot zombie [OPTIONS]
-
-Options:
-      --log-level <LOG_LEVEL>
-          [env: OCELOT_LOG_LEVEL=]
-          [default: info]
-
-  -i, --interval-ms <INTERVAL_MS>
-          [default: 200]
-
-  -c, --count <COUNT>
-
-
-  -h, --help
-          Print help (see a summary with '-h')
+# Generate zombies
+$ ocelot zombie
 ```
 
 ---
@@ -415,15 +365,27 @@ Options:
 ### zombie-finder
 
 ```text
+# Show usage
 $ ocelot zombie-finder --help
-Scans the system for existing zombie processes using procfs. It lists the PID and command name of each zombie process found. This is useful for monitoring system health and identifying processes that have exited but have not been reaped by their parent processes.
 
-Usage: ocelot zombie-finder
-
-Options:
-  -h, --help
-          Print help (see a summary with '-h')
+# List zombies
+$ ocelot zombie-finder
 ```
+
+---
+
+## 📊 Resource Usage
+
+| Metric                      | Value                     |
+| --------------------------- | ------------------------- |
+| Binary size (release, musl) | ~2-3 MB                   |
+| Static binary               | Yes (no glibc dependency) |
+| Memory usage                | ~1-2 MB idle              |
+| Dependencies                | None (fully static)       |
+
+Build with `cargo build --release --target x86_64-unknown-linux-musl` for fully static binaries.
+
+Ocelot is designed for minimal resource overhead, making it ideal for containerized environments where every megabyte counts.
 
 ---
 
@@ -438,6 +400,16 @@ git clone https://github.com/xrelkd/ocelot.git
 cd ocelot
 cargo install --path .
 ```
+
+### Static Binary Build
+
+To build a fully static-linked binary (no glibc dependency) for container use:
+
+```bash
+cargo build --release --target x86_64-unknown-linux-musl
+```
+
+The static binary will be at `target/x86_64-unknown-linux-musl/release/ocelot`.
 
 ### Shell Completions
 
@@ -457,36 +429,48 @@ ocelot completions bash > /etc/bash_completion.d/ocelot
 
 Using Ocelot as your `ENTRYPOINT` ensures that your container correctly manages the process lifecycle.
 
-- Play as the "idle" command for a simple init system that holds namespaces and reaps zombies
+- Use the "idle" command for a simple init system that holds namespaces and reaps zombies
 
 ```dockerfile
 # Use ocelot as the init system in your Dockerfile
-COPY --from=ocelot /usr/bin/ocelot /usr/bin/ocelot
+COPY --from=ghcr.io/xrelkd/ocelot:latest /usr/bin/ocelot /usr/bin/ocelot
 
 # Run with 'idle' to handle PID 1 duties
 ENTRYPOINT ["ocelot", "idle"]
 ```
 
-- Play as the "entry" command to supervise a child process with signal forwarding and zombie reaping
+- Use the "entry" command to supervise a child process with signal forwarding and zombie reaping
 
 ```dockerfile
 # Use ocelot as the init system in your Dockerfile
-COPY --from=ocelot /usr/bin/ocelot /usr/bin/ocelot
+COPY --from=ghcr.io/xrelkd/ocelot:latest /usr/bin/ocelot /usr/bin/ocelot
 
 # Run with 'entry' to handle PID 1 duties
 ENTRYPOINT ["ocelot", "entry", "--", "ocelot", "zombie", "--count=20"]
 ```
 
-- Play as the "supervise run" command to manage multiple processes with health probes and restart policies
+- Use the "supervise run" command to manage multiple processes with health probes and restart policies
 
 ```dockerfile
 # Use ocelot as the init system in your Dockerfile
-COPY --from=ocelot /usr/bin/ocelot /usr/bin/ocelot
+COPY --from=ghcr.io/xrelkd/ocelot:latest /usr/bin/ocelot /usr/bin/ocelot
 COPY supervisor.yaml /etc/ocelot/supervisor.yaml
 
 # Run with 'supervise run' to manage multiple processes
 ENTRYPOINT ["ocelot", "supervise", "run", "--file", "/etc/ocelot/supervisor.yaml"]
 ```
+
+### Troubleshooting
+
+**Container doesn't stop gracefully?**
+
+- Check your application's signal handling
+- Verify your app receives `SIGTERM` (add debug logging)
+
+**Zombie processes appearing?**
+
+- Ensure Ocelot is PID 1
+- Check child processes aren't double-forking
 
 ---
 
