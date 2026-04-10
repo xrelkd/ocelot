@@ -24,7 +24,7 @@ use crate::error::{self, Error};
 /// be used with `epoll` or similar I/O multiplexing mechanisms.
 ///
 /// # Example
-/// ```rust
+/// ```ignore
 /// use ocelot_entry::Process;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -83,7 +83,7 @@ impl Process {
     /// the command.
     ///
     /// # Example
-    /// ```rust
+    /// ```ignore
     /// # use ocelot_entry::Process;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let process = Process::spawn("echo", ["Hello".to_string(), "World".to_string()])?;

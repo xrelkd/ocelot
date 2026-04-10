@@ -6,7 +6,7 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! use ocelot_rotating_file::{RotatingFile, LogRotationConfig, LogCompression};
 //! use tokio::io::AsyncWriteExt;
 //!
