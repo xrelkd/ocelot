@@ -93,22 +93,6 @@ pub fn supports_user_namespace() -> bool {
 ///   `/proc/self/gid_map`)
 /// - Proc mount fails
 /// - Child A encounters an unexpected wait status
-///
-/// # Examples
-/// ```
-/// use ocelot_test_utils::{run_in_namespace, supports_user_namespace};
-///
-/// if !supports_user_namespace() {
-///     return;
-/// }
-///
-/// let exit_code = run_in_namespace(|| {
-///     // Code that needs to run as PID 1 in a new namespace
-///     println!("Running as PID {}", nix::unistd::getpid());
-///     Ok(0)
-/// }).unwrap();
-/// assert_eq!(exit_code, 0);
-/// ```
 #[expect(
     unsafe_code,
     reason = "Namespace isolation testing requires forking, which uses unsafe blocks"
