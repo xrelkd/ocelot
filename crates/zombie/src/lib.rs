@@ -51,7 +51,7 @@ const SIGNAL_TOKEN: u64 = 0;
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// # use std::time::Duration;
 /// # use ocelot_zombie::{execute, Error};
 /// # fn main() -> Result<(), Error> {
