@@ -143,15 +143,13 @@
               inherit name version rustPlatform;
             };
             ocelot-static = pkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
-              inherit name version;
+              inherit name version completions;
               rustPlatform = rustPlatformMusl;
             };
-            completions = pkgs.runCommand "ocelot-completions" { } ''
-              mkdir -p $out/share/{bash-completion/completions,fish/vendor_completions.d,zsh/site-functions}
-              ${ocelot}/bin/ocelot completions bash  > $out/share/bash-completion/completions/ocelot
-              ${ocelot}/bin/ocelot completions fish  > $out/share/fish/vendor_completions.d/ocelot.fish
-              ${ocelot}/bin/ocelot completions zsh   > $out/share/zsh/site-functions/_ocelot
-            '';
+            completions = pkgs.callPackage ./devshell/package-completions.nix {
+              inherit ocelot;
+              inherit (pkgs) installShellFiles runCommand;
+            };
             container = pkgs.callPackage ./devshell/container.nix {
               inherit name version ocelot;
             };
