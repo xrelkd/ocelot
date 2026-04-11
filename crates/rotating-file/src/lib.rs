@@ -21,6 +21,7 @@
 //! };
 //! let mut file = RotatingFile::new("app.log".into(), rotation).await?;
 //! file.write_all(b"Hello, world!\n").await?;
+//! file.flush().await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -32,13 +33,12 @@ mod tests;
 
 use std::{
     os::unix::fs::OpenOptionsExt,
-    path::PathBuf,
+    path::{Path, PathBuf},
     pin::Pin,
     task::{Context, Poll},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use nix::unistd::fsync;
 use tokio::{fs::File, io, io::AsyncWrite};
 
 /// Compression algorithm for rotated log files.
@@ -87,7 +87,8 @@ impl RotatingFile {
     ///
     /// Returns an error if the file cannot be opened or metadata cannot be
     /// read.
-    pub async fn new(base_path: PathBuf, rotation: LogRotationConfig) -> io::Result<Self> {
+    pub async fn new(base_path: impl AsRef<Path>, rotation: LogRotationConfig) -> io::Result<Self> {
+        let base_path = base_path.as_ref().to_path_buf();
         let file = if let Some(mode) = rotation.mode {
             tokio::fs::OpenOptions::new()
                 .append(true)
@@ -162,7 +163,7 @@ impl RotatingFile {
                 .current_file
                 .take()
                 .ok_or_else(|| io::Error::other("RotatingFile: no current file to rotate"))?;
-            fsync(&old_tokio_file)?;
+            nix::unistd::fsync(&old_tokio_file)?;
             drop(old_tokio_file);
         }
 
