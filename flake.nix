@@ -181,18 +181,16 @@
             static-aarch64 =
               if isCross then
                 crossPkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
-                  inherit name version;
+                  inherit name version completions;
                   rustPlatform = rustPlatformCrossMusl;
-                  inherit completions;
                 }
               else
                 ocelot-static;
             static-x86_64 =
               if isCrossFromAarch64 then
                 crossPkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
-                  inherit name version;
+                  inherit name version completions;
                   rustPlatform = rustPlatformCrossMusl;
-                  inherit completions;
                 }
               else
                 ocelot-static;
