@@ -28,10 +28,12 @@ async fn test_size_rotation() -> std::io::Result<()> {
 
     let data1 = b"A".repeat(50);
     rf.write_all(&data1).await?;
+    rf.flush().await?;
     assert_eq!(rf.current_size, 50);
 
     let data2 = b"B".repeat(60);
     rf.write_all(&data2).await?;
+    rf.flush().await?;
     assert_eq!(rf.current_size, 60);
 
     let metadata = fs::metadata(&file_path).await?;
@@ -68,6 +70,7 @@ async fn test_max_files_cleanup() -> std::io::Result<()> {
     for i in 0..3 {
         let data = b"X".repeat(20);
         rf.write_all(&data).await?;
+        rf.flush().await?;
         if i < 2 {
             sleep(Duration::from_secs(1)).await;
         }
@@ -110,6 +113,7 @@ async fn test_max_age_deletion() -> std::io::Result<()> {
 
     let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
     rf.write_all(b"new data").await?;
+    rf.flush().await?;
 
     let mut entries = fs::read_dir(dir.path()).await?;
     let mut rotated_count = 0;
@@ -140,6 +144,7 @@ async fn test_file_mode() -> std::io::Result<()> {
     let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
 
     rf.write_all(b"test data").await?;
+    rf.flush().await?;
 
     let metadata = fs::metadata(&file_path).await?;
     let permissions = metadata.permissions();
@@ -170,9 +175,11 @@ async fn test_gzip_compression() -> std::io::Result<()> {
     let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
 
     rf.write_all(&b"A".repeat(5)).await?;
+    rf.flush().await?;
     assert_eq!(rf.current_size, 5);
 
     rf.write_all(&b"B".repeat(10)).await?;
+    rf.flush().await?;
     assert_eq!(rf.current_size, 10);
 
     let mut entries = fs::read_dir(dir.path()).await?;
@@ -213,9 +220,11 @@ async fn test_lz4_compression() -> std::io::Result<()> {
     let mut rf = RotatingFile::new(file_path.clone(), rotation).await?;
 
     rf.write_all(&b"A".repeat(5)).await?;
+    rf.flush().await?;
     assert_eq!(rf.current_size, 5);
 
     rf.write_all(&b"B".repeat(10)).await?;
+    rf.flush().await?;
     assert_eq!(rf.current_size, 10);
 
     let mut entries = fs::read_dir(dir.path()).await?;

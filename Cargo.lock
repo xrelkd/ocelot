@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "bytesize",
  "clap",
@@ -743,7 +743,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-bootstrap"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "flate2",
  "lzma-rs",
@@ -757,7 +757,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-entry"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "nix",
  "ocelot-test-utils",
@@ -767,7 +767,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-idle"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "nix",
  "ocelot-test-utils",
@@ -777,7 +777,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-rotating-file"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "flate2",
  "lz4_flex",
@@ -788,7 +788,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-supervise"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "futures",
  "nix",
@@ -803,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-test-utils"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "nix",
  "procfs",
@@ -811,7 +811,7 @@ dependencies = [
 
 [[package]]
 name = "ocelot-zombie"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "nix",
  "snafu",
