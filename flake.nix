@@ -77,11 +77,11 @@
             rustc = rustToolchain;
           };
 
-          isCross = system == "x86_64-linux";
+          isCrossFromX86_64 = system == "x86_64-linux";
           isCrossFromAarch64 = system == "aarch64-linux";
 
           crossPkgs =
-            if isCross then
+            if isCrossFromX86_64 then
               import nixpkgs {
                 inherit system;
                 crossSystem = {
@@ -107,7 +107,7 @@
               null;
 
           rustPlatformCrossMusl =
-            if isCross || isCrossFromAarch64 then
+            if isCrossFromX86_64 || isCrossFromAarch64 then
               crossPkgs.pkgsStatic.makeRustPlatform {
                 cargo = rustToolchain;
                 rustc = rustToolchain;
@@ -126,15 +126,10 @@
           unitTestArgs = [ "--workspace" ];
         in
         {
-
           formatter = pkgs.treefmt;
 
           devShells.default = pkgs.callPackage ./devshell {
-            inherit
-              rustToolchain
-              cargoArgs
-              unitTestArgs
-              ;
+            inherit rustToolchain cargoArgs unitTestArgs;
           };
 
           packages = rec {
@@ -177,7 +172,7 @@
               ocelot-static = if isCrossFromAarch64 then static-x86_64 else ocelot-static;
             };
             static-aarch64 =
-              if isCross then
+              if isCrossFromX86_64 then
                 crossPkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
                   inherit name version completions;
                   rustPlatform = rustPlatformCrossMusl;
