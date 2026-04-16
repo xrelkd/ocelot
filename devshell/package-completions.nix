@@ -4,7 +4,7 @@
   ocelot,
 }:
 
-runCommand "caracal-completions"
+runCommand "ocelot-completions"
   {
     nativeBuildInputs = [ installShellFiles ];
   }
