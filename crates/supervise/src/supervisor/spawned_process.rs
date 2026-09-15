@@ -84,12 +84,14 @@ impl CommandExt for Command {
                 drop(stdout_reader);
                 drop(stderr_reader);
 
-                // Place this process in its own process group so that shutdown signals
-                // can be sent to the entire group (including any child processes spawned
-                // by the supervised process, e.g., sshd sessions).
+                // Place this process in its own process group so that shutdown
+                // signals can be sent to the entire group
+                // (including any child processes spawned by the
+                // supervised process, e.g., sshd sessions).
                 if let Err(err) = unistd::setpgid(Pid::from_raw(0), Pid::from_raw(0)) {
-                    // If setpgid fails, we still proceed — the process will share the
-                    // parent's process group but shutdown will still work (just less
+                    // If setpgid fails, we still proceed — the process will
+                    // share the parent's process group but
+                    // shutdown will still work (just less
                     // thorough for multi-process children).
                     eprintln!("Failed to set process group: {err}");
                 }

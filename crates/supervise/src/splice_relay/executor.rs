@@ -97,8 +97,9 @@ impl ThreadWorker {
 
         loop {
             // Use `NONE` because the waker fd is registered with epoll.
-            // The waker will wake epoll when there's new work (register, remove, shutdown),
-            // so periodic wakeups are unnecessary. This is crucial for lightweight PID 1.
+            // The waker will wake epoll when there's new work (register,
+            // remove, shutdown), so periodic wakeups are
+            // unnecessary. This is crucial for lightweight PID 1.
             let timeout = PollTimeout::NONE;
 
             let num_events = match self.epoll.wait(&mut events, timeout) {
@@ -152,7 +153,8 @@ impl ThreadWorker {
 
     fn handle_io_event(&mut self, token: u64) {
         let flags = SpliceFFlags::SPLICE_F_MOVE | SpliceFFlags::SPLICE_F_NONBLOCK;
-        // Determine if we need to remove this token, and possibly send notification.
+        // Determine if we need to remove this token, and possibly send
+        // notification.
         let remove_id = {
             if let Some(entry) = self.relays.get_mut(&token) {
                 let dst_fd: &dyn AsFd = match &entry.destination {

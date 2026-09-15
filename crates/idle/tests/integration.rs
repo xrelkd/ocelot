@@ -96,8 +96,9 @@ fn test_idle_child_reaping() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // NOTE: This newly created process will become zombie and the parent will not
-        // reap it because the parent exits immediately while getting SIGTERM.
+        // NOTE: This newly created process will become zombie and the parent
+        // will not reap it because the parent exits immediately while
+        // getting SIGTERM.
         #[expect(unsafe_code, reason = "Fork is required to create a child to send SIGTERM")]
         match unsafe { unistd::fork() } {
             Ok(ForkResult::Parent { child: _ }) => {}

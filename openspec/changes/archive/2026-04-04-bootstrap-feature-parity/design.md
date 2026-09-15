@@ -113,11 +113,11 @@ impl From<crate::config::ModulesConfig> for ocelot_bootstrap::ModulesConfig { ..
 
 ## Risks / Trade-offs
 
-| Risk                                                           | Mitigation                                                                                                                    |
+| Risk | Mitigation |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| Extra virtiofs mounts fail mid-sequence, leaving partial state | Log each mount attempt; failures are warnings, not fatal (matching existing module loading behavior)                          |
-| Module scan loads unwanted modules from directory              | Scan mode is opt-in via config; users control which directory is scanned                                                      |
-| Boot script exits with non-zero code                           | Configurable: `boot_script.on_failure: "warn"                                                                                 | "abort"` (default: warn) |
-| Symlink target doesn't exist yet                               | Create parent directories if needed; log warning if target is missing (symlink still created)                                 |
-| Config file grows large with many extra mounts                 | Not a technical risk, but users with 10+ shares may want to split config. Out of scope for now.                               |
-| Per-share overlayfs consumes tmpfs memory for upper layers     | Each overlay's upperdir lives on tmpfs (`/run`). Users with many writable shares need adequate RAM. Document this limitation. |
+| Extra virtiofs mounts fail mid-sequence, leaving partial state | Log each mount attempt; failures are warnings, not fatal (matching existing module loading behavior) |
+| Module scan loads unwanted modules from directory | Scan mode is opt-in via config; users control which directory is scanned |
+| Boot script exits with non-zero code | Configurable: `boot_script.on_failure: "warn"                                                                                 | "abort"` (default: warn) |
+| Symlink target doesn't exist yet | Create parent directories if needed; log warning if target is missing (symlink still created) |
+| Config file grows large with many extra mounts | Not a technical risk, but users with 10+ shares may want to split config. Out of scope for now. |
+| Per-share overlayfs consumes tmpfs memory for upper layers | Each overlay's upperdir lives on tmpfs (`/run`). Users with many writable shares need adequate RAM. Document this limitation. |
