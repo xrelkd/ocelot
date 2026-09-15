@@ -104,8 +104,7 @@ async fn test_max_age_deletion() -> std::io::Result<()> {
         compression: LogCompression::None,
     };
 
-    let rotated_timestamp =
-        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let rotated_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let rotated_path = format!("{}.{}", file_path.display(), rotated_timestamp);
     fs::write(&rotated_path, b"old log data").await?;
 
