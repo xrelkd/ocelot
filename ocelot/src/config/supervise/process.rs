@@ -562,7 +562,7 @@ maxFiles: 7
 ";
         let config: LogRotationConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.max_size_bytes, Some(ByteSize::b(10_485_760)));
-        assert_eq!(config.rotation_interval, Some(Duration::from_secs(86400)));
+        assert_eq!(config.rotation_interval, Some(Duration::from_hours(24)));
         assert_eq!(config.max_files, Some(7));
     }
 

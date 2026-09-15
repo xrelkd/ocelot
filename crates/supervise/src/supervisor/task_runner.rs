@@ -257,12 +257,14 @@ impl TaskRunner for JoinSet<()> {
         grace_period: Duration,
     ) {
         let _unused = self.spawn(async move {
-            // Wait for the grace period; if cancelled (process exited early), do nothing.
+            // Wait for the grace period; if cancelled (process exited early),
+            // do nothing.
             if tokio::time::timeout(grace_period, cancel_token.cancelled()).await.is_ok() {
                 return;
             }
 
-            // Grace period expired — escalate to SIGKILL for the entire process group.
+            // Grace period expired — escalate to SIGKILL for the entire process
+            // group.
             tracing::warn!("Grace period exceeded, sending SIGKILL to process group {group_id}");
             let group_id = Pid::from_raw(-group_id.as_raw());
             if let Err(err) = nix::sys::signal::kill(group_id, Signal::SIGKILL) {

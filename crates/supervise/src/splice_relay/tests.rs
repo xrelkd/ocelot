@@ -37,7 +37,8 @@ impl TestExecutor {
         let cancel_clone = cancel_token.clone();
         let serve_task = tokio::spawn(async move { executor.serve(cancel_clone).await });
 
-        // Give the worker thread time to initialize and register eventfd with epoll
+        // Give the worker thread time to initialize and register eventfd with
+        // epoll
         time::sleep(Duration::from_millis(10)).await;
 
         Self { relay, cancel_token, serve_task }
