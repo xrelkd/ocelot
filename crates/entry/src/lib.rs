@@ -131,7 +131,7 @@ where
     check_pid();
 
     let Process { pid, stdout_fd: child_stdout_fd, stderr_fd: child_stderr_fd } =
-        Process::spawn(&command.into(), args.into_iter())?;
+        Process::spawn(&command.into(), args)?;
 
     let mut state = State::new(pid, timeout.unwrap_or(DEFAULT_WAIT_TIMEOUT));
 
