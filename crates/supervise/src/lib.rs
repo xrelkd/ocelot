@@ -1,3 +1,4 @@
+mod async_fd;
 mod command;
 mod error;
 mod orchestrator;

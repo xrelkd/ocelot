@@ -6,9 +6,8 @@ use nix::{
     unistd::{self, ForkResult, Pid},
 };
 use snafu::ResultExt;
-use tokio::io::unix::AsyncFd;
 
-use crate::{Error, command::Command, error};
+use crate::{Error, async_fd, command::Command, error};
 
 #[derive(Debug)]
 pub struct SpawnedProcess {
@@ -55,7 +54,7 @@ impl CommandExt for Command {
                 drop(stdout_writer);
                 drop(stderr_writer);
 
-                let err_reader = AsyncFd::new(err_reader).context(error::RegisterFdSnafu)?;
+                let err_reader = async_fd::register(err_reader).context(error::RegisterFdSnafu)?;
                 let _guard = err_reader.readable().await.context(error::ReadPipeSnafu)?;
 
                 let mut buf = [0u8; 4];
