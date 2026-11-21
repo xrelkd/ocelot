@@ -3,14 +3,14 @@ use std::{os::fd::OwnedFd, path::Path, time::Duration};
 use nix::{sys::signal::Signal, unistd::Pid};
 use ocelot_rotating_file::RotatingFile;
 use tokio::{
-    io::{self, AsyncWriteExt, unix::AsyncFd},
+    io::{self, AsyncWriteExt},
     sync::mpsc,
     task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    LogRotationConfig, Reaper,
+    LogRotationConfig, Reaper, async_fd,
     reaper::ReapedProcess,
     splice_relay::{Destination, RelayRegistration, SpliceRelay},
     supervisor::{event::Event, probe::Probe},
@@ -150,7 +150,7 @@ impl TaskRunner for JoinSet<()> {
             };
 
             // Prepare to read from `source_fd`.
-            let source_fd = AsyncFd::new(source_fd)?;
+            let source_fd = async_fd::register(source_fd)?;
             let mut buf = [0u8; 8192];
 
             loop {
@@ -257,12 +257,14 @@ impl TaskRunner for JoinSet<()> {
         grace_period: Duration,
     ) {
         let _unused = self.spawn(async move {
-            // Wait for the grace period; if cancelled (process exited early), do nothing.
+            // Wait for the grace period; if cancelled (process exited early),
+            // do nothing.
             if tokio::time::timeout(grace_period, cancel_token.cancelled()).await.is_ok() {
                 return;
             }
 
-            // Grace period expired — escalate to SIGKILL for the entire process group.
+            // Grace period expired — escalate to SIGKILL for the entire process
+            // group.
             tracing::warn!("Grace period exceeded, sending SIGKILL to process group {group_id}");
             let group_id = Pid::from_raw(-group_id.as_raw());
             if let Err(err) = nix::sys::signal::kill(group_id, Signal::SIGKILL) {

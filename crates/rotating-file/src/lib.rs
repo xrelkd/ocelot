@@ -132,8 +132,7 @@ impl RotatingFile {
                 && let Ok(metadata) = entry.metadata().await
                 && let Ok(mod_time) = metadata.modified()
             {
-                let age_days =
-                    now.duration_since(mod_time).map(|d| d.as_secs() / 86400).unwrap_or(0);
+                let age_days = now.duration_since(mod_time).map_or(0, |d| d.as_secs() / 86400);
                 if age_days >= u64::from(max_age_days) {
                     let _unused = tokio::fs::remove_file(&path).await;
                 }
@@ -151,8 +150,7 @@ impl RotatingFile {
         let time_trigger = self.rotation.rotation_interval_secs.is_some_and(|interval| {
             SystemTime::now()
                 .duration_since(self.last_rotation)
-                .map(|d| d.as_secs() > interval)
-                .unwrap_or(true)
+                .map_or(true, |d| d.as_secs() > interval)
         });
         size_trigger || time_trigger
     }
@@ -168,8 +166,7 @@ impl RotatingFile {
         }
 
         {
-            let timestamp =
-                SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+            let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
 
             match self.rotation.compression {
                 LogCompression::None => {
@@ -208,8 +205,7 @@ impl RotatingFile {
                     && let Ok(metadata) = entry.metadata()
                     && let Ok(mod_time) = metadata.modified()
                 {
-                    let age_days =
-                        now.duration_since(mod_time).map(|d| d.as_secs() / 86400).unwrap_or(0);
+                    let age_days = now.duration_since(mod_time).map_or(0, |d| d.as_secs() / 86400);
 
                     if self.rotation.max_age_days.is_some_and(|max| age_days > u64::from(max)) {
                         let _unused = std::fs::remove_file(&path);

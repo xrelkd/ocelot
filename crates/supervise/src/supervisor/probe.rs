@@ -70,8 +70,7 @@ where
 {
     tokio::time::timeout(timeout, TcpStream::connect(socket_address))
         .await
-        .ok()
-        .is_some_and(|result| result.is_ok())
+        .is_ok_and(|result| result.is_ok())
 }
 
 async fn probe_http(socket_address: &SocketAddr, timeout: Duration, path: &str) -> bool {

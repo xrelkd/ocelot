@@ -70,7 +70,8 @@ impl Executor {
         // Shutdown phase: actively kill processes that exceed their individual
         // grace periods, rather than passively waiting for the maximum.
         if !registered_processes.is_empty() {
-            // Map each PID to its kill deadline (registration_time + grace_period).
+            // Map each PID to its kill deadline (registration_time +
+            // grace_period).
             let mut deadlines = {
                 let now = Instant::now();
                 registered_processes
@@ -127,7 +128,8 @@ impl Executor {
                     {
                         tracing::warn!("Failed to SIGKILL process {pid}: {err}");
                     }
-                    // Remove from tracking; we won't wait further for this process.
+                    // Remove from tracking; we won't wait further for this
+                    // process.
                     let _unused = registered_processes.remove(&pid);
                     let _unused = deadlines.remove(&pid);
                 }

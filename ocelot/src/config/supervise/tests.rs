@@ -116,7 +116,7 @@ environmentVariables:
 ";
     let config: ProcessConfig = serde_yaml::from_slice(yaml).unwrap();
     assert_eq!(config.program, "/usr/bin/test");
-    assert!(config.arguments.is_empty());
+    assert_eq!(config.arguments, Vec::<String>::new());
     assert_eq!(config.get_env("FOO"), Some(&"bar".to_string()));
     assert_eq!(config.environment_variables.len(), 2);
 }

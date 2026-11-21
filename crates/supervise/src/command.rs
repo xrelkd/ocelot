@@ -137,8 +137,8 @@ impl Command {
             })
             .collect();
 
-        // Execute execve, which will replace the current process image with the new
-        // program. If successful, this function will never return.
+        // Execute execve, which will replace the current process image with the
+        // new program. If successful, this function will never return.
         match unistd::execvpe(&path_c, &args_c, &env_c) {
             Ok(_) => unreachable!(
                 "The child process has created successfully and should not return from `execvp`"

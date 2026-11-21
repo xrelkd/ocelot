@@ -87,14 +87,13 @@ fn decompress_module<W: Write>(
                 lzma_rs::error::Error::IoError(error) => error,
                 error => std::io::Error::other(error),
             })?;
-            Ok(())
         }
         DecompressFormat::Gz => {
             let mut gz_decoder = flate2::read::GzDecoder::new(data);
             let _ = std::io::copy(&mut gz_decoder, writer)?;
-            Ok(())
         }
     }
+    Ok(())
 }
 
 #[inline]
@@ -114,8 +113,9 @@ fn load_compressed_module(path: impl AsRef<Path>, format: DecompressFormat) -> R
                 .with_context(|_| error::CreateMemfdSnafu { path: path.to_path_buf() })?
         };
 
-        // NOTE: We create a File from the raw fd to write data, then forget it so the
-        // OwnedFd retains ownership and closes the fd when dropped.
+        // NOTE: We create a File from the raw fd to write data, then forget it
+        // so the OwnedFd retains ownership and closes the fd when
+        // dropped.
         #[expect(unsafe_code, reason = "memfd_create returns a valid owned fd")]
         let mut file = unsafe { File::from_raw_fd(fd.as_raw_fd()) };
         decompress_module(&compressed, format, &mut file)

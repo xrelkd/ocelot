@@ -161,7 +161,8 @@ impl Executor {
                 }
                 (Event::LivenessChecked { should_kill }, _) => {
                     if should_kill && let Some(pgid) = state.process_group_id() {
-                        // Send `SIGKILL` to kill the process and the process will be restarted
+                        // Send `SIGKILL` to kill the process and the process
+                        // will be restarted
                         // while handling `Event::ProcessReaped`.
                         forward_signal_group(pgid, Signal::SIGKILL);
                         state.set_failed(-1);
@@ -221,8 +222,8 @@ impl ProcessSpawnContext<'_> {
         if let Some(stdout_fd) = stdout_fd {
             match &config.log_stdout.destination {
                 LogDestination::Null => {
-                    // Should not happen: stdout_fd exists but destination Null means it should be
-                    // discarded.
+                    // Should not happen: stdout_fd exists but destination Null
+                    // means it should be discarded.
                     tracing::warn!("stdout_fd present but log destination is Null; ignoring");
                 }
                 LogDestination::Inherit => {
@@ -250,8 +251,8 @@ impl ProcessSpawnContext<'_> {
         if let Some(stderr_fd) = stderr_fd {
             match &config.log_stderr.destination {
                 LogDestination::Null => {
-                    // Should not happen: stderr_fd exists but destination Null means it should be
-                    // discarded.
+                    // Should not happen: stderr_fd exists but destination Null
+                    // means it should be discarded.
                     tracing::warn!("stderr_fd present but log destination is Null; ignoring");
                 }
                 LogDestination::Inherit => {

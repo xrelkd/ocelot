@@ -68,10 +68,10 @@ Size fields like `maxSizeBytes` accept either raw integers (bytes) or human-read
 
 ```yaml
 rotation:
-  maxSizeBytes: 10MB      # 10,000,000 bytes
-  maxSizeBytes: 1GB       # 1,000,000,000 bytes
-  maxSizeBytes: 512KiB    # 524,288 bytes
-  maxSizeBytes: 1.5GiB    # 1,610,612,736 bytes
+  maxSizeBytes: 10MB # 10,000,000 bytes
+  maxSizeBytes: 1GB # 1,000,000,000 bytes
+  maxSizeBytes: 512KiB # 524,288 bytes
+  maxSizeBytes: 1.5GiB # 1,610,612,736 bytes
 ```
 
 ## Probe Configuration

@@ -53,7 +53,7 @@ processes:
 shell:
   program: /bin/sh
   args: ["-i"]
-processes: {}  # or omitted
+processes: {} # or omitted
 
 # Invalid: both modes
 shell: { program: "/bin/sh" }

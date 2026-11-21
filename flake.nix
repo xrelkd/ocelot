@@ -77,11 +77,11 @@
             rustc = rustToolchain;
           };
 
-          isCross = system == "x86_64-linux";
+          isCrossFromX86_64 = system == "x86_64-linux";
           isCrossFromAarch64 = system == "aarch64-linux";
 
           crossPkgs =
-            if isCross then
+            if isCrossFromX86_64 then
               import nixpkgs {
                 inherit system;
                 crossSystem = {
@@ -107,7 +107,7 @@
               null;
 
           rustPlatformCrossMusl =
-            if isCross || isCrossFromAarch64 then
+            if isCrossFromX86_64 || isCrossFromAarch64 then
               crossPkgs.pkgsStatic.makeRustPlatform {
                 cargo = rustToolchain;
                 rustc = rustToolchain;
@@ -126,15 +126,10 @@
           unitTestArgs = [ "--workspace" ];
         in
         {
-
           formatter = pkgs.treefmt;
 
           devShells.default = pkgs.callPackage ./devshell {
-            inherit
-              rustToolchain
-              cargoArgs
-              unitTestArgs
-              ;
+            inherit rustToolchain cargoArgs unitTestArgs;
           };
 
           packages = rec {
@@ -143,15 +138,13 @@
               inherit name version rustPlatform;
             };
             ocelot-static = pkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
-              inherit name version;
+              inherit name version completions;
               rustPlatform = rustPlatformMusl;
             };
-            completions = pkgs.runCommand "ocelot-completions" { } ''
-              mkdir -p $out/share/{bash-completion/completions,fish/vendor_completions.d,zsh/site-functions}
-              ${ocelot}/bin/ocelot completions bash  > $out/share/bash-completion/completions/ocelot
-              ${ocelot}/bin/ocelot completions fish  > $out/share/fish/vendor_completions.d/ocelot.fish
-              ${ocelot}/bin/ocelot completions zsh   > $out/share/zsh/site-functions/_ocelot
-            '';
+            completions = pkgs.callPackage ./devshell/package-completions.nix {
+              inherit ocelot;
+              inherit (pkgs) installShellFiles runCommand;
+            };
             container = pkgs.callPackage ./devshell/container.nix {
               inherit name version ocelot;
             };
@@ -179,20 +172,18 @@
               ocelot-static = if isCrossFromAarch64 then static-x86_64 else ocelot-static;
             };
             static-aarch64 =
-              if isCross then
+              if isCrossFromX86_64 then
                 crossPkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
-                  inherit name version;
+                  inherit name version completions;
                   rustPlatform = rustPlatformCrossMusl;
-                  inherit completions;
                 }
               else
                 ocelot-static;
             static-x86_64 =
               if isCrossFromAarch64 then
                 crossPkgs.pkgsStatic.callPackage ./devshell/package-static.nix {
-                  inherit name version;
+                  inherit name version completions;
                   rustPlatform = rustPlatformCrossMusl;
-                  inherit completions;
                 }
               else
                 ocelot-static;

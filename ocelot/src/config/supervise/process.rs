@@ -529,7 +529,7 @@ program: /usr/bin/myapp
 ";
         let config: ProcessConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.program, "/usr/bin/myapp");
-        assert!(config.arguments.is_empty());
+        assert_eq!(config.arguments, Vec::<String>::new());
         assert_eq!(config.termination_grace_period, Duration::from_secs(60));
     }
 
@@ -562,7 +562,7 @@ maxFiles: 7
 ";
         let config: LogRotationConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.max_size_bytes, Some(ByteSize::b(10_485_760)));
-        assert_eq!(config.rotation_interval, Some(Duration::from_secs(86400)));
+        assert_eq!(config.rotation_interval, Some(Duration::from_hours(24)));
         assert_eq!(config.max_files, Some(7));
     }
 

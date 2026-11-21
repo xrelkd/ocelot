@@ -131,7 +131,7 @@ where
     check_pid();
 
     let Process { pid, stdout_fd: child_stdout_fd, stderr_fd: child_stderr_fd } =
-        Process::spawn(&command.into(), args.into_iter())?;
+        Process::spawn(&command.into(), args)?;
 
     let mut state = State::new(pid, timeout.unwrap_or(DEFAULT_WAIT_TIMEOUT));
 
@@ -154,8 +154,8 @@ where
             break;
         }
 
-        // Calculate the timeout for waiting on signals, and check if we need to force
-        // kill the child process.
+        // Calculate the timeout for waiting on signals, and check if we need to
+        // force kill the child process.
         if state.should_force_kill() {
             tracing::warn!(
                 "Child process {pid} did not exit within the timeout, sending SIGKILL",
@@ -313,8 +313,8 @@ pub fn execute_interactive_with_session(
             break;
         }
 
-        // Calculate the timeout for waiting on signals, and check if we need to force
-        // kill the child process.
+        // Calculate the timeout for waiting on signals, and check if we need to
+        // force kill the child process.
         if state.should_force_kill() {
             tracing::warn!(
                 "Child process {pid} did not exit within the timeout, sending SIGKILL",

@@ -59,7 +59,6 @@ impl ModulesConfig {
                         }
                     }
                 }
-                Ok(())
             }
             Self::Scan { names, dep_file_path, directory } => {
                 let dep_map = parse_dep_file(directory, dep_file_path)?;
@@ -72,9 +71,9 @@ impl ModulesConfig {
                         }
                     }
                 }
-                Ok(())
             }
         }
+        Ok(())
     }
 
     /// Resolves module dependencies and sorts the module names in topological
@@ -91,7 +90,6 @@ impl ModulesConfig {
                     *names = resolve_module_order(&dep_map, names)
                         .with_context(|_| error::ValidateSnafu)?;
                 }
-                Ok(())
             }
             Self::Scan { names, dep_file_path, directory } => {
                 let dep_map = parse_dep_file(directory, dep_file_path)?;
@@ -99,9 +97,9 @@ impl ModulesConfig {
                     *names_vec = resolve_module_order(&dep_map, &names_vec.clone())
                         .with_context(|_| error::ValidateSnafu)?;
                 }
-                Ok(())
             }
         }
+        Ok(())
     }
 }
 
@@ -236,7 +234,6 @@ fn collect_transitive_deps(
 fn default_directory_path() -> PathBuf { PathBuf::from("/lib/modules") }
 
 #[cfg(test)]
-#[allow(clippy::cmp_owned)]
 mod tests {
     use std::path::PathBuf;
 
