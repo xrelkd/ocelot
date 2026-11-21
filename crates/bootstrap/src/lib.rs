@@ -176,8 +176,10 @@ fn invoke_exec(console: &str, ExecConfig { program, arguments }: &ExecConfig) ->
             CString::new(arg.clone()).with_context(|_| error::EncodeArgumentSnafu { value: arg })
         }))
         .collect::<Result<Vec<_>, Error>>()?;
-    let _ = nix::unistd::execvp(&c_cmd, &c_args).with_context(move |_| {
-        error::ExecuteCommandSnafu { program: program.clone(), arguments: arguments.clone() }
-    })?;
-    Ok(())
+    nix::unistd::execvp(&c_cmd, &c_args)
+        .with_context(move |_| error::ExecuteCommandSnafu {
+            program: program.clone(),
+            arguments: arguments.clone(),
+        })
+        .map(|_| ())
 }

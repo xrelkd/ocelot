@@ -3,7 +3,6 @@ name                   = "ocelot-entry"
 description            = "Spawns a child process and manages its lifecycle as a minimal init system."
 version.workspace      = true
 authors.workspace      = true
-homepage.workspace     = true
 readme.workspace       = true
 repository.workspace   = true
 license.workspace      = true

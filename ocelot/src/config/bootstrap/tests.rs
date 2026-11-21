@@ -112,7 +112,7 @@ postSwitch:
 #[test]
 fn test_bootstrap_config_template_shell() {
     let template = BootstrapConfig::template_shell();
-    assert!(!template.is_empty());
+    assert_ne!(template, Vec::<u8>::new());
 
     // Deserialize and validate
     let config: BootstrapConfig = serde_yaml::from_slice(&template).unwrap();
@@ -128,7 +128,7 @@ fn test_bootstrap_config_template_shell() {
 #[test]
 fn test_bootstrap_config_template_supervise() {
     let template = BootstrapConfig::template_supervise();
-    assert!(!template.is_empty());
+    assert_ne!(template, Vec::<u8>::new());
 
     // Deserialize and validate
     let config: BootstrapConfig = serde_yaml::from_slice(&template).unwrap();
@@ -144,7 +144,7 @@ fn test_bootstrap_config_template_supervise() {
 #[test]
 fn test_bootstrap_config_template_exec() {
     let template = BootstrapConfig::template_exec();
-    assert!(!template.is_empty());
+    assert_ne!(template, Vec::<u8>::new());
 
     // Deserialize and validate
     let config: BootstrapConfig = serde_yaml::from_slice(&template).unwrap();

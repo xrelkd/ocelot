@@ -67,7 +67,7 @@ fn test_root_config_ninep_custom_fstype() {
 fn test_module_config_default() {
     let config = ModulesConfig::default();
     assert_eq!(config.directory, std::path::PathBuf::from("/lib/modules"));
-    assert!(config.module_file_names.is_empty());
+    assert_eq!(config.module_file_names, Vec::<String>::new());
 }
 
 #[test]

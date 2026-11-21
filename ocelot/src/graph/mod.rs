@@ -246,7 +246,7 @@ mod tests {
     fn test_empty_graph() {
         let graph: DiGraph<String> = DiGraph::new();
         assert_eq!(graph.node_count(), 0);
-        assert!(graph.kosaraju_scc().is_empty());
+        assert_eq!(graph.kosaraju_scc(), Vec::<Vec<usize>>::new());
     }
 
     #[test]
@@ -383,7 +383,7 @@ mod tests {
     fn test_cycle_not_starting_from_first_node() {
         let graph = build_graph(&["A", "B", "C"], &[(0, 1), (1, 2), (2, 1)]);
         let sccs = graph.kosaraju_scc();
-        assert!(!sccs.is_empty());
+        assert_ne!(sccs, Vec::<Vec<usize>>::new());
 
         let scc_with_bc = sccs.iter().find(|scc| scc.contains(&1) && scc.contains(&2));
         assert!(scc_with_bc.is_some());

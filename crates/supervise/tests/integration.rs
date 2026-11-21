@@ -245,7 +245,7 @@ fn test_supervisor_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
         if !zombies.is_empty() {
             eprintln!("Zombies found after supervisor lifecycle test: {zombies:?}");
         }
-        assert!(zombies.is_empty());
+        assert_eq!(zombies, Vec::new());
 
         Ok(0)
     })?;

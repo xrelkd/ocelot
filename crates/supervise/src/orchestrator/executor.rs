@@ -63,7 +63,7 @@ impl Executor {
                 splice_relay.clone(),
                 dependency_registry.clone(),
             );
-            let _unused_supervisor = supervisors.insert(name.clone(), supervisor);
+            let _unused_supervisor = supervisors.insert(name, supervisor);
             supervisor_executors.push(executor);
         }
 
