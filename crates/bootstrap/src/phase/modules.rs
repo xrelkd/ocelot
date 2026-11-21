@@ -87,14 +87,13 @@ fn decompress_module<W: Write>(
                 lzma_rs::error::Error::IoError(error) => error,
                 error => std::io::Error::other(error),
             })?;
-            Ok(())
         }
         DecompressFormat::Gz => {
             let mut gz_decoder = flate2::read::GzDecoder::new(data);
             let _ = std::io::copy(&mut gz_decoder, writer)?;
-            Ok(())
         }
     }
+    Ok(())
 }
 
 #[inline]

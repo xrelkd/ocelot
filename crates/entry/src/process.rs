@@ -123,7 +123,8 @@ impl Process {
                 let mut buf = [0u8; 4];
                 match unistd::read(err_reader, &mut buf).context(error::ReadPipeSnafu)? {
                     // Read 0 bytes (EOF).
-                    // This means the child successfully called exec() and the pipe closed.
+                    // This means the child successfully called exec() and the
+                    // pipe closed.
                     0 => {
                         Ok(Self { pid: child, stdout_fd: stdout_reader, stderr_fd: stderr_reader })
                     }
@@ -250,7 +251,8 @@ impl Process {
                 let mut buf = [0u8; 4];
                 match unistd::read(err_reader, &mut buf).context(error::ReadPipeSnafu)? {
                     // Read 0 bytes (EOF).
-                    // This means the child successfully called exec() and the pipe closed.
+                    // This means the child successfully called exec() and the
+                    // pipe closed.
                     0 => Ok(child),
                     // Read 4 bytes.
                     // This means exec() failed and the child wrote the errno.

@@ -14,6 +14,6 @@ use crate::error;
 pub fn shutdown() -> Result<(), error::Error> {
     tracing::info!("Shutting down system");
     nix::sys::reboot::reboot(nix::sys::reboot::RebootMode::RB_AUTOBOOT)
-        .context(error::ShutdownSnafu)?;
-    Ok(())
+        .context(error::ShutdownSnafu)
+        .map(|_| ())
 }

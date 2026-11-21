@@ -529,7 +529,7 @@ program: /usr/bin/myapp
 ";
         let config: ProcessConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.program, "/usr/bin/myapp");
-        assert!(config.arguments.is_empty());
+        assert_eq!(config.arguments, Vec::<String>::new());
         assert_eq!(config.termination_grace_period, Duration::from_secs(60));
     }
 

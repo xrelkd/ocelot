@@ -3,7 +3,6 @@ name                   = "ocelot-supervise"
 description            = "Process supervisor library for ocelot"
 version.workspace      = true
 authors.workspace      = true
-homepage.workspace     = true
 readme.workspace       = true
 repository.workspace   = true
 license.workspace      = true
