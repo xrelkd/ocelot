@@ -234,7 +234,6 @@ fn collect_transitive_deps(
 fn default_directory_path() -> PathBuf { PathBuf::from("/lib/modules") }
 
 #[cfg(test)]
-#[allow(clippy::cmp_owned)]
 mod tests {
     use std::path::PathBuf;
 
