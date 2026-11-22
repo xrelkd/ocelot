@@ -85,28 +85,26 @@ impl SuperviseConfig {
                 supervisor.name.clone_from(name);
                 supervisor.depends_on = {
                     let name_id = graph.get_id(name);
-                    name_id
-                        .map(|id| {
-                            graph
-                                .neighbors(id)
-                                .iter()
-                                .filter_map(|&neighbor_id| {
-                                    graph.get_label(neighbor_id).and_then(|dep_name| {
-                                        let dep_name_str = dep_name.clone();
-                                        config.depends_on.get(&dep_name_str).map(|dep_config| {
-                                            let condition = dep_config
-                                                .condition
-                                                .map(supervisor_config::DependencyCondition::from);
-                                            (
-                                                dep_name_str,
-                                                supervisor_config::ProcessDependency { condition },
-                                            )
-                                        })
+                    name_id.map_or_default(|id| {
+                        graph
+                            .neighbors(id)
+                            .iter()
+                            .filter_map(|&neighbor_id| {
+                                graph.get_label(neighbor_id).and_then(|dep_name| {
+                                    let dep_name_str = dep_name.clone();
+                                    config.depends_on.get(&dep_name_str).map(|dep_config| {
+                                        let condition = dep_config
+                                            .condition
+                                            .map(supervisor_config::DependencyCondition::from);
+                                        (
+                                            dep_name_str,
+                                            supervisor_config::ProcessDependency { condition },
+                                        )
                                     })
                                 })
-                                .collect()
-                        })
-                        .unwrap_or_default()
+                            })
+                            .collect()
+                    })
                 };
                 supervisor
             })
