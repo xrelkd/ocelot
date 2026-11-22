@@ -1,11 +1,11 @@
 [workspace.package]
-version = "0.5.3"
+version = "0.5.4"
 authors = ["xrelkd <46590321+xrelkd@users.noreply.github.com>"]
 repository = "https://github.com/xrelkd/ocelot"
 readme = "README.md"
 license = "GPL-3.0-only"
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.98"
 categories = ["command-line-utilities", "development-tools"]
 keywords = [
   "supervisor",
@@ -90,6 +90,9 @@ ocelot-zombie        = { path = "./crates/zombie" }
 
 [workspace.lints.rust]
 async_fn_in_trait = "allow"
+
+# TODO: deny `unused_crate_dependencies` after https://github.com/rust-lang/rust/issues/95513 being solved
+unused_crate_dependencies = "allow"
 
 unknown_lints     = "warn"
 unstable_features = "warn"
@@ -200,7 +203,6 @@ unused_associated_type_bounds           = "deny"
 unused_attributes                       = "deny"
 unused_braces                           = "deny"
 unused_comparisons                      = "deny"
-unused_crate_dependencies               = "deny"
 unused_doc_comments                     = "deny"
 unused_extern_crates                    = "deny"
 unused_features                         = "deny"
