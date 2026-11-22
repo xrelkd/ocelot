@@ -105,7 +105,7 @@ fn load_compressed_module(path: impl AsRef<Path>, format: DecompressFormat) -> R
     let fd = {
         let fd = {
             let memfd_name = {
-                let file_name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+                let file_name = path.file_name().map_or_default(|n| n.to_string_lossy());
                 format!("kmod-{file_name}")
             };
             memfd_create(memfd_name.as_str(), nix::sys::memfd::MFdFlags::empty())
